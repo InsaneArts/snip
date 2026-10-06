@@ -56,6 +56,10 @@ pub mod qobject {
         #[qinvokable]
         fn cancel(self: Pin<&mut Engine>);
 
+        /// The Quick Access stack is off screen: run the deferred capture.
+        #[qinvokable]
+        fn capture_ready(self: Pin<&mut Engine>, request: i32);
+
         #[qinvokable]
         fn copy(self: Pin<&mut Engine>, id: QString) -> bool;
 
@@ -98,6 +102,13 @@ pub mod qobject {
 
         #[qsignal]
         fn cancel_requested(self: Pin<&mut Engine>);
+
+        /// Take Snip's own cards off screen before capture `request`.
+        #[qsignal]
+        fn prepare_capture(self: Pin<&mut Engine>, request: i32);
+
+        #[qsignal]
+        fn capture_done(self: Pin<&mut Engine>);
 
         #[qsignal]
         fn card_add(self: Pin<&mut Engine>, card: &QString);
@@ -249,6 +260,12 @@ impl qobject::Engine {
     fn cancel(self: Pin<&mut Self>) {
         if let Some(i) = self.inner() {
             i.cancel();
+        }
+    }
+
+    fn capture_ready(self: Pin<&mut Self>, request: i32) {
+        if let Some(i) = self.inner() {
+            i.capture_ready(request as u64);
         }
     }
 

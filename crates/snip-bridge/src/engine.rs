@@ -73,6 +73,8 @@ pub struct Inner {
     cards: Mutex<Vec<(String, String)>>,
     closed: Mutex<Vec<String>>,
     ocr_langs: OnceLock<String>,
+    /// Captures waiting for the Quick Access stack to leave the screen
+    deferred: Mutex<HashMap<u64, Source>>,
 }
 
 fn reply(w: Option<Waiter>, r: Response) {
@@ -132,6 +134,7 @@ impl Inner {
             cards: Mutex::new(vec![]),
             closed: Mutex::new(vec![]),
             ocr_langs: OnceLock::new(),
+            deferred: Mutex::new(HashMap::new()),
         }))
     }
 
@@ -247,7 +250,7 @@ impl Inner {
                 let snap = std::thread::spawn(snapshot);
                 if self.cfg().capture.freeze {
                     self.pending.lock().unwrap().insert(req, Pending::Overlay { mode, waiter, snap });
-                    self.wl(Wl::Capture { request: req, source: Source::Outputs(None), cursor: false });
+                    self.capture_clean(req, Source::Outputs(None));
                 } else {
                     let snap = snap.join().unwrap_or_default();
                     self.open_session(mode, req, waiter, snap, vec![]);
@@ -262,7 +265,7 @@ impl Inner {
                 self.play("shutter");
                 let req = self.next();
                 self.pending.lock().unwrap().insert(req, Pending::Region { waiter, output: output.clone(), rect: None, kind: "fullscreen".into() });
-                self.wl(Wl::Capture { request: req, source: Source::Outputs(Some(vec![output])), cursor: false });
+                self.capture_clean(req, Source::Outputs(Some(vec![output])));
             }
             "previous" => {
                 // CAP-03: the last rectangle, in physical pixels, on its monitor.
@@ -282,13 +285,45 @@ impl Inner {
                 self.play("shutter");
                 let req = self.next();
                 self.pending.lock().unwrap().insert(req, Pending::Region { waiter, output: output.clone(), rect: Some(rect), kind: "area".into() });
-                self.wl(Wl::Capture { request: req, source: Source::Outputs(Some(vec![output])), cursor: false });
+                self.capture_clean(req, Source::Outputs(Some(vec![output])));
             }
             other => reply(waiter, Response::err(format!("unknown capture mode '{other}'"))),
         }
     }
 
+    /// Screen captures never contain Snip's own cards (CleanShot hides its
+    /// UI from captures). With cards on screen, QML unmaps the stack first and
+    /// calls `capture_ready` once that is committed.
+    fn capture_clean(self: &Arc<Self>, req: u64, source: Source) {
+        if self.cards.lock().unwrap().is_empty() {
+            self.wl(Wl::Capture { request: req, source, cursor: false });
+            return;
+        }
+        self.deferred.lock().unwrap().insert(req, source);
+        trace::trace("capture_deferred", &format!("\"req\":{req}"));
+        self.ui(move |e| e.prepare_capture(req as i32));
+        // never stall a capture on the UI: go anyway after 150 ms
+        let me = self.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(150));
+            me.capture_ready(req);
+        });
+    }
+
+    pub fn capture_ready(&self, req: u64) {
+        let source = self.deferred.lock().unwrap().remove(&req);
+        if let Some(source) = source {
+            trace::trace("capture_ready", &format!("\"req\":{req}"));
+            self.wl(Wl::Capture { request: req, source, cursor: false });
+        }
+    }
+
     fn captured(self: &Arc<Self>, p: Pending, r: CaptureResult) {
+        // The stack comes back now, except for a selection: then it returns
+        // when the overlay closes (QML), so it can't flash in between.
+        if !matches!(p, Pending::Overlay { .. }) || r.frames.is_empty() {
+            self.ui(|e| e.capture_done());
+        }
         if !r.failed.is_empty() {
             trace::warn("capture_failed", &format!("\"which\":{}", js(&r.failed.join(","))));
         }

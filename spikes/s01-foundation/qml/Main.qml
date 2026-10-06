@@ -23,6 +23,7 @@ QtObject {
     function open() {
         presentedCount = 0
         overlayVisible = true
+        if (mode === "soak") soakFailsafe.restart()
         SnipCore.setOverlayVisible(true)
         SnipCore.log("qml_show", "")
     }
@@ -35,6 +36,10 @@ QtObject {
 
     function onWindowPresented() {
         presentedCount += 1
+        // Soak: close after the first presented frame. Waiting for every
+        // screen hangs when an output is hot-plugged mid-trial (2026-10-06:
+        // a headless test output left the overlay up with the keyboard grab).
+        if (mode === "soak" && presentedCount === 1) settleTimer.restart()
         if (presentedCount === Qt.application.screens.length) {
             SnipCore.log("all_presented", "")
             if (mode === "bench" || mode === "selftest")   // test mode keeps the overlay open like interactive
@@ -67,6 +72,10 @@ QtObject {
     property Timer startTimer: Timer {
         interval: 600
         onTriggered: SnipCore.trigger()
+    }
+    property Timer soakFailsafe: Timer {
+        interval: 2000
+        onTriggered: if (root.overlayVisible) { SnipCore.log("soak_failsafe_close", ""); root.close() }
     }
     property Timer settleTimer: Timer {
         interval: root.mode === "selftest" ? 250 : 120

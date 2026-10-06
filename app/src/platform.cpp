@@ -11,6 +11,8 @@
 #include <QQuickWindow>
 #include <QRegion>
 #include <QUrl>
+#include <atomic>
+#include <memory>
 
 #include "snip_bridge/src/bridge.cxxqt.h"
 
@@ -85,6 +87,32 @@ Platform::setMargins(QWindow* w, int left, int top, int right, int bottom)
 {
   if (auto* lw = LayerShellQt::Window::get(w))
     lw->setMargins(QMargins(left, top, right, bottom));
+}
+
+void
+Platform::notifyNextFrame(QQuickWindow* w)
+{
+  if (!w)
+    return;
+  // beforeSynchronizing runs with the GUI thread blocked, so a sync seen
+  // after this call carries the current state; its frameSwapped is ours.
+  auto synced = std::make_shared<std::atomic<bool>>(false);
+  auto conns = std::make_shared<QList<QMetaObject::Connection>>();
+  conns->append(connect(
+    w, &QQuickWindow::beforeSynchronizing, this, [synced]() { synced->store(true); }, Qt::DirectConnection));
+  conns->append(connect(
+    w,
+    &QQuickWindow::frameSwapped,
+    this,
+    [this, w, synced, conns]() {
+      if (!synced->load())
+        return;
+      for (const auto& c : *conns)
+        QObject::disconnect(c);
+      QMetaObject::invokeMethod(this, [this, w]() { Q_EMIT framePresented(w); }, Qt::QueuedConnection);
+    },
+    Qt::DirectConnection));
+  w->update();
 }
 
 QString

@@ -17,7 +17,7 @@ Window {
     readonly property var wins: out ? out.windows : []
 
     visible: active
-    color: frame.hasFrame ? "black" : "transparent"
+    color: frame.hasFrame && c.overlayShown ? "black" : "transparent"
     flags: Qt.FramelessWindowHint
     screen: modelData
     // the compositor configures the real size; start from it so the first
@@ -90,15 +90,26 @@ Window {
     readonly property rect hole: selecting ? shown : toShown(targetPhys)
     readonly property bool hasHole: hole.width > 0 && hole.height > 0
 
-    onActiveChanged: {
+    function resetSession() {
         pressed = false; dragging = false; moving = false; pick = -1
         raw = Qt.rect(0, 0, 0, 0)
-        hovered = c.session && c.session.cursor && c.session.cursor.output === outputName
+        hovered = !!(c.session && c.session.cursor && c.session.cursor.output === outputName)
         if (hovered) {
             mouse = Qt.point(c.session.cursor.x, c.session.cursor.y)
             c.activeOverlay = win
         }
-        if (active) keys.forceActiveFocus()
+        keys.forceActiveFocus()
+    }
+    onActiveChanged: if (active) resetSession()
+    Connections {
+        target: win.c
+        // reopened before the previous close finished unmapping
+        function onOverlayShownChanged() { if (win.c.overlayShown && win.active) win.resetSession() }
+    }
+    // Closing clears content and input at once; the unmap follows (Main).
+    Component.onCompleted: {
+        contentItem.opacity = Qt.binding(() => win.c.overlayShown ? 1 : 0)
+        contentItem.enabled = Qt.binding(() => win.c.overlayShown)
     }
 
     function recompute() {

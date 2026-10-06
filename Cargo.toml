@@ -1,5 +1,7 @@
 [workspace]
 resolver = "2"
+# The M0 spike keeps its own lockfile and build.
+exclude = ["spikes"]
 members = ["crates/snip-core", "crates/snip-wayland", "crates/snip-hypr", "crates/snip-ipc", "crates/snip-cli", "crates/snip-bridge"]
 
 [workspace.package]

@@ -4,6 +4,7 @@
 #include <QQuickItem>
 #include <QScreen>
 #include <QVariantList>
+#include <QQuickWindow>
 #include <QWindow>
 #include <QtQml/qqmlregistration.h>
 
@@ -36,4 +37,12 @@ public:
   Q_INVOKABLE void setMargins(QWindow* w, int left, int top, int right, int bottom);
 
   Q_INVOKABLE QString hex(const QColor& c) const;
+
+  // Emit framePresented(w) once a frame that reflects the scene as it is
+  // *now* has been swapped (committed to the compositor). Used to take
+  // Snip's own UI off screen before a capture.
+  Q_INVOKABLE void notifyNextFrame(QQuickWindow* w);
+
+Q_SIGNALS:
+  void framePresented(QQuickWindow* window);
 };

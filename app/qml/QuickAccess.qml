@@ -21,6 +21,7 @@ Window {
     property string output: ""
     property bool hidden: false
     property bool remap: false
+    property bool capturing: false     // off screen while Snip captures the screen
     property bool dragging: false
     property bool expanded: false
     property var menuCard: null
@@ -133,6 +134,33 @@ Window {
         }
     }
 
+    // Engine.prepareCapture: Snip's cards must not be in the capture. Hyprland
+    // fades unmapped layers out (~150 ms, even with no_anim), so instead of
+    // unmapping, draw the stack fully transparent and let the capture go
+    // once that frame is on screen. The stack returns when the capture is
+    // done (or, for a selection, when the overlay closes).
+    property int captureRequest: 0
+    property bool awaitSwap: false
+    function prepareCapture(req) {
+        captureRequest = req
+        if (!visible) { Engine.captureReady(req); return }
+        capturing = true
+        awaitSwap = true
+        Platform.notifyNextFrame(qa)
+        captureGo.restart()     // fallback if no frame comes
+    }
+    function releaseCapture() {
+        if (!awaitSwap) return
+        awaitSwap = false
+        captureGo.stop()
+        Engine.captureReady(captureRequest)
+    }
+    Connections {
+        target: Platform
+        function onFramePresented(w) { if (w === qa) qa.releaseCapture() }
+    }
+    Timer { id: captureGo; interval: 40; onTriggered: qa.releaseCapture() }
+
     QtObject {
         id: closeLater
         property var pending: null
@@ -190,6 +218,8 @@ Window {
     Item {
         id: stack
         anchors.fill: parent
+        opacity: qa.capturing ? 0 : 1
+        enabled: !qa.capturing
 
         HoverHandler { id: stackHover; enabled: !qa.menuCard }
 

@@ -15,7 +15,8 @@ QtObject {
     readonly property string crosshairMode: settings.capture ? settings.capture.crosshair : "ctrl"
 
     // ---------------------------------------------------------------- overlay session
-    property bool overlayOpen: false
+    property bool overlayOpen: false     // overlay surfaces mapped
+    property bool overlayShown: false    // overlay content drawn (cleared first on close, see closeOverlay)
     property var session: ({})
     property bool windowMode: false
     property bool ctrlHeld: false
@@ -29,13 +30,20 @@ QtObject {
         windowMode = session.mode === "window"
         ctrlHeld = shiftHeld = altHeld = false
         if (session.cursor) lastOutput = session.cursor.output
+        unmapOverlay.stop()
+        overlayShown = true
         overlayOpen = true
     }
 
+    // Clear the content now, unmap a moment later: Hyprland fades unmapped
+    // layers out, which would leave a dimmed frozen frame on screen.
     function closeOverlay() {
-        overlayOpen = false
+        overlayShown = false
         windowMode = false
+        quickAccess.capturing = false
+        unmapOverlay.restart()
     }
+    property Timer unmapOverlay: Timer { interval: 60; onTriggered: root.overlayOpen = false }
 
     function cancel() {
         closeOverlay()
@@ -106,6 +114,8 @@ QtObject {
         target: Engine
         function onFramesReady(epoch) { root.openSession() }
         function onCancelRequested() { root.closeOverlay() }
+        function onPrepareCapture(req) { root.quickAccess.prepareCapture(req) }
+        function onCaptureDone() { if (!root.overlayOpen) root.quickAccess.capturing = false }
         function onCardAdd(card) { root.quickAccess.add(JSON.parse(card)) }
         function onCardUpdate(id, card) { root.quickAccess.update(id, JSON.parse(card)) }
         function onCardsCommand(cmd) { root.quickAccess.command(cmd) }
@@ -118,12 +128,17 @@ QtObject {
     function debug(cmd) {
         const a = cmd.split(" ")
         const w = activeOverlay
-        if (a[0] === "key" && w) {
-            const map = { "Escape": Qt.Key_Escape, "space": Qt.Key_Space, "Return": Qt.Key_Return, "Tab": Qt.Key_Tab, "c": Qt.Key_C }
-            const ev = { key: map[a[1]], modifiers: 0, isAutoRepeat: false, accepted: false }
-            keyPressed(ev, w)
-            keyReleased(ev, w)
-        }
+        if (a[0] === "qa") { quickAccess.command(a[1]); return }
+        const map = { "Escape": Qt.Key_Escape, "space": Qt.Key_Space, "Return": Qt.Key_Return, "Tab": Qt.Key_Tab,
+                      "c": Qt.Key_C, "Shift": Qt.Key_Shift, "Alt": Qt.Key_Alt, "Control": Qt.Key_Control }
+        const mods = { "Shift": Qt.ShiftModifier, "Alt": Qt.AltModifier, "Control": Qt.ControlModifier }
+        if (!w || !(a[0] in { key: 1, keydown: 1, keyup: 1 })) return
+        // modifiers as they'd be reported with the event
+        let m = (shiftHeld ? Qt.ShiftModifier : 0) | (altHeld ? Qt.AltModifier : 0) | (ctrlHeld ? Qt.ControlModifier : 0)
+        if (a[1] in mods) m = a[0] === "keyup" ? (m & ~mods[a[1]]) : (m | mods[a[1]])
+        const ev = { key: map[a[1]], modifiers: m, isAutoRepeat: false, accepted: false }
+        if (a[0] !== "keyup") keyPressed(ev, w)
+        if (a[0] !== "keydown") keyReleased(ev, w)
     }
 
     Component.onCompleted: Engine.start(mode === "interactive" ? "interactive" : "test")
