@@ -73,6 +73,30 @@ Each spike answers one question with a measurement and a go/no-go. The results a
 - Two-monitor, mixed-scale test passes.
 - The QAO card passes design review against the CleanShot reference board in a dark, a light and a gradient-border theme.
 
+### M1 status (2026-10-06, branch `m1`)
+
+Built: `snipd` (Rust core + Qt Quick UI in one process), `snip` CLI, `hypr/snip.lua`, systemd unit, `snip-screenshot-git` PKGBUILD. End-to-end suite `tests/e2e/e2e.py` (11 cases on a headless output) passes.
+
+| Area | Status | Notes |
+|---|---|---|
+| Daemon, unit, shortcuts, CLI (API-01, API-03) | ✅ | `snip area/fullscreen/window/previous/text/all-in-one/open/copy/save/list/restore/close-all/status/reload/quit`; exit codes 0/1/2/3. The full CleanShot URL-API surface (`--x --y --w --h --action`) is still to add. |
+| CAP-01, 03, 04, 05, 09, 10 | ✅ | Click = window or monitor (smallest wins); Space = clean toplevel capture with Hyprland corners and shadow; OCR copies text. |
+| CAP-02 variants | ⚠️ | Available through After Capture rules; separate "& Copy / & Save" bindable actions still to add. CAP-04 "all monitors" variant missing. |
+| SEL-01…07, 09…11 | ✅ | p95 17.6 ms hotkey → every overlay presented (warm); first overlay after start ≈ 225 ms (budget 300). Exact crops at scales 1/1.25/1.5/2 and on a rotated output. Logical-px readout on hover not done. |
+| QAO-01…07, 10 | ✅ | Hover keys (Ctrl+C/S/W/E, Space) verified with real key events; focus returns to the app. Copy closes the card (Alt keeps it). |
+| QAO-08 gestures | ⚠️ | Touchpad swipes implemented, untested (no touchpad on the dev machine). |
+| QAO-09 menu | ⚠️ | Copy, Save/Show in Files, Annotate, Extract Text, Preview, Trash, Close, Close All, Save All, Hide. Missing: Rotate, Flip, Scale, Resize, Open With, Print, Save As. |
+| QAO-11 | ⏭ M2 | Needs Snip's editor. Annotate opens `general.external_editor` (default `tensaku-edit`) until then. |
+| Lifecycle, history retention | ✅ | Capture → history only; Copy → clipboard; Save → folder + clipboard; hourly sweep; "Never" deletes on card close. |
+| SET-03…07, 09 | ✅ / ⚠️ | Rules, template naming, export folder, PNG/JPG/WebP, clipboard modes, shutter sound. SET-04 UTC and `@2x` options missing. |
+| OMA-01, 02, 06 | ✅ | Live theme (inotify + `configreloaded`), Lua module, `snip open/edit FILE`. |
+| Design gallery | ✅ | `snipd --gallery`; renders in [docs/design/m1-gallery](design/m1-gallery/). |
+| Snip UI never in captures | ✅ | Cards drawn transparent until the frame is presented (~0.4 ms), then the capture runs (decision D18). |
+
+**Exit criteria:** latency ✅; two-monitor mixed-scale ✅ (DP-2 at 1.25 plus a headless output at 1–2 and rotated); design review ⏳ (gallery ready); a week of daily use ⏳ (needs the package installed and `snip.lua` enabled).
+
+**Follow-ups found in M1:** OCR picks up junk on busy translucent backgrounds and reads Georgian there poorly (try colour-cluster binarisation; link Tesseract in-process); pre-warm the overlay to remove the 225 ms first-use cost; window decoration takes ~40 ms on large windows (blur the shadow at quarter resolution).
+
 ## M2: Editor, Background tool, pins (L)
 
 **Scope:**

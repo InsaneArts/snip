@@ -46,3 +46,9 @@ These keep the old working name "OpenShotX" in places. They are historical recor
 | D14 | Corners: **follow Hyprland rounding**, with an override (Follow / Rounded / Square) | ✅ decided |
 | D15 | Process split (single process vs engine plus UI) | open: arch Q-S2, decided by spike S5 |
 | D16 | Supported Hyprland versions | open: arch Q-S7 (proposal: ≥ 0.56) |
+| D17 | Second hotkey press while the overlay is up **cancels** it (resolves D12 / product Q6 for M1) | ✅ decided in M1 |
+| D18 | Snip's own UI never appears in a capture: cards are drawn **transparent until that frame is presented**, then the capture runs. Unmapping is not enough: Hyprland fades unmapped layers out for ~150 ms even with `no_anim` (measured). Overlays close the same way: content first, unmap 60 ms later | ✅ decided in M1 |
+| D19 | OCR languages: English first; retry with the models for the user's **other keyboard layouts** (`input:kb_layout`, e.g. `ge` → `kat`) only when the read is unconfident; keep the more confident result. Mixing all languages at once misreads Latin as Georgian | ✅ decided in M1 |
+| D20 | Quick Access keyboard (QAO-03): the stack takes the keyboard (exclusive) only while the pointer rests on it (180 ms dwell), and gives it back on leave | ✅ decided in M1 |
+| D21 | Copy on a card closes it (CleanShot behaviour; Alt+Copy keeps it); Save keeps it and shows a Saved state | ✅ decided in M1 |
+| D22 | Until Snip's editor (M2), Annotate and double-click open `general.external_editor` (default `tensaku-edit`, Omarchy's editor) | ✅ decided in M1 |
