@@ -37,7 +37,7 @@ QtObject {
         presentedCount += 1
         if (presentedCount === Qt.application.screens.length) {
             SnipCore.log("all_presented", "")
-            if (mode !== "interactive")
+            if (mode === "bench" || mode === "selftest")   // test mode keeps the overlay open like interactive
                 settleTimer.restart()
         }
     }

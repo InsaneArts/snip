@@ -138,7 +138,11 @@ Copying a 1600×900 region from the frozen frame:
 - **Software-cursor policy.** When Hyprland renders the cursor in software (tearing, `no_hardware_cursors`, or a headless or virtual output present), monitor captures contain the cursor. The plan:
   - for the one capture frame, set `cursor:invisible` (eval, about 1–2 ms) or force hardware cursors, as Omarchy does, then restore;
   - when "show cursor" is on, draw the cursor ourselves from the ext cursor session.
-- **Input routing across monitors** with exclusive keyboard on every overlay (R18). Rendering is correct; pointer and keyboard routing needs synthetic input. It moves to Round 2, which builds virtual-pointer test input anyway.
+- ~~Input routing across monitors~~ **done (R18, `qao-test/r18_multimon.py`):**
+  - Overlays on DP-2 (1.25) and a headless second output (1.5), both exclusive-keyboard.
+  - A virtual-pointer drag of 400×200 logical **on the second monitor** produced a **600×300** capture: the correct output, scale and crop.
+  - The overlay closed on release, and in a second round **Esc** reached the overlay and closed it.
+  - Harness note: the spike's `--test` mode first inherited the bench auto-close timer, which made a false pass look real. Fixed and re-verified.
 
 ## Next (Round 1 leftovers)
 - ~~Scales 1.5, 5/3 and 2 and rotated outputs~~ done (Round 1b).

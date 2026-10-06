@@ -343,6 +343,7 @@ fn spawn_control_socket(
                             let _ = tx.send(Cmd::Grab { output: out_name.to_string(), rect: (n(x), n(y), n(w), n(h)), path: path.to_string(), reply: rtx });
                             rrx.recv_timeout(std::time::Duration::from_secs(3)).unwrap_or_else(|_| "err timeout".into())
                         }
+                        ["trigger-area"] => { let _ = tx.send(Cmd::Capture(Purpose::Freeze)); "ok".into() }
                         ["export", path] => {
                             let path = path.to_string();
                             let _ = thread.queue(move |mut o| o.as_mut().pin_command(QString::from("export"), QString::from(path.as_str())));
