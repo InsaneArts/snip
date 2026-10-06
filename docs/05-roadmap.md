@@ -50,7 +50,7 @@ Each spike answers one question with a measurement and a go/no-go. The results a
 | S13 Rust + Qt build | ✅ | CMake/cxx-qt/Corrosion; offline AUR PKGBUILD builds and passes the self-test | [S01](spikes/S01-foundation.md) |
 | S14 clipboard ownership | ✅ | ext-data-control; sensitive hint skips Omarchy history | [S02](spikes/S02-quick-access-dnd.md) |
 | S15 hide-desktop cover | ✅ | visually seamless (46 dB), no re-layout | [S03](spikes/S03-themes-and-hide-desktop.md) |
-| S16 Omasnap reuse | ✅ | `stitch.cpp` builds as-is on the Qt side | [S06](spikes/S06-scrolling-capture.md) |
+| S16 Omasnap reuse | ⏹ superseded | Built as-is in the spike; replaced by D27 (Snip writes its own stitcher) | [S06](spikes/S06-scrolling-capture.md) |
 | S17 theme tokens | ✅ | 26 themes, contrast ≥ 6.7:1; QScreen ownership crash found and fixed | [S03](spikes/S03-themes-and-hide-desktop.md) |
 | R18 multi-monitor input | ✅ | a drag on the second monitor and Esc both route correctly | [S01](spikes/S01-foundation.md) |
 
@@ -109,7 +109,7 @@ Built: `snipd` (Rust core + Qt Quick UI in one process), `snip` CLI, `hypr/snip.
 - Background tool: BG-01 to BG-06, **including Omarchy theme backgrounds**
 - Window shots "With wallpaper" and "Transparent" with shadow (CAP-05 options, BG-04)
 - Pins: PIN-01 to PIN-08
-- Project format v1, possibly adopting Omasnap's op-log model
+- Project format v1 (Snip's own op-log format)
 
 **Exit:**
 - Preview == export.
@@ -122,7 +122,7 @@ Built: `snipd` (Rust core + Qt Quick UI in one process), `snip` CLI, `hypr/snip.
 
 **Scope:**
 - Capture history UI (HIS-01 to HIS-03)
-- Scrolling capture (SCR-01 to SCR-05), on the vendored Omasnap stitcher
+- Scrolling capture (SCR-01 to SCR-05), on Snip's own stitcher in Rust, tested against a recorded replay corpus
 - Self-timer (CAP-06), cursor in captures (CAP-11)
 - Hide desktop clutter (CAP-12)
 - OCR complete (OCR-01 to OCR-06, including QR, languages and Georgian)
@@ -153,7 +153,7 @@ Built: `snipd` (Rust core + Qt Quick UI in one process), `snip` CLI, `hypr/snip.
 - Intel and AMD laptop reference passes all budgets.
 - Soak tests pass.
 - Fuzzing of every parser is clean.
-- AUR `snip-screenshot`, onboarding, docs, THIRD_PARTY.md (including Omasnap's MIT notice).
+- AUR `snip-screenshot`, onboarding, docs, THIRD_PARTY.md.
 - **Snip 1.0 = CleanShot parity, without Cloud and Studio Mode.**
 
 ## M6: After 1.0
