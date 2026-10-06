@@ -410,7 +410,7 @@ Omasnap is MIT and C++/Qt6 Widgets: about 60 source files, about 1 MB. Snip is G
 |---|---|---|---|
 | `surface-capture.cpp` | in-process ext-image-copy-capture client | **Port to Rust**: a small protocol client; we need it on connection A | `snip-wayland` |
 | `scroll-inject.cpp`, `protocols/wlr-virtual-pointer*` | auto-scroll wheel injection, natural-scroll compensation | **Port to Rust** | `snip-wayland` |
-| `stitch.cpp`, `stitch-replay.cpp` | tuned scroll stitcher **plus a replay harness** | **Vendor as C++ first** (built by CMake, called from Rust through `cxx`). **Port later**, using the replay corpus as the oracle that the port is equivalent | `third_party/omasnap` then `snip-core::stitch` |
+| `stitch.cpp`, `stitch-replay.cpp` | tuned scroll stitcher **plus a replay harness** | **Vendor as C++ on the Qt side** (it needs only QtCore and QtGui `QImage`). The Rust core drives scrolling and capture and passes frames as memfd-backed `QImage`s. **Verified in spike S06:** 400/400 rows in order, sticky header and footer once, on opaque and translucent windows. Port later only if needed, with the replay corpus as the oracle. | `third_party/omasnap` (C++ side) |
 | `scroll-capture.cpp` | scroll session flow, keyboard-grab dance around Hyprland's exclusive-focus quirk | **Reference.** Reimplement the flow in Rust and QML, keeping its Hyprland workarounds | `snip-core`, `app/qml/Scroll` |
 | `capture.cpp`, `output-config.cpp` | monitor and window discovery, capture orchestration, output transforms | **Reference plus port of the logic** (rounding, transforms, smart-select rules) | `snip-hypr`, `snip-core::geometry` |
 | `text-band.cpp` | text-line detection (smart highlighter) | **Port to Rust** | `snip-core` |

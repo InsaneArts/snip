@@ -60,6 +60,8 @@ pub enum Purpose {
     Verify,
     /// SUPER+SHIFT+3: focused monitor, no overlay.
     Fullscreen,
+    /// S11: test-driver grab of a region, saved as PNG.
+    Grab,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -80,6 +82,8 @@ pub enum Cmd {
     PointerAxis { dy: f64 },
     /// Forward a UI event from a worker thread through the wl thread's sink.
     Ui(UiEvent),
+    /// S11: capture `output`, crop (physical px), save PNG at `path`, reply when written.
+    Grab { output: String, rect: (i32, i32, i32, i32), path: String, reply: std::sync::mpsc::Sender<String> },
 }
 
 pub enum UiEvent {
@@ -147,6 +151,7 @@ struct State {
     soak: Option<Soak>,
     vptr_mgr: Option<ZwlrVirtualPointerManagerV1>,
     vptr: Option<(String, ZwlrVirtualPointerV1)>,
+    grab: Option<(String, (i32, i32, i32, i32), String, std::sync::mpsc::Sender<String>)>,
 }
 
 struct Soak {
@@ -236,6 +241,7 @@ fn run_inner(
         soak: None,
         vptr_mgr,
         vptr: None,
+        grab: None,
     };
 
     // Roundtrip so every wl_output has delivered its name before we report ready.
@@ -273,6 +279,10 @@ impl State {
             Cmd::Capture(p) => self.start_capture(p, None, None),
             Cmd::SetClipboard { png, t0, sensitive } => self.set_clipboard(png, t0, sensitive),
             Cmd::Ui(ev) => (self.ui)(ev),
+            Cmd::Grab { output, rect, path, reply } => {
+                self.grab = Some((output.clone(), rect, path, reply));
+                self.start_capture(Purpose::Grab, None, Some(&output));
+            }
             Cmd::PointerMove { output, x, y, w, h } => {
                 if let Some(p) = self.pointer_for(&output) {
                     p.motion_absolute(now_ms(), x, y, w, h);
@@ -487,6 +497,18 @@ impl State {
                         );
                         let _ = ui_tx.send(Cmd::Ui(UiEvent::CardShow { path }));
                     });
+                }
+            }
+            Purpose::Grab => {
+                if let (Some(cap), Some((_, (x, y, w, h), path, reply))) = (c.caps.iter().find(|c| c.ok), self.grab.take()) {
+                    let buf = self.slots[&(cap.out, Purpose::Grab)].buf.clone();
+                    std::thread::spawn(move || {
+                        let e = crate::encode::crop_png(&buf, x, y, w, h);
+                        let r = std::fs::write(&path, &e.png).map(|_| "ok".to_string()).unwrap_or_else(|e| format!("err {e}"));
+                        let _ = reply.send(r);
+                    });
+                } else if let Some((_, _, _, reply)) = self.grab.take() {
+                    let _ = reply.send("err capture failed".into());
                 }
             }
             Purpose::Verify => {

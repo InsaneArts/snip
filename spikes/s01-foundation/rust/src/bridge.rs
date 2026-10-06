@@ -337,6 +337,12 @@ fn spawn_control_socket(
                             let _ = thread.queue(move |mut o| o.as_mut().pin_command(QString::from("show"), QString::from(path.as_str())));
                             "ok".into()
                         }
+                        ["grab", out_name, x, y, w, h, path] => {
+                            let n = |v: &str| v.parse::<i32>().unwrap_or(0);
+                            let (rtx, rrx) = std::sync::mpsc::channel();
+                            let _ = tx.send(Cmd::Grab { output: out_name.to_string(), rect: (n(x), n(y), n(w), n(h)), path: path.to_string(), reply: rtx });
+                            rrx.recv_timeout(std::time::Duration::from_secs(3)).unwrap_or_else(|_| "err timeout".into())
+                        }
                         ["export", path] => {
                             let path = path.to_string();
                             let _ = thread.queue(move |mut o| o.as_mut().pin_command(QString::from("export"), QString::from(path.as_str())));

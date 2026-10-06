@@ -263,7 +263,7 @@ A normal floating window (Hyprland rule: float, centred, with optional pin / alw
 |---|---|---|---|
 | SCR-01 | Select the scrollable region, press Start, scroll by hand; a live stitched preview sits beside the region | P0 | The preview and HUD take no input and are never inside the region. |
 | SCR-02 | Auto-scroll (vertical and horizontal): we generate the scroll events; moving the cursor out pauses and moving it back resumes; it stops at the end of the content | P0 | Uses the wlr virtual pointer. Esc and Enter come through temporary binds. |
-| SCR-03 | Detects sticky headers and footers and stitches them only once | P0 | |
+| SCR-03 | Detects sticky headers and footers and stitches them only once | P0 | Verified on Omasnap's stitcher in spike S06: a 400-row barcode page stitched with 0 missing or duplicated rows; header and footer exactly once. Capture from the window's own buffer (Omarchy's window translucency otherwise leaks the wallpaper in and makes stitching 7× slower). |
 | SCR-04 | Warnings: "slow down", "very large" (more than 30 000 px tall) | P0 | |
 | SCR-05 | Onboarding card on first use (what to select, what breaks stitching) | P0 | |
 
