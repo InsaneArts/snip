@@ -32,13 +32,13 @@ These keep the old working name "OpenShotX" in places. They are historical recor
 
 | # | Decision | Status |
 |---|---|---|
-| D1 | Product = the CleanShot X experience (UX and UI parity, without Cloud), built on **Omasnap's engine and code** | ✅ decided 2026-10-06 |
+| D1 | Product = the CleanShot X experience (UX and UI parity, without Cloud). (The original "built on Omasnap's engine and code" is replaced by D27.) | ✅ decided 2026-10-06 |
 | D2 | Name **Snip**; command `snip`, daemon `snipd`; AUR package `snip-screenshot` (the AUR name `snip` is taken) | ✅ decided |
 | D3 | Studio Mode **out of v1** | ✅ decided |
 | D4 | UI: **Qt 6 Quick/QML** with LayerShellQt | ✅ decided |
 | D5 | Language: **Rust core plus C++/QML UI** (cxx-qt, Corrosion); C++-only fallback if spike S13 fails | ✅ decided |
 | D6 | Recording default: gpu-screen-recorder KMS, with private-window warnings | ✅ decided |
-| D7 | Licence: **GPL-3.0-or-later** (keeping Omasnap's MIT notice) | ✅ decided |
+| D7 | Licence: **GPL-3.0-or-later** | ✅ decided |
 | D8 | Priority order: screenshot experience (M1–M3) before recording (M4) | ✅ decided |
 | D9 | Onboarding **offers** to take over the PRINT keys (with revert); never silently | ✅ decided |
 | D10 | Capture lifecycle: **capture → Snip history only; Copy → clipboard only; Save → export folder + clipboard** (product §5.0) | ✅ decided |
@@ -56,5 +56,6 @@ These keep the old working name "OpenShotX" in places. They are historical recor
 | D22 | Until Snip's editor (M2), Annotate and double-click open `general.external_editor` (default `tensaku-edit`, Omarchy's editor). Product owner: Tensaku is a poor fit for the UX; Snip's own editor is M2's priority | ✅ decided in M1 |
 | D23 | Area overlay = **free space**: no window highlight or dimming until a drag; a plain click does nothing. Windows are picked **only while Space is held** (click = clean window capture); Space held during a drag moves the selection. Replaces "click captures the window or monitor" | ✅ decided 2026-10-07 |
 | D25 | From the feature-demand research: **in** — edit an existing or clipboard image (ANN-19, M2), video/GIF recording (stays M4), cursor on/off (CAP-11 → P0), QR (OCR-03), searchable history (HIS-05). **Not now** — HDR/10-bit capture, pixel ruler, sharing to the user's own upload target | ✅ decided 2026-10-07 |
+| D27 | **Snip is independent of Omasnap.** No Omasnap code is copied, ported or translated; every part (including the scrolling-capture stitcher, scroll injection and the edit-document format) is Snip's own design. Omasnap is the main competitor (Omarchy's default since 2026-09-21); reading its public feature list for competitive analysis is fine | ✅ decided 2026-10-07 |
 | D26 | Annotation keeps CleanShot's **Pixelate/Blur tool** (drag an area to hide it; Pixelate default, Blur, Black out), secure by construction. **No auto-redact** (automatic detection of sensitive text) | ✅ decided 2026-10-07 |
 | D24 | Copy also offers the **file path as text** (`clipboard.text_path`, default on): pasting into terminals (SUPER+V in Ghostty sends a text paste) or plain fields gives the path instead of nothing; image-aware apps still get the image | ✅ decided 2026-10-07 |

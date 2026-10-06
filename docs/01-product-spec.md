@@ -3,7 +3,7 @@
 Status: **DRAFT; product direction decided 2026-10-06**. The open questions left are in §9.
 
 **Decided**
-- **Product:** the CleanShot X experience, UX and UI, matched feature for feature (the inventory is our feature list), except Cloud. It is built on **Omasnap's engine and code** where they fit.
+- **Product:** the CleanShot X experience, UX and UI, matched feature for feature (the inventory is our feature list), except Cloud. Every part is Snip's own; nothing depends on Omasnap (D27).
 - **Name:** **Snip**.
 - **Scope:** Studio Mode is **out of v1**.
 - **Stack:** **Rust core plus Qt UI**.
@@ -46,16 +46,13 @@ On 2026-09-21 Omarchy merged [omacom/omarchy#9446 "Use Omasnap for screenshots"]
 
 By design it has **no** screen recording, **no** settings UI and **no** history browser. Its multi-monitor support is weak (issues #164, #166). Every Omarchy user will soon have it bound to PRINT.
 
-**Decision: Snip is the full CleanShot experience, and Omasnap's engine is its foundation.**
-- Omasnap proves the engine on this exact platform: capture before mapping, a scroll capture and stitcher with a replay harness, scroll injection, op-log documents, and Omarchy theme reading.
-- Snip's job is the **CleanShot experience on top**. Omasnap is opinionated and minimal by design (no settings, history, recording, All-In-One or After Capture rules; weak multi-monitor). Snip brings:
+**Decision: Omasnap is the competitor to beat, and Snip shares no code with it (D27).** Omasnap is opinionated and minimal by design (no settings, history, recording, All-In-One or After Capture rules; weak multi-monitor). Snip wins with:
   - CleanShot's UI and interaction model: QAO stacking with hover actions and drag-out, capture history, the All-In-One bar, Space-to-window, self-timer, hide desktop clutter
   - the full annotate tool set and Background tool, **with Omarchy-theme backgrounds**
   - pins with lock mode
   - settings and After Capture rules
   - multi-monitor support
   - then the recording suite.
-- Omasnap's code is MIT, so it can be used in our GPL-3.0 project with its copyright notice kept. The reuse plan (port to Rust, vendor, or reference only) is in [02-architecture.md §10](02-architecture.md). Fixes that are useful to Omasnap itself get sent upstream.
 
 Other Omarchy and Hyprland projects in this space, as of 2026-10:
 
@@ -264,7 +261,7 @@ A normal floating window (Hyprland rule: float, centred, with optional pin / alw
 |---|---|---|---|
 | SCR-01 | Select the scrollable region, press Start, scroll by hand; a live stitched preview sits beside the region | P0 | The preview and HUD take no input and are never inside the region. |
 | SCR-02 | Auto-scroll (vertical and horizontal): we generate the scroll events; moving the cursor out pauses and moving it back resumes; it stops at the end of the content | P0 | Uses the wlr virtual pointer. Esc and Enter come through temporary binds. |
-| SCR-03 | Detects sticky headers and footers and stitches them only once | P0 | Verified on Omasnap's stitcher in spike S06: a 400-row barcode page stitched with 0 missing or duplicated rows; header and footer exactly once. Capture from the window's own buffer (Omarchy's window translucency otherwise leaks the wallpaper in and makes stitching 7× slower). |
+| SCR-03 | Detects sticky headers and footers and stitches them only once | P0 | Snip's own stitcher (D27). The bar it must meet was set in spike S06: a 400-row barcode page stitched with 0 missing or duplicated rows; header and footer exactly once. Capture from the window's own buffer (Omarchy's window translucency otherwise leaks the wallpaper in and makes stitching 7× slower). |
 | SCR-04 | Warnings: "slow down", "very large" (more than 30 000 px tall) | P0 | |
 | SCR-05 | Onboarding card on first use (what to select, what breaks stitching) | P0 | |
 
@@ -400,7 +397,7 @@ Inside overlays (no Hyprland binds needed, because the overlay has keyboard focu
 | Q2 | Studio Mode in 1.0? | **Out of v1** |
 | Q5 | Recording default | **gpu-screen-recorder KMS** (fast), with private-window warnings; privacy-safe mode later (REC-15) |
 | Q8 | Licence | **GPL-3.0-or-later** |
-| Q10 | Strategy towards Omasnap | **The full CleanShot experience, built on Omasnap's engine and code** (§1.1) |
+| Q10 | Strategy towards Omasnap | **Independent competitor** (D27): the full CleanShot experience, no shared code (§1.1) |
 | Q3 | Replace or coexist with Omarchy's PRINT binds | Onboarding **offers** to rebind (with one-click revert); never automatic |
 | Q11 | Clipboard and history | **Capture → history only; Copy → clipboard only; Save → export folder + clipboard** (§5.0) |
 | Q12 | UI font | **CleanShot style:** a proportional UI font with tabular figures (design doc §5) |
