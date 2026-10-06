@@ -17,6 +17,8 @@ Last updated: 2026-10-06.
 | [06-design-language.md](06-design-language.md) | How Snip is as beautiful as CleanShot **and** follows Omarchy themes: the token mapping, rules per surface, open design questions |
 
 ### Research (source material, with citations)
+
+- [What people ask screenshot apps for (Oct 2026)](research/feature-demand-2026-10.md): demand ranked by GitHub votes across macOS, Linux, Windows and Omarchy, mapped to this spec
 These keep the old working name "OpenShotX" in places. They are historical records and are not edited.
 
 | Doc | Contents |
