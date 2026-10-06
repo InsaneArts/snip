@@ -92,6 +92,9 @@ Built: `snipd` (Rust core + Qt Quick UI in one process), `snip` CLI, `hypr/snip.
 | OMA-01, 02, 06 | ✅ | Live theme (inotify + `configreloaded`), Lua module, `snip open/edit FILE`. |
 | Design gallery | ✅ | `snipd --gallery`; renders in [docs/design/m1-gallery](design/m1-gallery/). |
 | Snip UI never in captures | ✅ | Cards drawn transparent until the frame is presented (~0.4 ms), then the capture runs (decision D18). |
+| QR (OCR-03) | ✅ | Capture Text and Extract Text read QR codes first (pure-Rust `rqrr`); values are copied as sensitive. "Open link?" prompt and barcodes still to add. |
+| Cursor on/off (CAP-11) | ✅ / ⏳ | `capture.show_cursor` and `--cursor` / `--no-cursor`; Hyprland paints it per request (checked in its 0.56.2 source). Live check pending on the test output. |
+| Searchable history (HIS-05) | ✅ index / ⏭ UI in M3 | Every capture is read in the background (OCR + QR, `nice 19`, ~120 ms each) into SQLite FTS5; `snip search TEXT` with prefix matching, Georgian included. |
 
 **Exit criteria:** latency ✅; two-monitor mixed-scale ✅ (DP-2 at 1.25 plus a headless output at 1–2 and rotated); design review ⏳ (gallery ready); a week of daily use ⏳ started 2026-10-06 from source (`scripts/dev.sh`; the package is for later). snipd logs `mem` hourly, which doubles as the long-running soak.
 

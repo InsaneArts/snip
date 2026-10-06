@@ -19,7 +19,7 @@ use snip_core::geometry::Rect;
 use snip_core::history::Record;
 use snip_core::store::{CaptureMeta, Store};
 use snip_core::trace::{self, js};
-use snip_core::{encode, naming, ocr, paths, theme, window};
+use snip_core::{encode, naming, ocr, paths, qr, theme, window};
 use snip_hypr::Client;
 use snip_ipc::{Request as Ctl, Response};
 use snip_wayland::{CaptureResult, Event, Features, Frame, OutputInfo, Request as Wl, Source};
@@ -44,7 +44,7 @@ fn snapshot() -> Snapshot {
 
 enum Pending {
     /// Frames for a selection overlay (area / window / text)
-    Overlay { mode: String, waiter: Option<Waiter>, snap: JoinHandle<Snapshot> },
+    Overlay { mode: String, waiter: Option<Waiter>, snap: JoinHandle<Snapshot>, cursor: bool },
     /// A rectangle (or the whole output when `rect` is None) of one output
     Region { waiter: Option<Waiter>, output: String, rect: Option<Rect>, kind: String },
     /// A clean window buffer (CAP-05)
@@ -55,6 +55,7 @@ struct Session {
     mode: String,
     waiter: Option<Waiter>,
     clients: Vec<Client>,
+    cursor: bool,
 }
 
 pub struct Inner {
@@ -74,7 +75,9 @@ pub struct Inner {
     closed: Mutex<Vec<String>>,
     ocr_langs: OnceLock<String>,
     /// Captures waiting for the Quick Access stack to leave the screen
-    deferred: Mutex<HashMap<u64, Source>>,
+    deferred: Mutex<HashMap<u64, (Source, bool)>>,
+    /// Wakes the history indexer (HIS-05)
+    index_wake: Mutex<Option<mpsc::Sender<()>>>,
 }
 
 fn reply(w: Option<Waiter>, r: Response) {
@@ -135,6 +138,7 @@ impl Inner {
             closed: Mutex::new(vec![]),
             ocr_langs: OnceLock::new(),
             deferred: Mutex::new(HashMap::new()),
+            index_wake: Mutex::new(None),
         }))
     }
 
@@ -222,7 +226,7 @@ impl Inner {
 
     fn shortcut(self: &Arc<Self>, id: &str) {
         match id {
-            "area" | "fullscreen" | "window" | "previous" | "text" | "all-in-one" => self.begin(id, None, None),
+            "area" | "fullscreen" | "window" | "previous" | "text" | "all-in-one" => self.begin(id, None, None, None),
             "restore" => self.ui(|e| e.cards_command(&QString::from("restore"))),
             "close-all" => self.ui(|e| e.cards_command(&QString::from("close-all"))),
             _ => {}
@@ -232,8 +236,10 @@ impl Inner {
     // ------------------------------------------------------------------ capture
 
     /// Start a capture. `waiter` gets the outcome (the CLI blocks on it).
-    pub fn begin(self: &Arc<Self>, mode: &str, monitor: Option<String>, waiter: Option<Waiter>) {
+    pub fn begin(self: &Arc<Self>, mode: &str, monitor: Option<String>, cursor: Option<bool>, waiter: Option<Waiter>) {
         let t0 = trace::now_ns();
+        // CAP-11: the pointer in screen captures (config, or per capture)
+        let cursor = cursor.unwrap_or_else(|| self.cfg().capture.show_cursor);
         match mode {
             "area" | "window" | "text" | "all-in-one" => {
                 // SEL-09: the capture hotkey while the overlay is up cancels it.
@@ -258,11 +264,11 @@ impl Inner {
                 let monitor = monitor.or_else(|| std::env::var("SNIP_OUTPUTS").ok().filter(|s| !s.is_empty()));
                 let outputs = monitor.filter(|m| self.output_names().contains(m)).map(|m| vec![m]);
                 if self.cfg().capture.freeze {
-                    self.pending.lock().unwrap().insert(req, Pending::Overlay { mode, waiter, snap });
-                    self.capture_clean(req, Source::Outputs(outputs));
+                    self.pending.lock().unwrap().insert(req, Pending::Overlay { mode, waiter, snap, cursor });
+                    self.capture_clean(req, Source::Outputs(outputs), cursor);
                 } else {
                     let snap = snap.join().unwrap_or_default();
-                    self.open_session(mode, req, waiter, snap, vec![]);
+                    self.open_session(mode, req, waiter, snap, vec![], cursor);
                 }
                 trace::trace("capture_begin", &format!("\"req\":{req},\"ms\":{:.2}", trace::ms_since(t0)));
             }
@@ -274,7 +280,7 @@ impl Inner {
                 self.play("shutter");
                 let req = self.next();
                 self.pending.lock().unwrap().insert(req, Pending::Region { waiter, output: output.clone(), rect: None, kind: "fullscreen".into() });
-                self.capture_clean(req, Source::Outputs(Some(vec![output])));
+                self.capture_clean(req, Source::Outputs(Some(vec![output])), cursor);
             }
             "previous" => {
                 // CAP-03: the last rectangle, in physical pixels, on its monitor.
@@ -294,7 +300,7 @@ impl Inner {
                 self.play("shutter");
                 let req = self.next();
                 self.pending.lock().unwrap().insert(req, Pending::Region { waiter, output: output.clone(), rect: Some(rect), kind: "area".into() });
-                self.capture_clean(req, Source::Outputs(Some(vec![output])));
+                self.capture_clean(req, Source::Outputs(Some(vec![output])), cursor);
             }
             other => reply(waiter, Response::err(format!("unknown capture mode '{other}'"))),
         }
@@ -303,12 +309,12 @@ impl Inner {
     /// Screen captures never contain Snip's own cards (CleanShot hides its
     /// UI from captures). With cards on screen, QML unmaps the stack first and
     /// calls `capture_ready` once that is committed.
-    fn capture_clean(self: &Arc<Self>, req: u64, source: Source) {
+    fn capture_clean(self: &Arc<Self>, req: u64, source: Source, cursor: bool) {
         if self.cards.lock().unwrap().is_empty() {
-            self.wl(Wl::Capture { request: req, source, cursor: false });
+            self.wl(Wl::Capture { request: req, source, cursor });
             return;
         }
-        self.deferred.lock().unwrap().insert(req, source);
+        self.deferred.lock().unwrap().insert(req, (source, cursor));
         trace::trace("capture_deferred", &format!("\"req\":{req}"));
         self.ui(move |e| e.prepare_capture(req as i32));
         // never stall a capture on the UI: go anyway after 150 ms
@@ -321,9 +327,9 @@ impl Inner {
 
     pub fn capture_ready(&self, req: u64) {
         let source = self.deferred.lock().unwrap().remove(&req);
-        if let Some(source) = source {
+        if let Some((source, cursor)) = source {
             trace::trace("capture_ready", &format!("\"req\":{req}"));
-            self.wl(Wl::Capture { request: req, source, cursor: false });
+            self.wl(Wl::Capture { request: req, source, cursor });
         }
     }
 
@@ -337,7 +343,7 @@ impl Inner {
             trace::warn("capture_failed", &format!("\"which\":{}", js(&r.failed.join(","))));
         }
         match p {
-            Pending::Overlay { mode, waiter, snap } => {
+            Pending::Overlay { mode, waiter, snap, cursor } => {
                 if r.frames.is_empty() {
                     self.toast("Screen capture failed");
                     reply(waiter, Response::err("capture failed"));
@@ -348,7 +354,7 @@ impl Inner {
                     "frames_captured",
                     &format!("\"req\":{},\"n\":{},\"ms\":{:.2}", r.request, r.frames.len(), (r.t_done_ns - r.t_start_ns) as f64 / 1e6),
                 );
-                self.open_session(mode, r.request, waiter, snap, r.frames);
+                self.open_session(mode, r.request, waiter, snap, r.frames, cursor);
             }
             Pending::Region { waiter, output, rect, kind } => {
                 let Some(frame) = r.frames.into_iter().next() else {
@@ -376,7 +382,7 @@ impl Inner {
         }
     }
 
-    fn open_session(self: &Arc<Self>, mode: String, epoch: u64, waiter: Option<Waiter>, snap: Snapshot, frames_: Vec<Frame>) {
+    fn open_session(self: &Arc<Self>, mode: String, epoch: u64, waiter: Option<Waiter>, snap: Snapshot, frames_: Vec<Frame>, cursor: bool) {
         let outputs = self.outputs.lock().unwrap().clone();
         let mut out_json = serde_json::Map::new();
         for o in &outputs {
@@ -406,7 +412,7 @@ impl Inner {
                 }),
             );
         }
-        let cursor = snap.cursor.and_then(|(x, y)| {
+        let pointer = snap.cursor.and_then(|(x, y)| {
             outputs.iter().find(|o| o.logical.contains(x, y)).map(|o| json!({"output": o.name, "x": x - o.logical.x, "y": y - o.logical.y}))
         });
         let cfg = self.cfg();
@@ -415,7 +421,7 @@ impl Inner {
             "epoch": epoch,
             "freeze": !frames_.is_empty(),
             "outputs": out_json,
-            "cursor": cursor,
+            "cursor": pointer,
             "crosshair": cfg.capture.crosshair,
             "magnifier": cfg.capture.magnifier,
             "toplevel": self.features.lock().unwrap().toplevel_capture,
@@ -423,7 +429,7 @@ impl Inner {
         .to_string();
         trace::trace("session", &format!("\"json\":{session}"));
         frames::publish(frames_);
-        *self.session.lock().unwrap() = Some(Session { mode, waiter, clients: snap.clients });
+        *self.session.lock().unwrap() = Some(Session { mode, waiter, clients: snap.clients, cursor });
         self.ui(move |mut e| {
             e.as_mut().set_session(QString::from(session.as_str()));
             e.as_mut().set_epoch(epoch as i32);
@@ -454,9 +460,10 @@ impl Inner {
                 let req = self.next();
                 self.pending.lock().unwrap().insert(req, Pending::Region { waiter: s.waiter, output: output.clone(), rect: Some(rect), kind });
                 let me = self.clone();
+                let cursor = s.cursor;
                 std::thread::spawn(move || {
                     std::thread::sleep(Duration::from_millis(90));
-                    me.wl(Wl::Capture { request: req, source: Source::Outputs(Some(vec![output])), cursor: false });
+                    me.wl(Wl::Capture { request: req, source: Source::Outputs(Some(vec![output])), cursor });
                 });
             }
         }
@@ -498,6 +505,15 @@ impl Inner {
         if kind == "text" {
             let (data, w, h, alpha) = encode::crop_upright(frame, rect);
             let t0 = trace::now_ns();
+            // OCR-03: a QR code's value is exact; read it before any OCR
+            let codes = qr::decode(&data, w, h, if alpha { 4 } else { 3 });
+            if !codes.is_empty() {
+                let text = codes.join("\n");
+                trace::trace("qr", &format!("\"codes\":{},\"ms\":{:.1}", codes.len(), trace::ms_since(t0)));
+                self.copy_qr(&text);
+                reply(waiter, Response::ok(json!(text)));
+                return;
+            }
             let langs = self.ocr_languages();
             match ocr::recognize(&data, w, h, if alpha { 4 } else { 3 }, frame.scale, &langs) {
                 Ok(text) if !text.trim().is_empty() => {
@@ -568,11 +584,70 @@ impl Inner {
             .unwrap_or((None, None))
     }
 
+    // ------------------------------------------------------------------ history text index (HIS-05)
+
+    /// Background indexer: reads the text (and QR values) of each capture at
+    /// the lowest CPU priority, newest first, so history is searchable.
+    pub fn start_indexer(self: &Arc<Self>) {
+        let (tx, rx) = mpsc::channel::<()>();
+        *self.index_wake.lock().unwrap() = Some(tx);
+        let me = self.clone();
+        std::thread::Builder::new()
+            .name("snip-index".into())
+            .spawn(move || loop {
+                // wake on a new capture, or every 10 minutes for older ones
+                let _ = rx.recv_timeout(Duration::from_secs(600));
+                while rx.try_recv().is_ok() {}
+                if !me.cfg().ocr.index_history {
+                    continue;
+                }
+                loop {
+                    let batch = me.store.unindexed(8).unwrap_or_default();
+                    if batch.is_empty() {
+                        break;
+                    }
+                    for (id, source) in batch {
+                        me.index_one(&id, &source);
+                    }
+                }
+            })
+            .ok();
+        self.wake_indexer();
+    }
+
+    fn wake_indexer(&self) {
+        if let Some(tx) = self.index_wake.lock().unwrap().as_ref() {
+            let _ = tx.send(());
+        }
+    }
+
+    fn index_one(&self, id: &str, source: &Path) {
+        let t0 = trace::now_ns();
+        let text = std::fs::read(source)
+            .ok()
+            .and_then(|b| encode::decode_png(&b).ok())
+            .map(|(data, w, h, alpha)| {
+                let bpp = if alpha { 4 } else { 3 };
+                let mut parts = qr::decode(&data, w, h, bpp);
+                // small captures were taken at screen density: upscale them for Tesseract
+                let scale = if (w as u64) * (h as u64) < 4_000_000 { 1.25 } else { 2.0 };
+                if let Ok(t) = ocr::recognize_with(&data, w, h, bpp, scale, &self.ocr_languages(), true) {
+                    parts.push(t);
+                }
+                parts.join("\n")
+            })
+            .unwrap_or_default();
+        // indexed even when empty, so a capture is never retried forever
+        let _ = self.store.set_index(id, &text);
+        trace::trace("indexed", &format!("\"id\":\"{id}\",\"chars\":{},\"ms\":{:.0}", text.chars().count(), trace::ms_since(t0)));
+    }
+
     fn ingest(self: &Arc<Self>, png: Vec<u8>, w: u32, h: u32, meta: CaptureMeta, output: &str, waiter: Option<Waiter>) {
         let t0 = trace::now_ns();
         match self.store.ingest(png, w, h, meta, now_secs()) {
             Ok(rec) => {
                 trace::trace("ingested", &format!("\"id\":\"{}\",\"ms\":{:.2}", rec.id, trace::ms_since(t0)));
+                self.wake_indexer();
                 self.after_capture(&rec, output);
                 reply(waiter, Response::ok(serde_json::to_value(&rec).unwrap_or(Value::Null)));
             }
@@ -670,10 +745,25 @@ impl Inner {
         Ok(())
     }
 
+    /// QR values can be Wi-Fi passwords or 2FA secrets: always copied as
+    /// sensitive, so Omarchy's clipboard history skips them (as Omarchy's own
+    /// QR capture does).
+    fn copy_qr(&self, text: &str) {
+        self.set_clipboard_text_with(text, true);
+        let one = text.lines().next().unwrap_or("");
+        let shown: String = if one.chars().count() > 56 { one.chars().take(55).collect::<String>() + "…" } else { one.to_string() };
+        let n = text.lines().count();
+        self.toast(if n > 1 { format!("Copied {n} QR codes · {shown}") } else { format!("Copied QR code · {shown}") });
+    }
+
     fn set_clipboard_text(&self, text: &str) {
+        self.set_clipboard_text_with(text, false);
+    }
+
+    fn set_clipboard_text_with(&self, text: &str, sensitive: bool) {
         let b = Arc::new(text.as_bytes().to_vec());
         let mut offers = vec![("text/plain;charset=utf-8".to_string(), b.clone()), ("text/plain".to_string(), b.clone()), ("UTF8_STRING".to_string(), b)];
-        if self.cfg().clipboard.sensitive {
+        if sensitive || self.cfg().clipboard.sensitive {
             offers.push(("x-kde-passwordManagerHint".into(), Arc::new(b"secret".to_vec())));
         }
         self.wl(Wl::SetClipboard { offers });
@@ -780,6 +870,11 @@ impl Inner {
             let Ok(bytes) = me.store.bytes(&id) else { return };
             let Ok((data, w, h, alpha)) = encode::decode_png(&bytes) else { return };
             let bpp = if alpha { 4 } else { 3 };
+            let codes = qr::decode(&data, w, h, bpp);
+            if !codes.is_empty() {
+                me.copy_qr(&codes.join("\n"));
+                return;
+            }
             let langs = me.ocr_languages();
             match ocr::recognize(&data, w, h, bpp, 2.0, &langs) {
                 Ok(t) if !t.trim().is_empty() => {
@@ -816,6 +911,7 @@ impl Inner {
             .ingest(bytes, w, h, CaptureMeta { kind: "import".into(), output: out.clone(), app: None, title }, now_secs())
             .map_err(|e| e.to_string())?;
         self.show_card(&rec, &out);
+        self.wake_indexer();
         Ok(card_json(&rec, &out))
     }
 
@@ -909,14 +1005,30 @@ impl Inner {
         };
         match req {
             Ctl::Ping => Response::ok(json!("pong")),
-            Ctl::Capture { mode, monitor } => {
+            Ctl::Capture { mode, monitor, cursor } => {
                 let (tx, rx) = mpsc::channel();
-                self.begin(&mode, monitor, Some(tx));
+                self.begin(&mode, monitor, cursor, Some(tx));
                 rx.recv_timeout(Duration::from_secs(590)).unwrap_or_else(|_| Response::err("timed out"))
             }
             Ctl::Open { path } => ok_or(self.open_file(&path)),
             Ctl::Copy { id } => ok_or(self.resolve_id(id).and_then(|id| self.copy(&id).map(|_| json!(id)))),
             Ctl::Save { id } => ok_or(self.resolve_id(id).and_then(|id| self.save(&id).map(|p| json!(p)))),
+            Ctl::Search { query, n } => ok_or(
+                self.store
+                    .search(&query, n)
+                    .map(|v| {
+                        Value::Array(
+                            v.into_iter()
+                                .map(|(rec, snippet)| {
+                                    let mut j = serde_json::to_value(&rec).unwrap_or(Value::Null);
+                                    j["snippet"] = json!(snippet.replace('\n', " "));
+                                    j
+                                })
+                                .collect(),
+                        )
+                    })
+                    .map_err(|e| e.to_string()),
+            ),
             Ctl::List { n } => ok_or(self.store.recent(n).map(|v| serde_json::to_value(v).unwrap_or(Value::Null)).map_err(|e| e.to_string())),
             Ctl::RestoreLast => {
                 // QML decides: un-hide hidden cards, else reopen the last closed one
@@ -956,6 +1068,7 @@ impl Inner {
             "cards": self.cards.lock().unwrap().iter().map(|(i, _)| i.clone()).collect::<Vec<_>>(),
             "closed": self.closed.lock().unwrap().len(),
             "history_bytes": self.store.disk_usage(),
+            "index_pending": self.store.unindexed_count(),
             "config_error": *self.cfg_error.lock().unwrap(),
         })
     }
@@ -989,6 +1102,12 @@ impl Inner {
             }
             "sweep" => {
                 self.sweep();
+                Response::ok(Value::Null)
+            }
+            "extract" => {
+                // Extract Text on a stored capture, as from its card
+                let Some(id) = a.first() else { return Response::err("extract needs an id") };
+                self.extract_text(id);
                 Response::ok(Value::Null)
             }
             _ => Response::err(format!("unknown debug op '{op}'")),

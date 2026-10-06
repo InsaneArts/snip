@@ -132,17 +132,22 @@ pub enum ClipboardMode {
     ImageAndFile,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct Ocr {
     /// Tesseract languages ("eng+kat"); empty = English plus installed models.
     pub languages: String,
+    /// HIS-05: read the text of every capture in the background so history
+    /// can be searched by it (`snip search`). Local only.
+    pub index_history: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct Capture {
     pub freeze: bool,
+    /// CAP-11: include the mouse pointer in screen captures.
+    pub show_cursor: bool,
     /// Keep the GPU context warm this long after the last capture (S01).
     pub keep_warm_minutes: u32,
     /// SEL-04: full-screen crosshair lines with a coordinate readout.
@@ -223,10 +228,17 @@ impl Default for Clipboard {
     }
 }
 
+impl Default for Ocr {
+    fn default() -> Self {
+        Self { languages: String::new(), index_history: true }
+    }
+}
+
 impl Default for Capture {
     fn default() -> Self {
         Self {
             freeze: true,
+            show_cursor: false,
             keep_warm_minutes: 10,
             crosshair: Crosshair::Ctrl,
             magnifier: true,

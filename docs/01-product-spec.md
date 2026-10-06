@@ -161,7 +161,7 @@ What follows from this:
 | CAP-08 | Scrolling Capture | P0 | See §5.8. |
 | CAP-09 | Capture Text (OCR) | P0 | See §5.7. |
 | CAP-10 | Freeze screen | P0 | **On by default** (CleanShot defaults it off). On Wayland the freeze is free, it is how we guarantee our overlay never lands in the capture, and Omarchy users already expect it. It can be turned off in settings: live selection then uses a re-capture after the overlay unmaps, which is slower. |
-| CAP-11 | Cursor in captures | P1 | Off for area, window and OCR. Optional for fullscreen and self-timer, as in CleanShot. When it is on, the cursor is drawn from the cursor-session image at the recorded position, which works even with a hardware cursor. |
+| CAP-11 | Cursor in captures | P0 | Off for area, window and OCR. Optional for fullscreen and self-timer, as in CleanShot. When it is on, the cursor is drawn from the cursor-session image at the recorded position, which works even with a hardware cursor. |
 | CAP-12 | **Hide desktop clutter** (CleanShot's "Hide desktop icons", reinterpreted) | P0 | Omarchy has no desktop icons; its clutter is the bar, notifications, our own pins and cards, and any desktop widgets. We use **CleanShot's own technique**: cover the clutter with the wallpaper, without removing it. (1) An overlay-layer surface covers the bar's area with the matching slice of the current Omarchy wallpaper, scaled exactly as omarchy-shell draws it (`PreserveAspectCrop`). The bar keeps its reserved space, so **tiled windows do not re-layout**. (2) Notifications go to DND. (3) Pins and QAO cards are set to opacity 0. It applies to fullscreen captures, "With wallpaper" window shots and recordings, through a setting ("while capturing") plus a toggle hotkey and CLI (`snip desktop hide|show|toggle`). **Verified in spike S03: visually seamless (PSNR ≈ 46 dB vs the real wallpaper, mipmapped), not bit-exact**, because omarchy-shell renders the wallpaper through its own pipeline. Screenshots apply the cover to the frozen frame; recordings use the live overlay surface. Never toggle the bar to hide it (Omarchy's toggle can strand the bar off-screen). |
 
 ### 5.2 Selection overlay (SEL)
@@ -215,6 +215,7 @@ A normal floating window (Hyprland rule: float, centred, with optional pin / alw
 | ANN-10 | Highlighter (M) with **smart text-line snapping** (uses OCR line boxes) | P0 |
 | ANN-11 | Crop and Resize (K): ratio presets, snap to edges, outward crop grows the canvas and fills it with the detected background colour, rotate and flip, resize in px or % with "flatten" warning | P0 |
 | ANN-12 | Add image: drop a file, paste, or "take a new screenshot". Drop zones around the canvas (above, below, left, right) plus snapping guides; the canvas grows to fit | P0 |
+| ANN-19 | **Edit any image**: open a file or **the image on the clipboard** in the editor (`snip edit FILE`, `snip edit --clipboard`, a bindable action), and act as Omarchy's screenshot editor (OMA-06). The most-voted Linux request (flameshot#240) | P0 |
 | ANN-13 | Colour picker: 10 swatches, 10 saved colours, HSV and alpha, hex, **eyedropper that picks from anywhere on screen** (uses our freeze overlay) | P0 |
 | ANN-14 | Undo/redo for every operation (Ctrl+Z, Ctrl+Shift+Z) | P0 |
 | ANN-15 | Output: **Ctrl+S Save** = export folder plus clipboard (§5.0); Ctrl+Shift+S Save As (PNG, JPG, WebP, **project file**; also copies); **Ctrl+Shift+C Copy** = clipboard only, then closes (Alt keeps the editor open); "Drag me" handle; Pin; Print. Edits are written back to the history entry automatically. | P0 |
@@ -305,6 +306,7 @@ A normal floating window (Hyprland rule: float, centred, with optional pin / alw
 | HIS-02 | Retention: 1 day, 3 days, **1 week (default)**, 1 month, Forever, or Never (Never turns history off and brings back the close confirmations). Settings show how much space history uses and offer "Clear history". | P0 |
 | HIS-03 | Delete with Backspace (optional confirmation); Clear all | P0 |
 | HIS-04 | History is **the default home of every capture** (§5.0). It stores originals plus project data (never just the flattened export) in `~/.local/share/snip/history/`. Unsaved captures are not in the user's folders. | P0 |
+| HIS-05 | **Search history by the text in captures** (and window title / app): every capture is read in the background (OCR + QR, lowest CPU priority, local only) into a full-text index; `snip search TEXT` now, the history UI search box in M3. Setting `ocr.index_history` | P0 |
 
 ### 5.12 Settings, configuration and automation (SET, API)
 

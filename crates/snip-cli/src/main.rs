@@ -8,12 +8,13 @@ use std::time::Duration;
 const USAGE: &str = "usage: snip [--json] <command>
 
 capture
-  area | fullscreen | window | previous | text | all-in-one [--monitor NAME]
+  area | fullscreen | window | previous | text | all-in-one [--monitor NAME] [--cursor | --no-cursor]
   open FILE        add an image as a capture (also: edit FILE)
 captures (default: the most recent)
   copy [ID]        put a capture on the clipboard
   save [ID]        save to the export folder (and copy)
   list [-n N]      recent captures from history
+  search TEXT [-n N]  find captures by the text in them (and window title/app)
   restore          re-open the last closed Quick Access card
   close-all        close every Quick Access card
 daemon
@@ -41,7 +42,14 @@ fn main() -> ExitCode {
     let (req, timeout) = match cmd.as_str() {
         "area" | "fullscreen" | "window" | "previous" | "text" | "all-in-one" => {
             let monitor = flag(&mut args, "--monitor");
-            (Request::Capture { mode: cmd.clone(), monitor }, Duration::from_secs(600))
+            let cursor = if args.iter().any(|a| a == "--cursor") {
+                Some(true)
+            } else if args.iter().any(|a| a == "--no-cursor") {
+                Some(false)
+            } else {
+                None
+            };
+            (Request::Capture { mode: cmd.clone(), monitor, cursor }, Duration::from_secs(600))
         }
         "open" | "edit" => {
             let Some(p) = arg1 else {
@@ -53,6 +61,15 @@ fn main() -> ExitCode {
         }
         "copy" => (Request::Copy { id: arg1 }, Duration::from_secs(10)),
         "save" => (Request::Save { id: arg1 }, Duration::from_secs(10)),
+        "search" => {
+            let n = flag(&mut args, "-n").and_then(|v| v.parse().ok()).unwrap_or(10);
+            let query = args.iter().skip(1).cloned().collect::<Vec<_>>().join(" ");
+            if query.trim().is_empty() {
+                eprintln!("snip: search needs some text");
+                return ExitCode::from(2);
+            }
+            (Request::Search { query, n }, Duration::from_secs(5))
+        }
         "list" => {
             let n = flag(&mut args, "-n").and_then(|v| v.parse().ok()).unwrap_or(10);
             (Request::List { n }, Duration::from_secs(5))

@@ -231,6 +231,7 @@ impl qobject::Engine {
             }
             true
         });
+        inner.start_indexer();
         let s = inner.clone();
         std::thread::Builder::new()
             .name("snip-sweep".into())
@@ -246,7 +247,7 @@ impl qobject::Engine {
 
     fn capture(self: Pin<&mut Self>, mode: QString) {
         if let Some(i) = self.inner() {
-            i.begin(&mode.to_string(), None, None);
+            i.begin(&mode.to_string(), None, None, None);
         }
     }
 

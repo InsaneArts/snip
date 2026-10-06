@@ -171,6 +171,23 @@ impl Store {
         Ok(path)
     }
 
+    /// Captures still waiting for text indexing (HIS-05), newest first.
+    pub fn unindexed(&self, limit: u32) -> Result<Vec<(String, PathBuf)>, StoreError> {
+        Ok(self.history.lock().unwrap().unindexed(limit)?)
+    }
+
+    pub fn unindexed_count(&self) -> u64 {
+        self.history.lock().unwrap().unindexed_count().unwrap_or(0)
+    }
+
+    pub fn set_index(&self, id: &str, text: &str) -> Result<(), StoreError> {
+        Ok(self.history.lock().unwrap().set_index(id, text)?)
+    }
+
+    pub fn search(&self, query: &str, limit: u32) -> Result<Vec<(Record, String)>, StoreError> {
+        Ok(self.history.lock().unwrap().search(query, limit)?)
+    }
+
     pub fn delete(&self, id: &str) -> Result<(), StoreError> {
         self.warm.lock().unwrap().retain(|(i, _)| i != id);
         Ok(self.history.lock().unwrap().delete(id)?)

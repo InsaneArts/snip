@@ -223,26 +223,38 @@ fn words_to_text(tsv: &str) -> (String, usize) {
 /// Recognise with the first language; if that reads poorly and there are
 /// other languages, retry with them first and keep the more confident read.
 pub fn recognize(data: &[u8], w: u32, h: u32, bpp: usize, scale: f64, langs: &str) -> std::io::Result<String> {
+    recognize_with(data, w, h, bpp, scale, langs, false)
+}
+
+/// `background`: run Tesseract at the lowest CPU priority (history indexing).
+pub fn recognize_with(data: &[u8], w: u32, h: u32, bpp: usize, scale: f64, langs: &str, background: bool) -> std::io::Result<String> {
     let pgm = preprocess(data, w, h, bpp, scale);
     let mut parts: Vec<&str> = langs.split('+').filter(|l| !l.is_empty()).collect();
     if parts.is_empty() {
         parts.push("eng");
     }
-    let first = run_tesseract(&pgm, parts[0])?;
+    let first = run_tesseract(&pgm, parts[0], background)?;
     let (text, conf, _) = parse_tsv(&first);
     if parts.len() == 1 || conf >= RETRY_BELOW {
         return Ok(text);
     }
     let mut rest: Vec<&str> = parts[1..].to_vec();
     rest.push(parts[0]);
-    let second = run_tesseract(&pgm, &rest.join("+"))?;
+    let second = run_tesseract(&pgm, &rest.join("+"), background)?;
     let (text2, conf2, _) = parse_tsv(&second);
     Ok(if conf2 > conf { text2 } else { text })
 }
 
-fn run_tesseract(pgm: &[u8], langs: &str) -> std::io::Result<String> {
+fn run_tesseract(pgm: &[u8], langs: &str, background: bool) -> std::io::Result<String> {
     let pgm = pgm.to_vec();
-    let mut child = Command::new("tesseract")
+    let mut cmd = if background {
+        let mut c = Command::new("nice");
+        c.args(["-n", "19", "tesseract"]);
+        c
+    } else {
+        Command::new("tesseract")
+    };
+    let mut child = cmd
         .args(["stdin", "stdout", "--oem", "1", "--psm", "6", "-l", langs])
         .args(["-c", "preserve_interword_spaces=1", "-c", "tessedit_create_tsv=1"])
         .env("OMP_THREAD_LIMIT", "1")

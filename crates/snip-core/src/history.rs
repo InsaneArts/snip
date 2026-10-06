@@ -45,7 +45,69 @@ impl History {
             );
             CREATE INDEX IF NOT EXISTS captures_created ON captures(created_at);",
         )?;
+        // HIS-05 (added 2026-10-07): the text of every capture, searchable.
+        let has_indexed: bool = db
+            .prepare("SELECT 1 FROM pragma_table_info('captures') WHERE name = 'indexed'")?
+            .exists([])?;
+        if !has_indexed {
+            db.execute_batch(
+                "ALTER TABLE captures ADD COLUMN ocr_text TEXT;
+                 ALTER TABLE captures ADD COLUMN indexed INTEGER NOT NULL DEFAULT 0;",
+            )?;
+        }
+        db.execute_batch(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS captures_fts
+               USING fts5(id UNINDEXED, body, tokenize = 'unicode61 remove_diacritics 2');",
+        )?;
         Ok(Self { root: root.to_path_buf(), db })
+    }
+
+    /// Captures whose text is not indexed yet, newest first.
+    pub fn unindexed(&self, limit: u32) -> rusqlite::Result<Vec<(String, PathBuf)>> {
+        let mut st = self.db.prepare("SELECT id, source FROM captures WHERE indexed = 0 ORDER BY created_at DESC LIMIT ?1")?;
+        let rows = st.query_map([limit], |r| Ok((r.get::<_, String>(0)?, PathBuf::from(r.get::<_, String>(1)?))))?;
+        rows.collect()
+    }
+
+    pub fn unindexed_count(&self) -> rusqlite::Result<u64> {
+        self.db.query_row("SELECT COUNT(*) FROM captures WHERE indexed = 0", [], |r| r.get(0))
+    }
+
+    /// Store a capture's recognised text; the search body also carries the
+    /// window title and app so "firefox" or a page title finds it too.
+    pub fn set_index(&self, id: &str, text: &str) -> rusqlite::Result<()> {
+        let rec = match self.get(id)? {
+            Some(r) => r,
+            None => return Ok(()),
+        };
+        let body = [rec.title.as_deref().unwrap_or(""), rec.app.as_deref().unwrap_or(""), text].join("\n");
+        self.db.execute("UPDATE captures SET ocr_text = ?2, indexed = 1 WHERE id = ?1", params![id, text])?;
+        self.db.execute("DELETE FROM captures_fts WHERE id = ?1", [id])?;
+        self.db.execute("INSERT INTO captures_fts (id, body) VALUES (?1, ?2)", params![id, body])?;
+        Ok(())
+    }
+
+    /// Full-text search: every word must match (as a prefix), best first.
+    /// Returns records with a short snippet around the match.
+    pub fn search(&self, query: &str, limit: u32) -> rusqlite::Result<Vec<(Record, String)>> {
+        let terms: Vec<String> = query
+            .split_whitespace()
+            .map(|t| t.chars().filter(|c| c.is_alphanumeric() || *c == '_' || *c == '-' || *c == '.' || *c == '@').collect::<String>())
+            .filter(|t| !t.is_empty())
+            .map(|t| format!("\"{}\"*", t.replace('"', "")))
+            .collect();
+        if terms.is_empty() {
+            return Ok(vec![]);
+        }
+        let cols = Self::COLS.split(", ").map(|c| format!("c.{c}")).collect::<Vec<_>>().join(", ");
+        let sql = format!(
+            "SELECT {cols}, snippet(captures_fts, 1, '[', ']', '…', 12)
+             FROM captures_fts JOIN captures c ON c.id = captures_fts.id
+             WHERE captures_fts MATCH ?1 ORDER BY rank LIMIT ?2"
+        );
+        let mut st = self.db.prepare(&sql)?;
+        let rows = st.query_map(params![terms.join(" "), limit], |r| Ok((Self::row(r)?, r.get::<_, String>(10)?)))?;
+        rows.collect()
     }
 
     pub fn root(&self) -> &Path {
@@ -112,6 +174,7 @@ impl History {
 
     pub fn delete(&self, id: &str) -> rusqlite::Result<()> {
         self.db.execute("DELETE FROM captures WHERE id = ?1", [id])?;
+        self.db.execute("DELETE FROM captures_fts WHERE id = ?1", [id])?;
         let _ = std::fs::remove_dir_all(self.dir_for(id));
         Ok(())
     }
@@ -191,6 +254,30 @@ mod tests {
         assert_eq!(h.recent(10).unwrap().iter().map(|r| r.id.as_str()).collect::<Vec<_>>(), ["b", "a"]);
         h.set_saved("a", Path::new("/x/y.png")).unwrap();
         assert_eq!(h.get("a").unwrap().unwrap().saved, Some(PathBuf::from("/x/y.png")));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn search_finds_text_title_and_georgian() {
+        let root = tmp();
+        let h = History::open(&root).unwrap();
+        h.insert(&rec("a", 100, &root)).unwrap();
+        h.insert(&rec("b", 200, &root)).unwrap();
+        assert_eq!(h.unindexed_count().unwrap(), 2);
+        h.set_index("a", "error: connection refused on port 5432").unwrap();
+        h.set_index("b", "გამარჯობა მსოფლიო invoice total").unwrap();
+        assert_eq!(h.unindexed_count().unwrap(), 0);
+        let ids = |q: &str| h.search(q, 10).unwrap().into_iter().map(|(r, _)| r.id).collect::<Vec<_>>();
+        assert_eq!(ids("connection ref"), ["a"]);      // prefix match
+        assert_eq!(ids("გამარჯ"), ["b"]);               // Georgian
+        let mut by_app = ids("zen");                   // the app name is searchable too
+        by_app.sort();
+        assert_eq!(by_app, ["a", "b"]);
+        assert!(ids("nothing-like-this").is_empty());
+        let (_, snip) = &h.search("refused", 1).unwrap()[0];
+        assert!(snip.contains("[refused]"), "{snip}");
+        h.delete("a").unwrap();
+        assert!(ids("connection").is_empty());
         std::fs::remove_dir_all(root).unwrap();
     }
 

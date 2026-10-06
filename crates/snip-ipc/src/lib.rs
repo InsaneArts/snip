@@ -16,6 +16,9 @@ pub enum Request {
         mode: String,
         #[serde(default)]
         monitor: Option<String>,
+        /// Override `capture.show_cursor` for this capture
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cursor: Option<bool>,
     },
     /// Copy a capture (default: the most recent) to the clipboard
     Copy {
@@ -30,6 +33,12 @@ pub enum Request {
     /// Add an image file as a capture with a Quick Access card (OMA-06:
     /// Snip as OMARCHY_SCREENSHOT_EDITOR; opens the editor once M2 lands)
     Open { path: String },
+    /// Search history by the text in captures, window titles and apps
+    Search {
+        query: String,
+        #[serde(default = "default_n")]
+        n: u32,
+    },
     /// Recent captures from history
     List {
         #[serde(default = "default_n")]
@@ -131,7 +140,7 @@ mod tests {
 
     #[test]
     fn wire_format_is_stable() {
-        let r = Request::Capture { mode: "area".into(), monitor: None };
+        let r = Request::Capture { mode: "area".into(), monitor: None, cursor: None };
         assert_eq!(serde_json::to_string(&r).unwrap(), r#"{"cmd":"capture","mode":"area","monitor":null}"#);
         let parsed: Request = serde_json::from_str(r#"{"cmd":"copy"}"#).unwrap();
         assert_eq!(parsed, Request::Copy { id: None });
