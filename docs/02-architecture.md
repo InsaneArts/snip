@@ -1,6 +1,6 @@
 # Architecture and tech stack
 
-Status: **DRAFT; stack decided 2026-10-06**: Qt 6 Quick UI, Rust core, GPL-3.0-or-later. §9 lists what is decided and what is open. §10 is the Omasnap reuse plan, §11 the code layout.
+Status: **DRAFT; stack decided 2026-10-06**: Qt 6 Quick UI, Rust core, GPL-3.0-or-later. §9 lists what is decided and what is open. §10 records that Snip is independent of Omasnap, §11 the code layout.
 
 Sources:
 - [research/tech-stack-and-prior-art.md](research/tech-stack-and-prior-art.md): toolkit comparison, measured startup costs, and lessons from Omasnap, Tensaku, Satty, Flameshot, Spectacle and Kooha.
@@ -47,7 +47,7 @@ These are platform facts, not preferences. Each traces back to a research doc.
 2. **Hyprland cannot make our surfaces invisible in captures.** `no_screen_share` paints black boxes, and gsr KMS capture ignores it completely. So anything we must not record (controls, dimming) stays **outside the encoded rectangle**.
 3. **An exclusive-keyboard layer surface takes all pointer input**, even through an empty input region (Hyprland InputManager "forced above all"). Consequences:
    - On multi-monitor, every per-output overlay must be exclusive.
-   - During scrolling capture the overlay must drop exclusive focus over the live page. Omasnap's `setKeyboardGrab` dance is the reference.
+   - During scrolling capture the overlay must drop exclusive focus over the live page.
    - The QAO and pins must **never** be exclusive.
 4. **Drag-and-drop out of exclusive layer surfaces is broken in 0.56.2** (fixed by Hyprland #15780, expected in 0.57). The QAO uses keyboard interactivity `none`/`on_demand`. Pins are xdg toplevels.
 5. **Hyprland always reports full damage**, so damage can't drive change detection. A reused capture session within 500 ms can hang on a static screen, so **use a fresh session for each screenshot**.
@@ -100,7 +100,7 @@ These are platform facts, not preferences. Each traces back to a research doc.
 - **Frames cross from A to B as memfd pixels** (zero copy into a `QImage`, then a texture upload). If the raw-subsurface optimisation (§4.1) is ever needed, the same memfd can be wrapped in a `wl_shm` pool on connection B at no cost.
 
 **Why one process, not a split engine and UI**
-- The editor's export renderer **must** be the same code as its on-screen renderer, for WYSIWYG (Omasnap also guarantees this). So the document rendering lives with the UI anyway.
+- The editor's export renderer **must** be the same code as its on-screen renderer, for WYSIWYG. So the document rendering lives with the UI anyway.
 - Recording, the expensive state to lose, runs in gsr's own process group. It survives a daemon crash, and we re-attach through gsr's `-ipc` socket.
 - Rust gives memory safety in the parsing and compute paths without a second process.
 - Revisit only if spike S5 (NVIDIA soak) shows Qt/EGL instability we cannot contain (Q-S2). In that case the cxx-qt seam becomes an IPC seam, and the Rust crates don't change.
@@ -243,7 +243,7 @@ OpLog        append-only [{seq, op, args, inverse}]  → undo/redo, crash recove
 - The region is selected on the frozen overlay. During the capture the overlay **unmaps**, and a no-input HUD plus the live preview are placed outside the region.
 - Frames come from an **output** capture session cropped to the region, or from a **toplevel** session when the region lies inside one window. The toplevel source is preferred: it never contains our UI.
 - Esc and Enter come through temporary `hl.bind` handles added by eval and removed afterwards.
-- Auto-scroll uses `zwlr_virtual_pointer_v1` (`axis_source(wheel)`, `axis_discrete`). It pre-compensates `input:natural_scroll` (Omasnap's `scroll-inject.cpp` is the reference).
+- Auto-scroll uses `zwlr_virtual_pointer_v1` (`axis_source(wheel)`, `axis_discrete`). It pre-compensates `input:natural_scroll`.
 - Stitching algorithm: see the processing doc. It runs incrementally on the worker pool, so the live preview updates as you go.
 
 ### 6.6 Editor
@@ -388,7 +388,7 @@ Full detail and measurements: [research/processing-pipelines.md](research/proces
 |---|---|
 | Q-S0 | **UI toolkit:** Qt 6.11 Qt Quick/QML with LayerShellQt |
 | Q-S1 | **Language:** Rust core plus C++/QML UI (cxx-qt and Corrosion). B1 (C++ only) is kept as the fallback if spike S13 fails. |
-| Q-S3 | **Omasnap:** its engine and code are the foundation (§10) |
+| Q-S3 | **Omasnap:** independent, no shared code (D27, §10) |
 | Q-S4 | **Recording default:** gsr KMS, with private-window warnings; privacy-safe backend later |
 | Q-S9 | **Licence:** GPL-3.0-or-later |
 
@@ -402,27 +402,21 @@ Full detail and measurements: [research/processing-pipelines.md](research/proces
 | Q-S7 | Hyprland versions supported | ≥ 0.54 / **≥ 0.56** / latest only | ≥ 0.56, matching Omarchy 4 |
 | Q-S8 | Annotation renderer | **Decided (S05):** Qt Quick nodes, Shapes with CurveRenderer, and ShaderEffect. Export = offscreen render of the same scene. | Preview equals export within 1 LSB (PSNR 98 dB). 144 fps with 200 objects on the **threaded** render loop, which must be forced. |
 
-## 10. Building on Omasnap
+## 10. Independence from Omasnap
 
-Omasnap is MIT and C++/Qt6 Widgets: about 60 source files, about 1 MB. Snip is GPL-3.0-or-later, so MIT code can be included **as long as Omasnap's copyright and licence notice is kept** (in `third_party/omasnap/LICENSE` and THIRD_PARTY.md, plus a header comment on ported files). Each module is used in one of three ways:
+Decided 2026-10-07 (D27): Snip contains no Omasnap code, copied, ported or translated. Omasnap is the competitor to beat, so every part is Snip's own design. The parts an earlier plan borrowed are built in-house:
 
-| Omasnap module | What it does | How Snip uses it | Where it goes |
-|---|---|---|---|
-| `surface-capture.cpp` | in-process ext-image-copy-capture client | **Port to Rust**: a small protocol client; we need it on connection A | `snip-wayland` |
-| `scroll-inject.cpp`, `protocols/wlr-virtual-pointer*` | auto-scroll wheel injection, natural-scroll compensation | **Port to Rust** | `snip-wayland` |
-| `stitch.cpp`, `stitch-replay.cpp` | tuned scroll stitcher **plus a replay harness** | **Vendor as C++ on the Qt side** (it needs only QtCore and QtGui `QImage`). The Rust core drives scrolling and capture and passes frames as memfd-backed `QImage`s. **Verified in spike S06:** 400/400 rows in order, sticky header and footer once, on opaque and translucent windows. Port later only if needed, with the replay corpus as the oracle. | `third_party/omasnap` (C++ side) |
-| `scroll-capture.cpp` | scroll session flow, keyboard-grab dance around Hyprland's exclusive-focus quirk | **Reference.** Reimplement the flow in Rust and QML, keeping its Hyprland workarounds | `snip-core`, `app/qml/Scroll` |
-| `capture.cpp`, `output-config.cpp` | monitor and window discovery, capture orchestration, output transforms | **Reference plus port of the logic** (rounding, transforms, smart-select rules) | `snip-hypr`, `snip-core::geometry` |
-| `text-band.cpp` | text-line detection (smart highlighter) | **Port to Rust** | `snip-core` |
-| `stroke-smoothing.cpp`, `cut.cpp`, `eyedropper.cpp` | pencil smoothing, cut-band tool, colour sampling | **Port to Rust** (pure algorithms) | `snip-core` |
-| `png.cpp` | fast PNG | Replaced by the Rust `png`+fdeflate path | — |
-| `chrome-theme.cpp`, `palette-config.cpp`, `background-config.cpp` | Omarchy theme and palette reading, backdrop settings | **Port the logic** into the Rust theme-token service (§7.2) | `snip-core::theme` |
-| `pin.cpp`, `pin-layout.cpp`, `pin-expiry.cpp`, `pin-file.cpp` | pinned windows, Lua-dispatcher placement, deck layout | **Reference.** Rebuild the UI in QML with CleanShot's pin behaviour; reuse the Hyprland placement and edge-clamp logic | `app/qml/Pins`, `snip-hypr` |
-| `editor.cpp` (330 KB), `overlay-chrome.cpp`, `recent-snaps.cpp`, `card-stack.hpp` | QPainter/Widgets editor and chrome | **Reference only.** Snip's editor and QAO are Qt Quick with CleanShot's UX; we borrow behaviours and edge-case handling, not code | `app/qml/*` |
-| `docs/editing-model.md` | op-log working document format | **Evaluate adopting it** as the base of our document format, so Snip can open Omasnap working documents | `snip-core::document` |
-| `docs/threading.md`, `docs/platform-scope.md` | threading rules, Hyprland quirks | **Required reading** for the team | — |
+| Part | Snip's own implementation | Where |
+|---|---|---|
+| Scrolling-capture stitcher | Rust, with its own replay corpus of recorded scroll sessions as the test oracle. The bar it must meet was set in spike S06: rows in order, sticky header and footer once, opaque and translucent windows. | `snip-core` |
+| Scroll injection | wlr virtual pointer wheel events with natural-scroll compensation | `snip-wayland` |
+| Scroll session flow | overlay focus hand-off around Hyprland's exclusive keyboard focus | `snip-core`, `app/qml` |
+| Text-line detection (smart highlighter) | from the OCR word boxes Snip already produces | `snip-core` |
+| Stroke smoothing, cut tool, eyedropper | Rust algorithms | `snip-core` |
+| Pin placement | Hyprland window rules and edge clamping | `snip-hypr` |
+| Edit-document format | Snip's own op-log format (ANN-16) | `snip-core::document` |
 
-**Upstreaming:** fixes we make to vendored or ported logic that help Omasnap (for example multi-monitor) are offered upstream as PRs.
+Capture, theme reading, PNG encoding, the overlay and the Quick Access cards were already Snip's own (M1).
 
 ## 11. Code layout
 
@@ -444,7 +438,6 @@ snip/
 │  │                          DnD (KF6 KUrlMimeData), raw xdg-tag / hyprland-surface helpers
 │  └─ qml/                    Overlay/ QuickAccess/ Editor/ Background/ Pins/ History/
 │                             Settings/ Recorder/ Theme/ Components/
-├─ third_party/omasnap/       vendored C++ (stitch) + LICENSE
 ├─ hypr/snip.lua              binds (hl.dsp.global), layer and window rules
 ├─ systemd/snipd.service
 ├─ packaging/aur/             PKGBUILDs (snip-screenshot, -git)
