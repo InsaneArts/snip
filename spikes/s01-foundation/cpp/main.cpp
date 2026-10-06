@@ -50,6 +50,8 @@ main(int argc, char* argv[])
       mode = QStringLiteral("gallery");
     else if (a == QLatin1String("--cover"))
       mode = QStringLiteral("cover");
+    else if (a == QLatin1String("--editor"))
+      mode = QStringLiteral("editor");
   }
 
   qmlRegisterType<FrozenFrame>("SnipCpp", 1, 0, "FrozenFrame");

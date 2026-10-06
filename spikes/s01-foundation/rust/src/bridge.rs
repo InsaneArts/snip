@@ -142,7 +142,9 @@ impl qobject::SnipCore {
             });
         });
         let visible = self.rust().overlay_visible.clone();
-        let register = self.mode().to_string() != "soak";
+        // Only the interactive instance owns the global shortcuts; test instances
+        // running next to it must not also react to the user's key presses.
+        let register = self.mode().to_string() == "interactive";
         std::thread::Builder::new()
             .name("snip-wayland".into())
             .spawn({
@@ -151,7 +153,7 @@ impl qobject::SnipCore {
             })
             .expect("spawn wayland thread");
         let mode = self.mode().to_string();
-        if mode == "interactive" || mode == "test" {
+        if mode == "interactive" || mode == "test" || mode == "editor" {
             spawn_control_socket(tx.clone(), self.qt_thread());
         }
         if self.mode().to_string() == "soak" {
@@ -333,6 +335,11 @@ fn spawn_control_socket(
                         ["pin", path] => {
                             let path = path.to_string();
                             let _ = thread.queue(move |mut o| o.as_mut().pin_command(QString::from("show"), QString::from(path.as_str())));
+                            "ok".into()
+                        }
+                        ["export", path] => {
+                            let path = path.to_string();
+                            let _ = thread.queue(move |mut o| o.as_mut().pin_command(QString::from("export"), QString::from(path.as_str())));
                             "ok".into()
                         }
                         ["pinlock", "on", x, y] => {

@@ -15,7 +15,7 @@ Sources:
 |---|---|---|
 | Process model | One **resident daemon** (`snipd`, systemd user service) plus a thin CLI. Heavy jobs run in child processes: gpu-screen-recorder and ffmpeg. | A cold start alone costs 150–400 ms (exec plus EGL plus toolkit init, measured on this machine). A warm daemon can show a frozen overlay in about 15–35 ms. |
 | Language | **Decided: Rust core library plus C++/QML UI**, in one process, joined by **cxx-qt** and built with CMake plus **Corrosion** (§11) | Qt Quick custom items and scene-graph nodes must be C++. The compute and parsing paths get memory safety and the fastest options measured: `png`+fdeflate, fast_image_resize, `toml_edit` (keeps comments), wayland-rs, rayon. Spike S13 checks the build and integration early. |
-| UI toolkit | **Qt 6.11 Qt Quick/QML** on the OpenGL RHI backend, **LayerShellQt** for overlays, xdg toplevels for windows | GPU scene graph at 144 Hz, the best animation system available, fcitx5 IME, QtMultimedia for the trimmer, and the same QML idiom as omarchy-shell, so theming matches pixel for pixel |
+| UI toolkit | **Qt 6.11 Qt Quick/QML** on the OpenGL RHI backend with the **threaded render loop forced** (`QSG_RENDER_LOOP=threaded`; Qt picked the basic loop on NVIDIA, which capped the editor at 125 fps, spike S05), **LayerShellQt** for overlays, xdg toplevels for windows | GPU scene graph at 144 Hz, the best animation system available, fcitx5 IME, QtMultimedia for the trimmer, and the same QML idiom as omarchy-shell, so theming matches pixel for pixel |
 | Wayland | **Two connections** (§3). **Connection A**: wayland-rs in the Rust core on its own thread, carrying capture, clipboard, shortcuts, virtual pointer and toplevels. **Connection B**: Qt's own, carrying surfaces and DnD. A few raw calls use Qt's `wl_surface` through `QNativeInterface`. Only public Qt APIs. | Hotkeys and clipboard ownership never depend on UI lifetime. No QtWaylandClient private headers, so Arch Qt minor updates do not break AUR users. |
 | Capture | Our own **ext-image-copy-capture-v1** client (shm by default, dmabuf behind a flag), fallback **wlr-screencopy**. Clean window capture through ext toplevel sources. | Capture happens in-process before any overlay maps. No grim, no hyprpicker race. |
 | Hotkeys | **hyprland-global-shortcuts-v1**, bound by the user as `hl.dsp.global("snip:…")` | No process spawn, under 1 ms. Press and release events allow hold-to-record. |
@@ -400,7 +400,7 @@ Full detail and measurements: [research/processing-pipelines.md](research/proces
 | Q-S5 | Keystroke transport | socket2 custom events / 0600 file | 0600 file in the runtime dir |
 | Q-S6 | Config | toml_edit in-place (keeps comments) / plus `config.d` | toml_edit in-place; `config.d` for hand-written overrides |
 | Q-S7 | Hyprland versions supported | ≥ 0.54 / **≥ 0.56** / latest only | ≥ 0.56, matching Omarchy 4 |
-| Q-S8 | Annotation renderer | **Qt Quick nodes plus ShaderEffect** / Qt Canvas Painter (preview API) | Quick nodes; spike S8 looks at Canvas Painter |
+| Q-S8 | Annotation renderer | **Decided (S05):** Qt Quick nodes, Shapes with CurveRenderer, and ShaderEffect. Export = offscreen render of the same scene. | Preview equals export within 1 LSB (PSNR 98 dB). 144 fps with 200 objects on the **threaded** render loop, which must be forced. |
 
 ## 10. Building on Omasnap
 

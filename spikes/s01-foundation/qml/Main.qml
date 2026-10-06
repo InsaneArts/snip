@@ -53,6 +53,7 @@ QtObject {
             else if (cmd === "pinlock") { root.pinLocked = (arg === "on"); root.pinLayerPos = "" }
             else if (cmd === "pinlock-layer") { root.pinLayerPos = arg; root.pinLocked = true }
             else if (cmd === "unpin") root.pinPath = ""
+            else if (cmd === "export" && root.editorWin) root.editorWin.exportPng(arg)
             SnipCore.log("pin_cmd", "\"cmd\":\"" + cmd + "\",\"arg\":\"" + arg + "\"")
         }
         function onVerifyDone(report) {
@@ -88,6 +89,8 @@ QtObject {
         SnipCore.start(mode)
         if (mode === "selftest")
             startTimer.start()
+        if (mode === "editor")
+            createEditor()
     }
 
     property Instantiator windows: Instantiator {
@@ -513,5 +516,22 @@ QtObject {
             Image { anchors.fill: parent; source: root.pinPath ? "file://" + root.pinPath : ""; fillMode: Image.PreserveAspectFit }
         }
         MouseArea { anchors.fill: parent; onClicked: SnipCore.log("pin_clicked", "\"layer\":true") }
+    }
+
+    // ---------------------------------------------------------------- S8 editor canvas
+    // (created from its URL: the cxx-qt qmldir maps Editor.qml to a wrong qrc path)
+    property var editorWin: null
+    function createEditor() {
+        const c = Qt.createComponent("qrc:/qt/qml/com/snip/spike/qml/Editor.qml")
+        if (c.status !== Component.Ready) { SnipCore.log("editor_error", "\"msg\":\"" + c.errorString().replace(/"/g, "'").replace(/\n/g, " ") + "\""); return }
+        const args = Qt.application.arguments
+        const n = args.indexOf("--objects")
+        editorWin = c.createObject(null, {
+            extraObjects: n >= 0 ? Number(args[n + 1]) : 0,
+            animate: args.indexOf("--animate") >= 0,
+            imagePath: "/home/tgomareli/Development/OpenShotX/spikes/s01-foundation/qao-test/test.png"
+        })
+        editorWin.visible = true
+        SnipCore.log("editor_loaded", "\"objects\":" + editorWin.extraObjects)
     }
 }

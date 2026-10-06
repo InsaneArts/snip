@@ -36,6 +36,7 @@ Likelihood and impact are rated H (high), M (medium) or L (low). "Spike" refers 
 | R23 | **Design tension:** CleanShot polish vs arbitrary Omarchy themes (26 or more, light and dark, gradient borders, square corners). Some themes will make the UI ugly or unreadable. | H | M | A token mapping with fallbacks, a runtime contrast guard, a gallery that renders every installed theme, and visual-regression goldens (design doc §6) | S17 |
 | R24 | **Vendored Omasnap C++ drift:** upstream improves the stitcher while our copy stays behind; C++ inside a Rust core | M | L | Pin the upstream commit. Use the replay harness to compare. Port to Rust once it stabilises. | S16 |
 | R25 | **QML garbage-collects C++-owned objects** returned from `Q_INVOKABLE`s without a parent. Spike S03: QML deleted Qt's real `QScreen`, every window lost its screen, and the next map segfaulted inside QtWayland. | M | H | Set `QQmlEngine::CppOwnership` on every object handed to QML. Unit-test the ownership of every exposed object. Run ASan in CI. | done (S03) |
+| R26 | **Render loop on NVIDIA:** Qt falls back to the *basic* loop (125 fps, stutter). Forcing *threaded* gives 144 fps, but threaded GL on NVIDIA is where the known Quickshell EGL issues live. | M | M | Force `QSG_RENDER_LOOP=threaded`. Run a second 72 h soak with the threaded loop. Keep an automatic fallback to basic if EGL errors occur. | S05, S5b |
 
 ## Part B: Edge-case catalogue
 
