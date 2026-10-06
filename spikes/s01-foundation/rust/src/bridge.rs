@@ -51,6 +51,14 @@ pub mod qobject {
         #[qinvokable]
         fn set_overlay_visible(self: Pin<&mut SnipCore>, visible: bool);
 
+        /// Area capture result -> stored file + QAO card (lifecycle §5.0, no clipboard).
+        #[qinvokable]
+        fn capture_region_to_card(self: Pin<&mut SnipCore>, output: QString, x: i32, y: i32, w: i32, h: i32);
+
+        /// Card "Copy": put the stored PNG on the clipboard.
+        #[qinvokable]
+        fn copy_file(self: Pin<&mut SnipCore>, path: QString);
+
         #[qinvokable]
         fn log(self: &SnipCore, ev: QString, extra_json: QString);
 
@@ -62,6 +70,12 @@ pub mod qobject {
 
         #[qsignal]
         fn cancel_requested(self: Pin<&mut SnipCore>);
+
+        #[qsignal]
+        fn card_show(self: Pin<&mut SnipCore>, path: QString);
+
+        #[qsignal]
+        fn card_variant(self: Pin<&mut SnipCore>, variant: QString);
     }
 
     impl cxx_qt::Threading for SnipCore {}
@@ -110,6 +124,10 @@ impl qobject::SnipCore {
                     obj.as_mut().verify_done(QString::from(report.as_str()));
                 }
                 UiEvent::CancelRequested => obj.as_mut().cancel_requested(),
+                UiEvent::CardShow { path } => {
+                    mark("qt_card_show", &format!("\"path\":\"{path}\""));
+                    obj.as_mut().card_show(QString::from(path.as_str()));
+                }
             });
         });
         let visible = self.rust().overlay_visible.clone();
@@ -121,6 +139,10 @@ impl qobject::SnipCore {
                 move || wl::run(rx, self_tx, visible, ui, register)
             })
             .expect("spawn wayland thread");
+        let mode = self.mode().to_string();
+        if mode == "interactive" || mode == "test" {
+            spawn_control_socket(tx.clone(), self.qt_thread());
+        }
         if self.mode().to_string() == "soak" {
             let _ = tx.send(Cmd::StartSoak { idle_ms: 120_000, interval_ms: 30_000 });
             std::thread::Builder::new()
@@ -150,6 +172,32 @@ impl qobject::SnipCore {
         self.rust().overlay_visible.store(visible, Ordering::Relaxed);
     }
 
+    fn capture_region_to_card(self: Pin<&mut Self>, output: QString, x: i32, y: i32, w: i32, h: i32) {
+        let Some(tx) = self.rust().tx.clone() else { return };
+        let output = output.to_string();
+        std::thread::spawn(move || {
+            let Some(slot) = frames::get(&output) else { return };
+            let e = crate::encode::crop_png(&slot.buf, x, y, w, h);
+            let path = crate::encode::store(&e.png, "area");
+            mark(
+                "area_stored",
+                &format!("\"w\":{},\"h\":{},\"crop_ms\":{:.2},\"encode_ms\":{:.2},\"path\":\"{path}\"", e.w, e.h, e.crop_ms, e.encode_ms),
+            );
+            let _ = tx.send(Cmd::Ui(UiEvent::CardShow { path }));
+        });
+    }
+
+    fn copy_file(self: Pin<&mut Self>, path: QString) {
+        let Some(tx) = self.rust().tx.clone() else { return };
+        let t0 = now_ns();
+        match std::fs::read(path.to_string()) {
+            Ok(bytes) => {
+                let _ = tx.send(Cmd::SetClipboard { png: Arc::new(bytes), t0, sensitive: false });
+            }
+            Err(e) => mark("copy_file_error", &format!("\"msg\":\"{e}\"")),
+        }
+    }
+
     fn log(&self, ev: QString, extra_json: QString) {
         mark(&ev.to_string(), &extra_json.to_string());
     }
@@ -173,7 +221,7 @@ impl qobject::SnipCore {
                 ),
             );
             let png_bytes = e.png;
-            let _ = tx.send(Cmd::SetClipboard { png: Arc::new(png_bytes), t0 });
+            let _ = tx.send(Cmd::SetClipboard { png: Arc::new(png_bytes), t0, sensitive: false });
         });
     }
 }
@@ -215,4 +263,62 @@ fn mem_snapshot() -> String {
     let threads = std::fs::read_dir("/proc/self/task").map(|d| d.count()).unwrap_or(0);
     out.push(format!("\"fds\":{fds},\"threads\":{threads}"));
     out.join(",")
+}
+
+/// Line-based control socket ($XDG_RUNTIME_DIR/snip-spike.sock): a prototype of
+/// the product's ctl.sock, used by the test driver.
+fn spawn_control_socket(
+    tx: calloop::channel::Sender<Cmd>,
+    thread: cxx_qt::CxxQtThread<qobject::SnipCore>,
+) {
+    use std::io::{BufRead, BufReader, Write};
+    use std::os::unix::net::UnixListener;
+    let path = format!("{}/snip-spike.sock", std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into()));
+    let _ = std::fs::remove_file(&path);
+    let Ok(listener) = UnixListener::bind(&path) else {
+        mark("ctl_bind_failed", "");
+        return;
+    };
+    std::thread::Builder::new()
+        .name("snip-ctl".into())
+        .spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let mut out = stream.try_clone().expect("clone");
+                for line in BufReader::new(stream).lines().map_while(Result::ok) {
+                    let p: Vec<&str> = line.split_whitespace().collect();
+                    let reply = match p.as_slice() {
+                        ["ping"] => "pong".to_string(),
+                        ["move", out_name, x, y, w, h] => {
+                            let n = |v: &str| v.parse::<u32>().unwrap_or(0);
+                            let _ = tx.send(Cmd::PointerMove { output: out_name.to_string(), x: n(x), y: n(y), w: n(w), h: n(h) });
+                            "ok".into()
+                        }
+                        ["down"] => { let _ = tx.send(Cmd::PointerButton { down: true }); "ok".into() }
+                        ["up"] => { let _ = tx.send(Cmd::PointerButton { down: false }); "ok".into() }
+                        ["scroll", dy] => { let _ = tx.send(Cmd::PointerAxis { dy: dy.parse().unwrap_or(0.0) }); "ok".into() }
+                        ["card", path] => {
+                            let path = path.to_string();
+                            let _ = thread.queue(move |mut o| o.as_mut().card_show(QString::from(path.as_str())));
+                            "ok".into()
+                        }
+                        ["variant", v] => {
+                            let v = v.to_string();
+                            let _ = thread.queue(move |mut o| o.as_mut().card_variant(QString::from(v.as_str())));
+                            "ok".into()
+                        }
+                        ["copyfile", path] | ["copyfile-sensitive", path] => match std::fs::read(path) {
+                            Ok(b) => {
+                                let sensitive = p[0] == "copyfile-sensitive";
+                                let _ = tx.send(Cmd::SetClipboard { png: Arc::new(b), t0: now_ns(), sensitive });
+                                "ok".into()
+                            }
+                            Err(e) => format!("err {e}"),
+                        },
+                        _ => "err unknown".into(),
+                    };
+                    let _ = writeln!(out, "{reply}");
+                }
+            }
+        })
+        .expect("spawn ctl");
 }

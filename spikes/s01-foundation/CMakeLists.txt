@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QmlImportScanner)
+find_package(KF6CoreAddons REQUIRED)
 
 find_package(CxxQt QUIET)
 if(NOT CxxQt_FOUND)
@@ -32,7 +33,9 @@ add_executable(snip-spike
   cpp/main.cpp
   cpp/frozenframe.cpp
   cpp/frozenframe.h
-  cpp/screens.h)
+  cpp/screens.h
+  cpp/draghelper.cpp
+  cpp/draghelper.h)
 
-target_link_libraries(snip-spike PRIVATE snip_spike_qml Qt::Quick)
+target_link_libraries(snip-spike PRIVATE snip_spike_qml Qt::Quick KF6::CoreAddons)
 qt_import_qml_plugins(snip-spike)

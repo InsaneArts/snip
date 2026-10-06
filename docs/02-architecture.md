@@ -170,7 +170,7 @@ Total from hotkey to frozen overlay: **about 15–35 ms warm** (one refresh plus
 - **Copy (default):** offer `image/png`.
 - **"Copy as file":** offer `text/uri-list` plus `x-special/gnome-copied-files`.
 - **Optional "do not keep in clipboard history":** add `x-kde-passwordManagerHint` (Omarchy's clipboard manager honours it).
-- **Drag:** offer `text/uri-list` (file in a persistent cache dir) plus `image/png` plus `application/vnd.portal.filetransfer` for Flatpak receivers (through KF6CoreAddons `KUrlMimeData` or a direct D-Bus call). Allowed action **COPY only**: Hyprland picks MOVE whenever it is allowed, and Nautilus would then *move* our file.
+- **Drag:** offer `text/uri-list` (file in a persistent cache dir) plus `application/vnd.portal.filetransfer` (KF6 `KUrlMimeData::exportUrlsToPortal`), and **no `image/png`**. Spike S02 found that Nautilus then saves a nameless "Dropped Image.png", while every other app tested accepts the URI. Allowed action **COPY only**: Hyprland picks MOVE whenever it is allowed, and Nautilus would then *move* our file. Verified in S02 across Chromium, Zen, Nautilus, VS Code, Ghostty, kitty and foot.
 - **Lifetime:** keep drag files for 24 h or until saved. Keep the data source alive until `dnd_finished`/`cancelled`; handle repeated `send`.
 
 ---

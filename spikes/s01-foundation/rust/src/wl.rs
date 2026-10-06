@@ -42,6 +42,12 @@ use wayland_protocols_hyprland::global_shortcuts::v1::client::{
     hyprland_global_shortcuts_manager_v1::HyprlandGlobalShortcutsManagerV1,
 };
 
+use wayland_protocols_wlr::virtual_pointer::v1::client::{
+    zwlr_virtual_pointer_manager_v1::ZwlrVirtualPointerManagerV1,
+    zwlr_virtual_pointer_v1::ZwlrVirtualPointerV1,
+};
+use wayland_client::protocol::wl_pointer;
+
 use crate::clock::{mark, now_ns};
 use crate::frames::{self, FrameSlot, ShmBuf};
 
@@ -64,13 +70,21 @@ pub enum ShortcutKind {
 
 pub enum Cmd {
     Capture(Purpose),
-    SetClipboard { png: Arc<Vec<u8>>, t0: u64 },
+    SetClipboard { png: Arc<Vec<u8>>, t0: u64, sensitive: bool },
     /// S5 soak: while the user is idle for `idle_ms`, capture every `interval_ms`.
     StartSoak { idle_ms: u32, interval_ms: u64 },
+    /// Synthetic pointer (test driver / future auto-scroll). Coordinates are
+    /// logical within `output`, scaled by extent (w, h).
+    PointerMove { output: String, x: u32, y: u32, w: u32, h: u32 },
+    PointerButton { down: bool },
+    PointerAxis { dy: f64 },
+    /// Forward a UI event from a worker thread through the wl thread's sink.
+    Ui(UiEvent),
 }
 
 pub enum UiEvent {
     FramesReady { epoch: u32 },
+    CardShow { path: String },
     VerifyDone { report: String },
     CancelRequested,
 }
@@ -131,6 +145,8 @@ struct State {
     seat: Option<WlSeat>,
     idle_mgr: Option<ExtIdleNotifierV1>,
     soak: Option<Soak>,
+    vptr_mgr: Option<ZwlrVirtualPointerManagerV1>,
+    vptr: Option<(String, ZwlrVirtualPointerV1)>,
 }
 
 struct Soak {
@@ -171,6 +187,7 @@ fn run_inner(
     let seat: Option<WlSeat> = globals.bind(&qh, 1..=7, ()).ok();
     let gs_mgr: Option<HyprlandGlobalShortcutsManagerV1> = globals.bind(&qh, 1..=1, ()).ok();
     let idle_mgr: Option<ExtIdleNotifierV1> = globals.bind(&qh, 1..=1, ()).ok();
+    let vptr_mgr: Option<ZwlrVirtualPointerManagerV1> = globals.bind(&qh, 1..=2, ()).ok();
 
     let mut outputs = Vec::new();
     for g in globals.contents().clone_list() {
@@ -217,6 +234,8 @@ fn run_inner(
         seat,
         idle_mgr,
         soak: None,
+        vptr_mgr,
+        vptr: None,
     };
 
     // Roundtrip so every wl_output has delivered its name before we report ready.
@@ -252,7 +271,28 @@ impl State {
     fn handle_cmd(&mut self, cmd: Cmd) {
         match cmd {
             Cmd::Capture(p) => self.start_capture(p, None, None),
-            Cmd::SetClipboard { png, t0 } => self.set_clipboard(png, t0),
+            Cmd::SetClipboard { png, t0, sensitive } => self.set_clipboard(png, t0, sensitive),
+            Cmd::Ui(ev) => (self.ui)(ev),
+            Cmd::PointerMove { output, x, y, w, h } => {
+                if let Some(p) = self.pointer_for(&output) {
+                    p.motion_absolute(now_ms(), x, y, w, h);
+                    p.frame();
+                }
+            }
+            Cmd::PointerButton { down } => {
+                if let Some((_, p)) = &self.vptr {
+                    let state = if down { wl_pointer::ButtonState::Pressed } else { wl_pointer::ButtonState::Released };
+                    p.button(now_ms(), 0x110, state); // BTN_LEFT
+                    p.frame();
+                }
+            }
+            Cmd::PointerAxis { dy } => {
+                if let Some((_, p)) = &self.vptr {
+                    p.axis_source(wl_pointer::AxisSource::Wheel);
+                    p.axis(now_ms(), wl_pointer::Axis::VerticalScroll, dy);
+                    p.frame();
+                }
+            }
             Cmd::StartSoak { idle_ms, interval_ms } => {
                 let (Some(mgr), Some(seat)) = (&self.idle_mgr, &self.seat) else {
                     mark("soak_unavailable", "");
@@ -263,6 +303,23 @@ impl State {
                 mark("soak_started", &format!("\"idle_ms\":{idle_ms},\"interval_ms\":{interval_ms}"));
             }
         }
+    }
+
+    /// Virtual pointer mapped to one output (v2: create_virtual_pointer_with_output).
+    fn pointer_for(&mut self, output: &str) -> Option<&ZwlrVirtualPointerV1> {
+        if self.vptr.as_ref().map(|(o, _)| o.as_str()) != Some(output) {
+            let mgr = self.vptr_mgr.as_ref()?;
+            let seat = self.seat.as_ref()?;
+            let out = self.outputs.iter().find(|o| o.name == output).map(|o| o.wl.clone());
+            let p = match (&out, mgr.version() >= 2) {
+                (Some(o), true) => mgr.create_virtual_pointer_with_output(Some(seat), Some(o), &self.qh, ()),
+                _ => mgr.create_virtual_pointer(Some(seat), &self.qh, ()),
+            };
+            if let Some((_, old)) = self.vptr.replace((output.to_owned(), p)) {
+                old.destroy();
+            }
+        }
+        self.vptr.as_ref().map(|(_, p)| p)
     }
 
     fn start_capture(&mut self, purpose: Purpose, t_hotkey: Option<u64>, only: Option<&str>) {
@@ -412,18 +469,23 @@ impl State {
                 (self.ui)(UiEvent::FramesReady { epoch: self.epoch });
             }
             Purpose::Fullscreen => {
-                // Spike stand-in for "capture -> history + QAO": encode and copy.
+                // Capture lifecycle (product §5.0): capture -> stored file + QAO card; no clipboard.
                 if let Some(cap) = c.caps.iter().find(|c| c.ok) {
                     let buf = self.slots[&(cap.out, Purpose::Fullscreen)].buf.clone();
-                    let tx = self.self_tx.clone();
+                    let name = self.outputs[cap.out].name.clone();
+                    let ui_tx = self.self_tx.clone();
                     let t0 = c.t_hotkey.unwrap_or(c.t_start);
                     std::thread::spawn(move || {
                         let e = crate::encode::crop_png(&buf, 0, 0, buf.width as i32, buf.height as i32);
+                        let path = crate::encode::store(&e.png, &format!("fullscreen-{name}"));
                         mark(
-                            "fullscreen_encoded",
-                            &format!("\"w\":{},\"h\":{},\"encode_ms\":{:.2},\"png_bytes\":{}", e.w, e.h, e.encode_ms, e.png.len()),
+                            "fullscreen_stored",
+                            &format!(
+                                "\"w\":{},\"h\":{},\"encode_ms\":{:.2},\"since_hotkey_ms\":{:.2},\"path\":\"{path}\"",
+                                e.w, e.h, e.encode_ms, (now_ns() - t0) as f64 / 1e6
+                            ),
                         );
-                        let _ = tx.send(Cmd::SetClipboard { png: Arc::new(e.png), t0 });
+                        let _ = ui_tx.send(Cmd::Ui(UiEvent::CardShow { path }));
                     });
                 }
             }
@@ -462,13 +524,17 @@ impl State {
         let _ = self.conn.flush();
     }
 
-    fn set_clipboard(&mut self, png: Arc<Vec<u8>>, t0: u64) {
+    fn set_clipboard(&mut self, png: Arc<Vec<u8>>, t0: u64, sensitive: bool) {
         let (Some(mgr), Some(dev)) = (&self.dc_mgr, &self.dc_device) else {
             mark("clipboard_unavailable", "");
             return;
         };
         let src = mgr.create_data_source(&self.qh, ());
         src.offer("image/png".into());
+        if sensitive {
+            // KDE/Omarchy convention: clipboard managers skip entries carrying this type.
+            src.offer("x-kde-passwordManagerHint".into());
+        }
         dev.set_selection(Some(&src));
         if let Some(old) = self.clip_source.replace(src) {
             old.destroy();
@@ -556,7 +622,9 @@ ignore_events!(
     ExtImageCopyCaptureManagerV1,
     ExtDataControlManagerV1,
     HyprlandGlobalShortcutsManagerV1,
-    ExtIdleNotifierV1
+    ExtIdleNotifierV1,
+    ZwlrVirtualPointerManagerV1,
+    ZwlrVirtualPointerV1
 );
 
 impl Dispatch<ExtImageCopyCaptureSessionV1, usize> for State {
@@ -659,7 +727,11 @@ impl Dispatch<ExtDataControlSourceV1, ()> for State {
     fn event(st: &mut Self, src: &ExtDataControlSourceV1, ev: ext_data_control_source_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
         match ev {
             ext_data_control_source_v1::Event::Send { mime_type, fd } => {
-                let bytes = st.clip_bytes.clone();
+                let bytes = if mime_type == "x-kde-passwordManagerHint" {
+                    Arc::new(b"secret".to_vec())
+                } else {
+                    st.clip_bytes.clone()
+                };
                 mark("clipboard_send", &format!("\"mime\":\"{mime_type}\""));
                 // Never block the Wayland thread on a slow reader.
                 std::thread::spawn(move || {
@@ -710,4 +782,8 @@ impl Dispatch<ExtIdleNotificationV1, ()> for State {
             _ => {}
         }
     }
+}
+
+fn now_ms() -> u32 {
+    (now_ns() / 1_000_000) as u32
 }

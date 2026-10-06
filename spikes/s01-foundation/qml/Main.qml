@@ -11,6 +11,9 @@ QtObject {
 
     property string mode: "interactive"   // interactive | bench | selftest
     property bool overlayVisible: false
+    property string cardPath: ""
+    property string dragVariant: "uri"
+    property string lastDragResult: ""
     property int presentedCount: 0
     readonly property bool plain: mode === "selftest"
 
@@ -40,6 +43,8 @@ QtObject {
         target: SnipCore
         function onFramesReady(epoch) { root.open() }
         function onCancelRequested() { root.close() }
+        function onCardShow(path) { root.cardPath = ""; root.cardPath = path }
+        function onCardVariant(v) { root.dragVariant = v }
         function onVerifyDone(report) {
             SnipCore.log("verify_report", "\"report\":" + report)
             root.close()
@@ -161,11 +166,110 @@ QtObject {
                         let p = sel.phys
                         if (p.width < 4 || p.height < 4)   // click: whole output (spike stand-in for window snap)
                             p = Qt.rect(0, 0, frame.frameSize.width, frame.frameSize.height)
-                        SnipCore.copyRegion(win.modelData.name, p.x, p.y, p.width, p.height)
+                        SnipCore.captureRegionToCard(win.modelData.name, p.x, p.y, p.width, p.height)
                         sel.r = Qt.rect(0, 0, 0, 0)
                         root.close()
                     }
                 }
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------- QAO card (S3)
+    property Window card: Window {
+        id: card
+        readonly property int pad: 24
+        readonly property int cardW: 300
+        readonly property real aspect: thumb.status === Image.Ready ? thumb.implicitHeight / Math.max(1, thumb.implicitWidth) : 0.5625
+        width: cardW + 2 * pad
+        height: Math.round(cardW * aspect) + 2 * pad
+        visible: root.cardPath !== ""
+        color: "transparent"
+        flags: Qt.FramelessWindowHint
+        screen: Qt.application.screens[0]
+
+        LayerShell.Window.screen: ScreenLookup.byName(Qt.application.screens[0].name)
+        LayerShell.Window.scope: "snip-qao"
+        LayerShell.Window.layer: LayerShell.Window.LayerOverlay
+        LayerShell.Window.anchors: LayerShell.Window.AnchorBottom | LayerShell.Window.AnchorLeft
+        LayerShell.Window.exclusionZone: 0
+        LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityNone
+
+        Rectangle {  // soft shadow
+            x: card.pad - 2; y: card.pad + 6
+            width: cardBody.width + 4; height: cardBody.height + 4
+            radius: 12; color: "#59000000"
+        }
+        Rectangle {
+            id: cardBody
+            x: card.pad; y: card.pad
+            width: card.cardW; height: card.height - 2 * card.pad
+            radius: 10
+            color: "#1d1d22"
+            border.color: "#33ffffff"; border.width: 1
+            clip: true
+
+            Image {
+                id: thumb
+                anchors.fill: parent
+                anchors.margins: 1
+                source: root.cardPath ? "file://" + root.cardPath : ""
+                fillMode: Image.PreserveAspectCrop
+                cache: false
+                asynchronous: false
+                sourceSize.width: 600
+            }
+
+            Rectangle {  // hover scrim
+                anchors.fill: parent
+                color: "#73000000"
+                opacity: hover.containsMouse ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: 120 } }
+            }
+
+            MouseArea {
+                id: hover
+                anchors.fill: parent
+                hoverEnabled: true
+                property point p0
+                property bool dragging: false
+                onPressed: (m) => { p0 = Qt.point(m.x, m.y) }
+                onPositionChanged: (m) => {
+                    if (pressed && !dragging && Math.hypot(m.x - p0.x, m.y - p0.y) > 6) {
+                        dragging = true
+                        root.lastDragResult = DragHelper.startDrag(cardBody, root.cardPath, root.dragVariant)
+                        dragging = false
+                    }
+                }
+            }
+
+            Row {
+                anchors.centerIn: parent
+                spacing: 8
+                opacity: hover.containsMouse ? 1 : 0
+                Repeater {
+                    model: [ { label: "Copy", act: "copy" }, { label: "Save", act: "save" } ]
+                    delegate: Rectangle {
+                        required property var modelData
+                        width: 72; height: 30; radius: 15
+                        color: pill.containsMouse ? "#ffffff" : "#e6ffffff"
+                        Text { anchors.centerIn: parent; text: modelData.label; color: "#111"; font.pixelSize: 13; font.weight: Font.DemiBold }
+                        MouseArea {
+                            id: pill; anchors.fill: parent; hoverEnabled: true
+                            onClicked: {
+                                if (modelData.act === "copy") SnipCore.copyFile(root.cardPath)
+                                SnipCore.log("card_action", "\"action\":\"" + modelData.act + "\"")
+                            }
+                        }
+                    }
+                }
+            }
+
+            Rectangle {  // close (top-left, CleanShot style)
+                x: 8; y: 8; width: 22; height: 22; radius: 11
+                color: "#e6ffffff"; opacity: hover.containsMouse ? 1 : 0
+                Text { anchors.centerIn: parent; text: "✕"; font.pixelSize: 11; color: "#111" }
+                MouseArea { anchors.fill: parent; onClicked: root.cardPath = "" }
             }
         }
     }

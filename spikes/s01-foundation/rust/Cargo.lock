@@ -661,6 +661,7 @@ dependencies = [
  "wayland-client",
  "wayland-protocols",
  "wayland-protocols-hyprland",
+ "wayland-protocols-wlr",
 ]
 
 [[package]]

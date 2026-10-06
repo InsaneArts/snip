@@ -15,6 +15,7 @@ cxx-qt-lib = "0.10"
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "staging"] }
 wayland-protocols-hyprland = { version = "1.2", features = ["client"] }
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
 calloop = "0.14"
 calloop-wayland-source = "0.4"
 rustix = { version = "1", features = ["fs", "mm", "time", "pipe"] }

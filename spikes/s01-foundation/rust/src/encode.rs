@@ -45,3 +45,17 @@ pub fn crop_png(b: &ShmBuf, x: i32, y: i32, w: i32, h: i32) -> Encoded {
         encode_ms: (t_enc - t_crop) as f64 / 1e6,
     }
 }
+
+/// Store an encoded capture under ~/.cache/snip-spike/captures/ (stand-in for
+/// the history store) via temp + rename. Returns the path.
+pub fn store(png: &[u8], stem: &str) -> String {
+    let dir = format!("{}/.cache/snip-spike/captures", std::env::var("HOME").unwrap_or_default());
+    let _ = std::fs::create_dir_all(&dir);
+    let ts = now_ns();
+    let path = format!("{dir}/{stem}-{ts}.png");
+    let tmp = format!("{path}.tmp");
+    if std::fs::write(&tmp, png).is_ok() {
+        let _ = std::fs::rename(&tmp, &path);
+    }
+    path
+}
