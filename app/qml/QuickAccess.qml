@@ -86,6 +86,14 @@ Window {
         Qt.callLater(updateMask)
     }
 
+    // Engine.cardStatus: show a result on that card
+    function cardStatus(id, status, detail) {
+        for (let i = 0; i < stack.children.length; i++) {
+            const ch = stack.children[i]
+            if (ch.cardId === id) { ch.showResult(status, detail); return }
+        }
+    }
+
     function moveTo(o) {
         if (o === output) return
         remap = true          // a layer surface can't change outputs while mapped
@@ -155,7 +163,7 @@ Window {
         case "save": Engine.save(id); card.flash("saved", 900); break
         case "show": Engine.showInFiles(id); break
         case "annotate": Engine.annotate(id); break
-        case "text": Engine.extractText(id); card.flash("text", 900); break
+        case "text": card.flash("text", 0); Engine.extractText(id); break   // the result arrives as cardStatus
         case "preview": c.preview.open(card.data_); break
         case "trash": Engine.trash(id); remove(id, false); break
         case "close": dismiss(card, outward); break
@@ -276,14 +284,6 @@ Window {
             function onHoveringChanged() { if (!qa.hovering) keyDwell.ready = false }
         }
 
-        // click outside the menu closes it
-        MouseArea {
-            anchors.fill: parent
-            enabled: qa.menuCard !== null
-            acceptedButtons: Qt.AllButtons
-            onPressed: qa.menuCard = null
-        }
-
         Repeater {
             model: cards
             delegate: Card {
@@ -383,13 +383,49 @@ Window {
             onClicked: qa.expanded = true
         }
 
+        // While the menu is open, a click anywhere else in the panel (cards
+        // included) only closes it, like a native menu.
+        MouseArea {
+            z: 50
+            anchors.fill: parent
+            visible: qa.menuCard !== null
+            acceptedButtons: Qt.AllButtons
+            onPressed: qa.menuCard = null
+            onWheel: (w) => { qa.menuCard = null; w.accepted = true }
+        }
+
         CardMenu {
             id: menu
+            z: 100
             visible: qa.menuCard !== null
             x: qa.menuX
             y: qa.menuY
             card: qa.menuCard
             onTriggered: (action) => qa.act(action, qa.menuCard)
+        }
+    }
+
+    // ...and outside the panel: an invisible full-screen catcher on the layer
+    // below ours, mapped only while the menu is open. A click anywhere on the
+    // screen closes the menu instead of reaching the app underneath.
+    Window {
+        id: outsideCatcher
+        visible: qa.menuCard !== null && qa.visible
+        color: "transparent"
+        flags: Qt.FramelessWindowHint
+        title: "snip-dismiss"
+        LayerShell.Window.screen: Platform.screen(qa.output)
+        LayerShell.Window.scope: "snip-dismiss"
+        LayerShell.Window.layer: LayerShell.Window.LayerTop
+        LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorBottom
+                                   | LayerShell.Window.AnchorLeft | LayerShell.Window.AnchorRight
+        LayerShell.Window.exclusionZone: -1
+        LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityNone
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.AllButtons
+            onPressed: qa.menuCard = null
+            onWheel: (w) => { qa.menuCard = null; w.accepted = true }
         }
     }
 

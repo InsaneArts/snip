@@ -160,9 +160,17 @@ impl Inner {
         let _ = self.qt.queue(f);
     }
 
+    /// A short confirmation on the monitor the user is looking at.
     fn toast(&self, text: impl Into<String>) {
         let t = text.into();
-        self.ui(move |e| e.toast(&QString::from(t.as_str())));
+        let out = self.cursor_output().unwrap_or_default();
+        self.ui(move |e| e.toast(&QString::from(t.as_str()), &QString::from(out.as_str())));
+    }
+
+    /// A result shown on the card itself (CleanShot's "Link copied" style).
+    fn card_status(&self, id: &str, status: &str, detail: &str) {
+        let (id, status, detail) = (id.to_string(), status.to_string(), detail.to_string());
+        self.ui(move |e| e.card_status(&QString::from(id.as_str()), &QString::from(status.as_str()), &QString::from(detail.as_str())));
     }
 
     fn next(&self) -> u64 {
@@ -510,7 +518,8 @@ impl Inner {
             if !codes.is_empty() {
                 let text = codes.join("\n");
                 trace::trace("qr", &format!("\"codes\":{},\"ms\":{:.1}", codes.len(), trace::ms_since(t0)));
-                self.copy_qr(&text);
+                let summary = self.copy_qr(&text);
+                self.toast(format!("Copied {summary}"));
                 reply(waiter, Response::ok(json!(text)));
                 return;
             }
@@ -748,12 +757,13 @@ impl Inner {
     /// QR values can be Wi-Fi passwords or 2FA secrets: always copied as
     /// sensitive, so Omarchy's clipboard history skips them (as Omarchy's own
     /// QR capture does).
-    fn copy_qr(&self, text: &str) {
+    /// Returns a short label ("QR code · https://…") for the confirmation.
+    fn copy_qr(&self, text: &str) -> String {
         self.set_clipboard_text_with(text, true);
         let one = text.lines().next().unwrap_or("");
         let shown: String = if one.chars().count() > 56 { one.chars().take(55).collect::<String>() + "…" } else { one.to_string() };
         let n = text.lines().count();
-        self.toast(if n > 1 { format!("Copied {n} QR codes · {shown}") } else { format!("Copied QR code · {shown}") });
+        if n > 1 { format!("{n} QR codes · {shown}") } else { format!("QR code · {shown}") }
     }
 
     fn set_clipboard_text(&self, text: &str) {
@@ -867,12 +877,16 @@ impl Inner {
         let me = self.clone();
         let id = id.to_string();
         std::thread::spawn(move || {
-            let Ok(bytes) = me.store.bytes(&id) else { return };
-            let Ok((data, w, h, alpha)) = encode::decode_png(&bytes) else { return };
+            // the card shows "Reading text…" until one of these arrives
+            let Some((data, w, h, alpha)) = me.store.bytes(&id).ok().and_then(|b| encode::decode_png(&b).ok()) else {
+                me.card_status(&id, "error", "Couldn't open the image");
+                return;
+            };
             let bpp = if alpha { 4 } else { 3 };
             let codes = qr::decode(&data, w, h, bpp);
             if !codes.is_empty() {
-                me.copy_qr(&codes.join("\n"));
+                let summary = me.copy_qr(&codes.join("\n"));
+                me.card_status(&id, "qr-copied", summary.split(" · ").nth(1).unwrap_or(""));
                 return;
             }
             let langs = me.ocr_languages();
@@ -880,10 +894,10 @@ impl Inner {
                 Ok(t) if !t.trim().is_empty() => {
                     me.set_clipboard_text(&t);
                     let n = t.chars().count();
-                    me.toast(format!("Copied {n} character{}", if n == 1 { "" } else { "s" }));
+                    me.card_status(&id, "text-copied", &format!("{n} character{}", if n == 1 { "" } else { "s" }));
                 }
-                Ok(_) => me.toast("No text found"),
-                Err(e) => me.toast(format!("Text recognition failed: {e}")),
+                Ok(_) => me.card_status(&id, "no-text", ""),
+                Err(e) => me.card_status(&id, "error", &e.to_string()),
             }
         });
     }

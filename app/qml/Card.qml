@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Effects
+import QtQuick.Shapes
 import Snip.Core
 
 // One Quick Access card, modelled on CleanShot X's (measured from its demo
@@ -13,7 +14,10 @@ Item {
     property bool newest: false
     property real cardWidth: 280
     property bool forceHover: false   // design gallery
-    property string status: ""        // "" | "copied" | "saved" | "text"
+    // "" | copied | saved | text (reading) | text-copied | qr-copied | no-text | error
+    property string status: ""
+    property string detail: ""        // second line under the status, e.g. "42 characters"
+    readonly property bool success: status === "copied" || status === "saved" || status === "text-copied" || status === "qr-copied"
     property bool dragging: false
     property real swipe: 0             // horizontal gesture offset (QAO-08)
 
@@ -106,6 +110,12 @@ Item {
                 // a mid-tone in light themes too, so the light controls read (CleanShot does the same)
                 color: Theme.light ? Qt.rgba(0.10, 0.08, 0.08, 0.26) : Qt.rgba(0.04, 0.05, 0.08, 0.38)
                 opacity: card.frost
+            }
+            Rectangle {   // a status (white text) needs a darker glass on light screenshots
+                anchors.fill: parent
+                color: Qt.rgba(0, 0, 0, 0.30)
+                opacity: card.status !== "" ? card.frost : 0
+                Behavior on opacity { NumberAnimation { duration: 120 } }
             }
         }
         Item {
@@ -220,38 +230,71 @@ Item {
             FrostButton { x: parent.width - width - 8; y: parent.height - height - 8; icon: "scan-text"; onClicked: card.host.act("text", card) }
         }
 
-        // ---------------------------------------------------------------- status (Copied / Saved / reading text)
+        // ---------------------------------------------------------------- status: work in progress and results
+        // (CleanShot draws "Uploading…" / "Link copied" the same way, on the frosted card)
         Column {
             anchors.centerIn: parent
+            width: parent.width - 24
             spacing: 6
             opacity: card.status !== "" ? card.frost : 0
             visible: opacity > 0.01
             scale: 0.9 + 0.1 * opacity
+
             Rectangle {
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: 34; height: 34; radius: 17
                 color: Qt.rgba(0.95, 0.95, 0.96, 0.95)
                 Icon {
+                    visible: card.status !== "text"
                     anchors.centerIn: parent
-                    name: card.status === "text" ? "scan-text" : "check"
+                    name: card.success ? "check" : card.status === "no-text" ? "scan-text" : "x"
                     size: 17; stroke: 2.6; color: "#1d1d1f"
+                }
+                Shape {   // spinner while reading
+                    visible: card.status === "text"
+                    anchors.fill: parent
+                    preferredRendererType: Shape.CurveRenderer
+                    ShapePath {
+                        strokeColor: "#1d1d1f"; strokeWidth: 2.4; fillColor: "transparent"; capStyle: ShapePath.RoundCap
+                        PathAngleArc { centerX: 17; centerY: 17; radiusX: 8; radiusY: 8; startAngle: -90; sweepAngle: 260 }
+                    }
+                    RotationAnimator on rotation { from: 0; to: 360; duration: 800; loops: Animation.Infinite; running: card.status === "text" }
                 }
             }
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: card.status === "copied" ? "Copied" : card.status === "saved" ? "Saved" : "Reading text…"
+                text: ({ "copied": "Copied", "saved": "Saved", "text": "Reading text…", "text-copied": "Text copied",
+                         "qr-copied": "QR code copied", "no-text": "No text found", "error": "Couldn't read text" })[card.status] || ""
                 color: "white"
                 font.family: Theme.fontUi
                 font.pixelSize: 13
                 font.weight: Font.DemiBold
             }
+            Text {
+                visible: card.detail !== ""
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: Math.min(implicitWidth, parent.width)
+                horizontalAlignment: Text.AlignHCenter
+                elide: Text.ElideMiddle
+                text: card.detail
+                color: Qt.rgba(1, 1, 1, 0.78)
+                font.family: Theme.fontUi
+                font.pixelSize: 11
+                font.features: { "tnum": 1 }
+            }
         }
     }
 
-    Timer { id: statusReset; onTriggered: card.status = "" }
-    // show a status for `ms` (0 = until cleared)
-    function flash(s, ms) {
+    Timer { id: statusReset; onTriggered: { card.status = ""; card.detail = "" } }
+    // show a status for `ms` (0 = until replaced; work in progress gives up after 20 s)
+    function flash(s, ms, d) {
         status = s
-        if (ms > 0) { statusReset.interval = ms; statusReset.restart() }
+        detail = d || ""
+        statusReset.interval = ms > 0 ? ms : 20000
+        statusReset.restart()
+    }
+    // a result from the engine (Extract Text)
+    function showResult(s, d) {
+        flash(s, s === "qr-copied" ? 2200 : s === "text-copied" ? 1700 : s === "error" ? 2400 : 1500, d)
     }
 }

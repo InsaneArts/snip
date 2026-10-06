@@ -120,8 +120,13 @@ pub mod qobject {
         #[qsignal]
         fn cards_command(self: Pin<&mut Engine>, cmd: &QString);
 
+        /// A short confirmation, on `output` (the monitor under the pointer)
         #[qsignal]
-        fn toast(self: Pin<&mut Engine>, text: &QString);
+        fn toast(self: Pin<&mut Engine>, text: &QString, output: &QString);
+
+        /// A result to show on a card: text-copied | qr-copied | no-text | error
+        #[qsignal]
+        fn card_status(self: Pin<&mut Engine>, id: &QString, status: &QString, detail: &QString);
 
         #[qsignal]
         fn debug_command(self: Pin<&mut Engine>, cmd: &QString);

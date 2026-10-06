@@ -126,7 +126,8 @@ QtObject {
         function onCardAdd(card) { root.quickAccess.add(JSON.parse(card)) }
         function onCardUpdate(id, card) { root.quickAccess.update(id, JSON.parse(card)) }
         function onCardsCommand(cmd) { root.quickAccess.command(cmd) }
-        function onToast(text) { root.toast.show(text, root.lastOutput || root.quickAccess.output || Qt.application.screens[0].name) }
+        function onToast(text, output) { root.toast.show(text, output || root.lastOutput || root.quickAccess.output || Qt.application.screens[0].name) }
+        function onCardStatus(id, status, detail) { root.quickAccess.cardStatus(id, status, detail) }
         function onQuitRequested() { Qt.quit() }
         function onDebugCommand(cmd) { root.debug(cmd) }
     }
