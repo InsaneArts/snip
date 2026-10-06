@@ -159,6 +159,39 @@ def png_size(path):
     return int.from_bytes(b[16:20], "big"), int.from_bytes(b[20:24], "big")
 
 
+def make_text_png(path, lines):
+    """A white image with dark text: OCR fixtures."""
+    from PIL import Image, ImageDraw, ImageFont
+    try:
+        font = ImageFont.truetype("DejaVuSans.ttf", 30)
+    except OSError:
+        font = ImageFont.load_default(30)
+    im = Image.new("RGB", (900, 70 + 56 * len(lines)), "white")
+    d = ImageDraw.Draw(im)
+    for i, line in enumerate(lines):
+        d.text((28, 28 + i * 56), line, fill="black", font=font)
+    im.save(path)
+
+
+def open_card(s, path):
+    """Show a file as a card (snip open) and return its record."""
+    return json.loads(s.cli("--json", "open", str(path)).stdout)["result"]
+
+
+def layer_mapped(namespace):
+    return any(l["namespace"] == namespace for v in hypr_json("layers").values() for ls in v["levels"].values() for l in ls)
+
+
+def wait_for(fn, timeout=5.0, step=0.1):
+    end = time.time() + timeout
+    while time.time() < end:
+        v = fn()
+        if v:
+            return v
+        time.sleep(step)
+    return fn()
+
+
 # ------------------------------------------------------------------ environment
 
 class Env:
@@ -410,6 +443,95 @@ def latency(s, env):
     p95 = warm[int(0.95 * (len(warm) - 1))]
     print(f"      hotkey->presented ms: first {times[0]:.1f}, warm median {statistics.median(warm):.1f}, p95 {p95:.1f}")
     assert p95 < 35, warm
+
+
+@case
+def menu_closes_on_any_click(s, env):
+    """The card menu closes on a click on another card or anywhere outside the panel,
+    and that click does nothing else."""
+    s.cli("close-all"); time.sleep(0.3)
+    png = s.tmp / "menu.png"
+    make_text_png(png, ["menu test"])
+    open_card(s, png); time.sleep(0.5)
+    open_card(s, png); time.sleep(0.7)
+    mon = env.monitor()
+    H = mon["height"] / mon["scale"]
+    cw, ch = 280, round(280 * 0.705)
+    x = 24 + cw / 2
+    y_old = H - 24 - ch / 2                  # oldest card, in the corner
+    y_new = H - 24 - ch - 16 - ch / 2        # newest card, on top of it
+    s.move(x, y_new); time.sleep(0.25); s.click(right=True)
+    assert wait_for(lambda: layer_mapped("snip-dismiss"), 2), "menu did not open"
+    s.move(x, y_old); time.sleep(0.2); s.click()
+    assert wait_for(lambda: not layer_mapped("snip-dismiss"), 2), "a click on another card did not close the menu"
+    s.move(x, y_new); time.sleep(0.25); s.click(right=True)
+    assert wait_for(lambda: layer_mapped("snip-dismiss"), 2), "menu did not reopen"
+    s.move(mon["width"] / mon["scale"] - 200, 300); time.sleep(0.2); s.click()
+    assert wait_for(lambda: not layer_mapped("snip-dismiss"), 2), "a click outside the panel did not close the menu"
+    assert len(s.status()["cards"]) == 2, "the closing click must not act on a card"
+
+
+@case
+def cursor_toggle(s, env):
+    """--cursor paints the pointer into a capture, --no-cursor leaves it out (CAP-11).
+    Hyprland draws no pointer on headless outputs (grim -c shows none either), so this
+    case captures the first real monitor with its own instance: no card, no clipboard,
+    files deleted afterwards."""
+    from PIL import Image, ImageChops
+    real = next(m for m in hypr_json("monitors") if m["name"] != OUT)
+    prev = hypr_json("cursorpos")
+    t = Snip(s.build)
+    t.env["SNIP_RUNTIME_DIR"] = str(t.run_dir) + "-cursor"
+    t.run_dir = Path(t.env["SNIP_RUNTIME_DIR"])
+    t.env["SNIP_APP_ID"] = "snip-e2e-cursor"
+    t.env.pop("SNIP_OUTPUTS", None)
+    t.write_config('[after_capture]\nscreenshot = ["save"]\n')
+    cfg = (t.tmp / "cfg/snip/config.toml")
+    cfg.write_text(cfg.read_text().replace("sounds = false\n", "sounds = false\nsave_also_copies = false\n"))
+    try:
+        t.start()
+        lx, ly = real["width"] / real["scale"] / 2, real["height"] / real["scale"] / 2
+        t.debug("move", real["name"], int(lx), int(ly)); time.sleep(0.4)
+        a = t.json("fullscreen", "--monitor", real["name"], "--no-cursor")["result"]
+        b = t.json("fullscreen", "--monitor", real["name"], "--cursor")["result"]
+        assert t.status()["cards"] == [], "no card may appear on the user's monitor"
+        ia, ib = Image.open(a["source"]).convert("RGB"), Image.open(b["source"]).convert("RGB")
+        x, y = round(int(lx) * real["scale"]), round(int(ly) * real["scale"])
+        near = ImageChops.difference(ia.crop((x - 10, y - 10, x + 60, y + 60)), ib.crop((x - 10, y - 10, x + 60, y + 60))).getbbox()
+        assert near is not None, "no pointer in the --cursor capture"
+    finally:
+        t.stop()
+        shutil.rmtree(t.tmp, ignore_errors=True)
+        hypr_eval(f'hl.dispatch(hl.dsp.cursor.move({{ x = {prev["x"]}, y = {prev["y"]} }}))')
+
+
+@case
+def extract_text_feedback(s, env):
+    """Extract Text on a card: text on the clipboard, and the card shows the result."""
+    s.cli("close-all"); time.sleep(0.3)
+    png = s.tmp / "ocr.png"
+    make_text_png(png, ["error: connection refused", "listening on port 5432"])
+    rec = open_card(s, png); time.sleep(0.5)
+    s.debug("extract", rec["id"])
+    st = wait_for(lambda: [e for e in s.traces("card_status") if e["id"] == rec["id"]], 10)
+    assert st and st[-1]["status"] == "text-copied", st
+    assert st[-1]["detail"].endswith("characters"), st
+    text = sh("wl-paste", "-n", check=False).stdout
+    assert "connection refused" in text and "5432" in text, text
+
+
+@case
+def qr_on_card(s, env):
+    """Extract Text reads a QR code exactly and copies it as sensitive."""
+    s.cli("close-all"); time.sleep(0.3)
+    png = s.tmp / "qr.png"
+    sh("qrencode", "-s", "8", "-o", str(png), "https://github.com/tornikegomareli/snip")
+    rec = open_card(s, png); time.sleep(0.5)
+    s.debug("extract", rec["id"])
+    st = wait_for(lambda: [e for e in s.traces("card_status") if e["id"] == rec["id"]], 10)
+    assert st and st[-1]["status"] == "qr-copied", st
+    assert sh("wl-paste", "-n", check=False).stdout == "https://github.com/tornikegomareli/snip"
+    assert "x-kde-passwordManagerHint" in sh("wl-paste", "-l", check=False).stdout.split()
 
 
 @case

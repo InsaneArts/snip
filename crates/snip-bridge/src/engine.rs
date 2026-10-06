@@ -169,6 +169,7 @@ impl Inner {
 
     /// A result shown on the card itself (CleanShot's "Link copied" style).
     fn card_status(&self, id: &str, status: &str, detail: &str) {
+        trace::trace("card_status", &format!("\"id\":\"{id}\",\"status\":\"{status}\",\"detail\":{}", js(detail)));
         let (id, status, detail) = (id.to_string(), status.to_string(), detail.to_string());
         self.ui(move |e| e.card_status(&QString::from(id.as_str()), &QString::from(status.as_str()), &QString::from(detail.as_str())));
     }
