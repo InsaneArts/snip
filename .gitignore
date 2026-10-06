@@ -1,0 +1,18 @@
+# Rust / CMake build output
+/target/
+**/target/
+/build/
+**/build/
+*.o
+*.a
+*.so
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Spike artefacts (measurements are committed as markdown in docs/spikes/)
+spikes/**/out/
+*.png.tmp
