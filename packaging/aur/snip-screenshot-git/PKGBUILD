@@ -3,7 +3,7 @@
 # All downloads happen in prepare(); build() runs offline.
 pkgname=snip-screenshot-git
 _pkgname=snip
-pkgver=r22.da1598a
+pkgver=r24.dd46402
 pkgrel=1
 pkgdesc="Screenshot tool for Omarchy/Hyprland with CleanShot X's workflow: instant overlay, Quick Access cards, OCR"
 arch=(x86_64)

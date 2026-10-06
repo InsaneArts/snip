@@ -233,6 +233,9 @@ impl qobject::Engine {
             .name("snip-sweep".into())
             .spawn(move || loop {
                 s.sweep();
+                // the week of daily use is the long-running soak (replaces
+                // spike S5, which flashed overlays while idle)
+                trace::warn("mem", &mem_snapshot());
                 std::thread::sleep(std::time::Duration::from_secs(3600));
             })
             .ok();
@@ -372,6 +375,25 @@ unsafe fn frame_release(handle: usize) {
 
 fn mark_time(ev: &QString, extra_json: &QString) {
     trace::trace(&ev.to_string(), &extra_json.to_string());
+}
+
+/// Memory, fds and threads of this process, as a JSON fragment.
+fn mem_snapshot() -> String {
+    let mut out = Vec::new();
+    if let Ok(t) = std::fs::read_to_string("/proc/self/smaps_rollup") {
+        for l in t.lines() {
+            let mut it = l.split_whitespace();
+            if let (Some(k), Some(v)) = (it.next(), it.next()) {
+                let k = k.trim_end_matches(':');
+                if matches!(k, "Rss" | "Pss" | "Pss_Anon" | "Pss_Shmem") {
+                    out.push(format!("\"{}_mb\":{}", k.to_lowercase(), v.parse::<u64>().unwrap_or(0) / 1024));
+                }
+            }
+        }
+    }
+    let n = |d: &str| std::fs::read_dir(d).map(|d| d.count()).unwrap_or(0);
+    out.push(format!("\"fds\":{},\"threads\":{}", n("/proc/self/fd"), n("/proc/self/task")));
+    out.join(",")
 }
 
 fn already_running() -> bool {

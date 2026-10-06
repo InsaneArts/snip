@@ -38,8 +38,8 @@ Each spike answers one question with a measurement and a go/no-go. The results a
 | S2 pixel exactness | ✅ | 0 diff at scales 1/1.25/1.5/5⁄3/2, transforms 0/1/3/4/5, multi-monitor | [S01](spikes/S01-foundation.md) |
 | S3 drag-and-drop | ✅ | 7 apps; drag offers URI + portal, no `image/png` | [S02](spikes/S02-quick-access-dnd.md) |
 | S4 text input / IME | ✅ / ⚠️ | Latin and Unicode on toplevel and layer; Georgian **layout** needs a manual check; CJK IME untested | [S08](spikes/S08-text-input.md) |
-| S5 NVIDIA soak (basic loop) | ⏳ running | flat memory for the first 77 min | [S01](spikes/S01-foundation.md) |
-| S5b soak (threaded loop) | ⏳ running | started 20:55 | [S05](spikes/S05-annotation-renderer.md) |
+| S5 NVIDIA soak (basic loop) | ⏹ stopped | 3 h, 59 trials, no crash; Pss 45 → 118 MB (inconclusive). Stopped 2026-10-06: its idle trials flashed a black overlay every 30 s | [S01](spikes/S01-foundation.md) |
+| S5b soak (threaded loop) | ⏹ stopped | 2.7 h, 146 trials, no crash. Replaced by snipd's hourly `mem` trace over the week of daily use (no UI) | [S05](spikes/S05-annotation-renderer.md) |
 | S6 pins | ✅ | over fullscreen, all workspaces; lock = layer surface | [S04](spikes/S04-pins.md) |
 | S7 gpu-screen-recorder | ⏸ deferred | before M4 (recording) | — |
 | S8 renderer | ✅ | export = preview (98 dB), 144 fps with 200 objects (threaded loop) | [S05](spikes/S05-annotation-renderer.md) |
@@ -93,7 +93,9 @@ Built: `snipd` (Rust core + Qt Quick UI in one process), `snip` CLI, `hypr/snip.
 | Design gallery | ✅ | `snipd --gallery`; renders in [docs/design/m1-gallery](design/m1-gallery/). |
 | Snip UI never in captures | ✅ | Cards drawn transparent until the frame is presented (~0.4 ms), then the capture runs (decision D18). |
 
-**Exit criteria:** latency ✅; two-monitor mixed-scale ✅ (DP-2 at 1.25 plus a headless output at 1–2 and rotated); design review ⏳ (gallery ready); a week of daily use ⏳ (needs the package installed and `snip.lua` enabled).
+**Exit criteria:** latency ✅; two-monitor mixed-scale ✅ (DP-2 at 1.25 plus a headless output at 1–2 and rotated); design review ⏳ (gallery ready); a week of daily use ⏳ started 2026-10-06 from source (`scripts/dev.sh`; the package is for later). snipd logs `mem` hourly, which doubles as the long-running soak.
+
+**Dev loop:** `scripts/dev.sh` builds and runs `build/snipd` as the user unit `snip-dev` with real data, and loads `hypr/snip.lua` at runtime; `scripts/dev.sh stop` restores Hyprland's own bindings; `scripts/dev.sh log` follows the trace.
 
 **Follow-ups found in M1:** OCR picks up junk on busy translucent backgrounds and reads Georgian there poorly (try colour-cluster binarisation; link Tesseract in-process); pre-warm the overlay to remove the 225 ms first-use cost; window decoration takes ~40 ms on large windows (blur the shadow at quarter resolution).
 
