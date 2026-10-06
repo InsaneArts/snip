@@ -53,4 +53,4 @@ The `snip` CLI talks to the running daemon: `snip area`, `snip text`, `snip copy
 
 ## License
 
-GPL-3.0-or-later. See [LICENSE](LICENSE). Builds on [Omasnap](https://github.com/omacom/omasnap) (MIT).
+GPL-3.0-or-later. See [LICENSE](LICENSE).
