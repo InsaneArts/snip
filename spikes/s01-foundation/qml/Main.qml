@@ -43,7 +43,7 @@ QtObject {
         target: SnipCore
         function onFramesReady(epoch) { root.open() }
         function onCancelRequested() { root.close() }
-        function onCardShow(path) { root.cardPath = ""; root.cardPath = path }
+        function onCardShow(path) { root.cardPath = ""; root.cardPath = path; SnipCore.log("card_shown", "") }
         function onCardVariant(v) { root.dragVariant = v }
         function onVerifyDone(report) {
             SnipCore.log("verify_report", "\"report\":" + report)
@@ -225,6 +225,15 @@ QtObject {
                 color: "#73000000"
                 opacity: hover.containsMouse ? 1 : 0
                 Behavior on opacity { NumberAnimation { duration: 120 } }
+            }
+
+            // CleanShot-style auto-close: 10 s, paused while hovered or dragging;
+            // the capture stays in history (lifecycle §5.0), so closing loses nothing.
+            Timer {
+                id: autoClose
+                interval: 10000
+                running: root.cardPath !== "" && !hover.containsMouse && !hover.dragging
+                onTriggered: root.cardPath = ""
             }
 
             MouseArea {
