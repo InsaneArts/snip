@@ -11,7 +11,7 @@ license=(GPL-3.0-or-later)
 depends=(qt6-base qt6-declarative qt6-wayland layer-shell-qt kcoreaddons wayland gcc-libs glibc)
 makedepends=(cargo cmake ninja corrosion git)
 options=(!lto !debug)
-source=("snip::git+file://${SNIP_REPO:-$HOME/Development/OpenShotX}#branch=spikes/m0"
+source=("snip::git+file://${SNIP_REPO:-$HOME/Development/OpenShotX}#branch=main"
         "cxx-qt-cmake::git+https://github.com/kdab/cxx-qt-cmake.git#tag=0.10.0")
 sha256sums=('SKIP' 'SKIP')
 

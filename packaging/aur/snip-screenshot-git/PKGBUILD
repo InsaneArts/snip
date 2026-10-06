@@ -18,7 +18,7 @@ optdepends=('tesseract-data-eng: Capture Text (OCR)'
 provides=(snip-screenshot)
 conflicts=(snip-screenshot)
 options=(!lto)
-source=("snip::git+file://${SNIP_REPO:-$HOME/Development/OpenShotX}#branch=${SNIP_BRANCH:-m1}"
+source=("snip::git+file://${SNIP_REPO:-$HOME/Development/OpenShotX}#branch=${SNIP_BRANCH:-main}"
         "cxx-qt-cmake::git+https://github.com/kdab/cxx-qt-cmake.git#tag=0.10.0")
 sha256sums=('SKIP' 'SKIP')
 
