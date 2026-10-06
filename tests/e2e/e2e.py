@@ -87,6 +87,7 @@ class Snip:
                 self.proc.wait(3)
             except subprocess.TimeoutExpired:
                 self.proc.kill()
+        shutil.rmtree(self.run_dir, ignore_errors=True)
 
     def cli(self, *args, check=True, timeout=30):
         r = subprocess.run([str(self.build / "snip"), *args], env=self.env, capture_output=True, text=True, timeout=timeout)
