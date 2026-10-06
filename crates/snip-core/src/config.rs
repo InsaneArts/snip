@@ -13,6 +13,8 @@ pub struct General {
     pub export_dir: String,
     pub file_name: String,
     pub format: ImageFormat,
+    /// JPG quality (1-100)
+    pub jpg_quality: u8,
     /// Decided 2026-10-06: Save writes the file *and* copies it.
     pub save_also_copies: bool,
     pub sounds: bool,
@@ -175,6 +177,7 @@ impl Default for General {
             export_dir: crate::paths::default_screenshot_dir().to_string_lossy().into_owned(),
             file_name: crate::naming::DEFAULT_TEMPLATE.into(),
             format: ImageFormat::Png,
+            jpg_quality: 90,
             save_also_copies: true,
             sounds: true,
             external_editor: "tensaku-edit".into(),
@@ -250,6 +253,14 @@ impl Config {
 
     pub fn export_dir(&self) -> PathBuf {
         crate::paths::expand(&self.general.export_dir)
+    }
+
+    pub fn export_format(&self) -> crate::encode::Export {
+        match self.general.format {
+            ImageFormat::Png => crate::encode::Export::Png,
+            ImageFormat::Jpg => crate::encode::Export::Jpg(self.general.jpg_quality),
+            ImageFormat::Webp => crate::encode::Export::Webp,
+        }
     }
 }
 

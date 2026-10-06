@@ -16,6 +16,8 @@ serde_json = "1"
 toml_edit = { version = "0.22", features = ["serde"] }
 rusqlite = "0.32"
 png = "0.18"
+jpeg-encoder = "0.7"
+image-webp = "0.2"
 rustix = { version = "1", features = ["fs", "mm", "time", "pipe", "net", "process"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 ulid = "1"

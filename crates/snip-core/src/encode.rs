@@ -65,6 +65,76 @@ pub fn crop_and_encode(frame: &Frame, sel: Rect) -> Encoded {
     }
 }
 
+/// Decode a PNG into tightly packed RGB or RGBA (8-bit).
+pub fn decode_png(bytes: &[u8]) -> Result<(Vec<u8>, u32, u32, bool), String> {
+    let mut dec = png::Decoder::new(std::io::Cursor::new(bytes));
+    dec.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
+    let mut r = dec.read_info().map_err(|e| e.to_string())?;
+    let mut buf = vec![0; r.output_buffer_size().ok_or("png too large")?];
+    let info = r.next_frame(&mut buf).map_err(|e| e.to_string())?;
+    buf.truncate(info.buffer_size());
+    let (buf, alpha) = match info.color_type {
+        png::ColorType::Rgba => (buf, true),
+        png::ColorType::Rgb => (buf, false),
+        png::ColorType::GrayscaleAlpha => (buf.chunks_exact(2).flat_map(|p| [p[0], p[0], p[0], p[1]]).collect(), true),
+        _ => (buf.iter().flat_map(|&g| [g, g, g]).collect(), false),
+    };
+    Ok((buf, info.width, info.height, alpha))
+}
+
+/// Export format for Save (SET-06). The history keeps PNG; Save transcodes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Export {
+    Png,
+    /// quality 1..=100; transparency is flattened onto white
+    Jpg(u8),
+    /// lossless
+    Webp,
+}
+
+impl Export {
+    pub fn ext(self) -> &'static str {
+        match self {
+            Export::Png => "png",
+            Export::Jpg(_) => "jpg",
+            Export::Webp => "webp",
+        }
+    }
+}
+
+/// PNG bytes -> the export format.
+pub fn transcode(png_bytes: &[u8], to: Export) -> Result<Vec<u8>, String> {
+    if to == Export::Png {
+        return Ok(png_bytes.to_vec());
+    }
+    let (px, w, h, alpha) = decode_png(png_bytes)?;
+    let mut out = Vec::new();
+    match to {
+        Export::Png => unreachable!(),
+        Export::Jpg(q) => {
+            let rgb: Vec<u8> = if alpha {
+                px.chunks_exact(4)
+                    .flat_map(|p| {
+                        let a = p[3] as u32;
+                        let f = |c: u8| ((c as u32 * a + 255 * (255 - a)) / 255) as u8;
+                        [f(p[0]), f(p[1]), f(p[2])]
+                    })
+                    .collect()
+            } else {
+                px
+            };
+            let enc = jpeg_encoder::Encoder::new(&mut out, q.clamp(1, 100));
+            enc.encode(&rgb, w as u16, h as u16, jpeg_encoder::ColorType::Rgb).map_err(|e| e.to_string())?;
+        }
+        Export::Webp => {
+            let enc = image_webp::WebPEncoder::new(&mut out);
+            let ct = if alpha { image_webp::ColorType::Rgba8 } else { image_webp::ColorType::Rgb8 };
+            enc.encode(&px, w, h, ct).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(out)
+}
+
 /// Ignore the X byte of XRGB when it isn't meaningful; used by tests.
 pub fn is_opaque_format(f: PixelFormat) -> bool {
     !f.has_alpha()
@@ -111,6 +181,19 @@ mod tests {
         assert_eq!(f.upright_size(), (8, 16));
         let (_, w, h, _) = crop_upright(&f, Rect::new(1, 2, 3, 5));
         assert_eq!((w, h), (3, 5));
+    }
+
+    #[test]
+    fn transcodes_to_jpg_and_webp() {
+        let f = synthetic(64, 32, Transform::Normal);
+        let png = crop_and_encode(&f, Rect::new(0, 0, 64, 32)).png;
+        let jpg = transcode(&png, Export::Jpg(90)).unwrap();
+        assert_eq!(&jpg[..3], &[0xFF, 0xD8, 0xFF]);
+        let webp = transcode(&png, Export::Webp).unwrap();
+        assert_eq!(&webp[..4], b"RIFF");
+        assert_eq!(&webp[8..12], b"WEBP");
+        let (_, w, h, _) = decode_png(&png).unwrap();
+        assert_eq!((w, h), (64, 32));
     }
 
     #[test]

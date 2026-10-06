@@ -757,7 +757,8 @@ impl Inner {
         let id = id.to_string();
         std::thread::spawn(move || {
             let Ok(bytes) = me.store.bytes(&id) else { return };
-            let Ok((data, w, h, bpp)) = decode_png(&bytes) else { return };
+            let Ok((data, w, h, alpha)) = encode::decode_png(&bytes) else { return };
+            let bpp = if alpha { 4 } else { 3 };
             let langs = me.ocr_languages();
             match ocr::recognize(&data, w, h, bpp, 2.0, &langs) {
                 Ok(t) if !t.trim().is_empty() => {
@@ -1014,28 +1015,6 @@ fn spawn_detached(cmd: &str, args: &[&str]) {
     }
 }
 
-fn decode_png(bytes: &[u8]) -> Result<(Vec<u8>, u32, u32, usize), String> {
-    let mut dec = png::Decoder::new(std::io::Cursor::new(bytes));
-    dec.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
-    let mut r = dec.read_info().map_err(|e| e.to_string())?;
-    let mut buf = vec![0; r.output_buffer_size().ok_or("png too large")?];
-    let info = r.next_frame(&mut buf).map_err(|e| e.to_string())?;
-    buf.truncate(info.buffer_size());
-    let bpp = match info.color_type {
-        png::ColorType::Rgba => 4,
-        png::ColorType::Rgb => 3,
-        png::ColorType::GrayscaleAlpha => {
-            buf = buf.chunks_exact(2).flat_map(|p| [p[0], p[0], p[0], p[1]]).collect();
-            4
-        }
-        _ => {
-            buf = buf.iter().flat_map(|&g| [g, g, g]).collect();
-            3
-        }
-    };
-    Ok((buf, info.width, info.height, bpp))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1049,7 +1028,5 @@ mod tests {
     fn png_size_reads_ihdr() {
         let png = encode::encode_png(&[0u8; 3 * 6], 3, 2, false);
         assert_eq!(png_size(&png), Some((3, 2)));
-        let (d, w, h, bpp) = decode_png(&png).unwrap();
-        assert_eq!((d.len(), w, h, bpp), (18, 3, 2, 3));
     }
 }

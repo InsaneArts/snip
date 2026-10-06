@@ -149,8 +149,9 @@ impl Store {
     /// Save to the export folder with the name template. Never overwrites.
     pub fn save(&self, id: &str, cfg: &Config, now: chrono::DateTime<chrono::Local>) -> Result<PathBuf, StoreError> {
         let rec = self.get(id)?;
-        if let Some(p) = rec.saved.as_ref().filter(|p| p.exists()) {
-            return Ok(p.clone()); // already saved: Save is idempotent
+        let ext = cfg.export_format().ext();
+        if let Some(p) = rec.saved.as_ref().filter(|p| p.exists() && p.extension().is_some_and(|e| e == ext)) {
+            return Ok(p.clone()); // already saved in this format: Save is idempotent
         }
         let bytes = self.bytes(id)?;
         let dir = cfg.export_dir();
@@ -162,8 +163,10 @@ impl Store {
             random: id.chars().rev().take(4).collect(),
         };
         let stem = naming::render(&cfg.general.file_name, now, &ctx);
-        let path = naming::unique_path(&dir, &stem, "png");
-        atomic_write(&path, &bytes)?;
+        let fmt = cfg.export_format();
+        let out = crate::encode::transcode(&bytes, fmt).map_err(|e| StoreError::Io(std::io::Error::other(e)))?;
+        let path = naming::unique_path(&dir, &stem, fmt.ext());
+        atomic_write(&path, &out)?;
         self.history.lock().unwrap().set_saved(id, &path)?;
         Ok(path)
     }
