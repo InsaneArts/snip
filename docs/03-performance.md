@@ -14,7 +14,7 @@ Every number here is a **budget we test against**, not a hope. The "Evidence" co
 
 | Interaction | Budget | Floor / evidence | How it is achieved |
 |---|---|---|---|
-| Hotkey to frozen overlay presented | **≤ 35 ms** (cold ≤ 300 ms) | One commit (≤ 7 ms at 144 Hz, 16.7 at 60) plus compositor readback 4–12 ms plus upload 2–5 ms (E). Cold: exec 35–50 ms (M) plus EGL 19–25 ms (M) plus GL context 6–7 ms (M) plus QML | global-shortcuts protocol (no spawn); preallocated memfd buffers; fresh capture session; content attached on the first commit; no layer animation |
+| Hotkey to frozen overlay presented | **≤ 35 ms** (cold ≤ 300 ms). **Measured S01: p95 16.4 ms to swap (≤ 23 ms on screen); cold ≈ 170 ms** | One commit (≤ 7 ms at 144 Hz, 16.7 at 60) plus compositor readback 4–12 ms plus upload 2–5 ms (E). Cold: exec 35–50 ms (M) plus EGL 19–25 ms (M) plus GL context 6–7 ms (M) plus QML | global-shortcuts protocol (no spawn); preallocated memfd buffers; fresh capture session; content attached on the first commit; no layer animation |
 | Pointer motion to updated selection chrome | ≤ 1 frame (6.9 ms at 144 Hz) | Qt Quick: one full-screen textured quad plus a few nodes, about 0.2–1 ms per frame on a GPU (E) | only the chrome changes; no CPU raster of the full frame (Omasnap needed 60 Hz caps and damage tracking on a CPU path) |
 | Release to overlay gone and QAO card visible | ≤ 2 frames | — | unmap first; thumbnail made by a GPU or box downscale (1–4 ms, M) |
 | Release to capture persisted in history (fast PNG, thumbnail, DB row) | **≤ 30 ms** at 3440×1440, ≤ 40 ms at 4K | crop < 5 ms (E) plus fdeflate PNG 6.5–8.6 ms (3440×1440) or 11–16 ms (4K) (M) plus a tmpfs/SSD write | encode on a worker at once |
@@ -50,8 +50,9 @@ Every number here is a **budget we test against**, not a hope. The "Evidence" co
 
 | Resource | Budget | Notes |
 |---|---|---|
-| Daemon RSS, idle (no windows) | **≤ 40 MB** | No GL context while idle. The NVIDIA driver maps about 65 MB per context (M), so we keep only `EGLDisplay` warm, or nothing in "low memory" mode. |
-| Daemon RSS, overlay up, 1 × 3440×1440 | ≤ 160 MB | frame 19.8 MB plus texture plus driver |
+| Daemon memory, idle **without** a GPU context | **≤ 50 MB PSS** | Measured 46 MB PSS (26 MB private) in spike S01. RSS (about 128 MB) is mostly shared Qt and driver pages, so PSS is the honest metric. |
+| Daemon memory, warm (GPU context kept for instant overlays) | **≤ 120 MB PSS**, flat over time | Measured 106 MB PSS, flat over 65 shows (S01). Policy: keep warm for 10 min after last use, then release the context (next capture +≈ 90 ms). Configurable. |
+| Daemon RSS, overlay up, 1 × 3440×1440 | ≤ 210 MB RSS | Measured about 204 MB RSS (S01): frame 19.8 MB plus texture plus driver |
 | Daemon RSS, 3 × 4K overlays | ≤ 320 MB transient | 95 MiB raw (M) plus textures |
 | Pixel cache budget | 384 MiB default (configurable) | hot/warm/cold tiers (architecture §6.11) |
 | Idle CPU | 0 %; **no periodic wake-ups** | event-driven only: no polling of hyprctl or cursor position; ONNX Runtime `allow_spinning=0` |

@@ -16,3 +16,4 @@
 # Spike artefacts (measurements are committed as markdown in docs/spikes/)
 spikes/**/out/
 *.png.tmp
+.qmlls.ini

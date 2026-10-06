@@ -378,7 +378,7 @@ Inside overlays (no Hyprland binds needed, because the overlay has keyboard focu
 - Hotkey to first overlay frame: p95 under 35 ms warm, under 300 ms cold. The floor is one compositor commit plus its readback, about 7–25 ms.
 - Mouse release to capture persisted in history: p95 under 30 ms for 3440×1440. Copy action to `image/png` on the clipboard: p95 under 5 ms.
 - Recording at 3440×1440@60 on the RTX 4080: 0 dropped frames over 10 minutes, under 5 % of one CPU core.
-- Daemon idle: under 40 MB RSS, 0 % CPU, no wakeups while idle.
+- Daemon idle: ≤ 50 MB PSS without a GPU context, ≤ 120 MB PSS while kept warm (measured 46 / 106 MB in spike S01); 0 % CPU and no wakeups while idle.
 - Zero crashes of the user's desktop shell caused by Snip (an architectural requirement; see the architecture doc).
 
 ## 9. Product questions

@@ -1,0 +1,27 @@
+[package]
+name = "snip_spike"
+version = "0.0.1"
+edition = "2021"
+license = "GPL-3.0-or-later"
+publish = false
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+cxx = "1"
+cxx-qt = "0.10"
+cxx-qt-lib = "0.10"
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client", "staging"] }
+wayland-protocols-hyprland = { version = "1.2", features = ["client"] }
+calloop = "0.14"
+calloop-wayland-source = "0.4"
+rustix = { version = "1", features = ["fs", "mm", "time", "pipe"] }
+png = "0.18"
+
+[build-dependencies]
+cxx-qt-build = { version = "0.10", features = ["link_qt_object_files"] }
+
+[profile.release]
+debug = 1
