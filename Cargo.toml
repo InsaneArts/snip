@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/snip-core", "crates/snip-wayland"]
+members = ["crates/snip-core", "crates/snip-wayland", "crates/snip-hypr", "crates/snip-ipc", "crates/snip-cli"]
 
 [workspace.package]
 version = "0.1.0"

@@ -1,0 +1,14 @@
+[package]
+name = "snip-cli"
+description = "snip: command-line client for snipd (no Qt; starts in ~1 ms)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "snip"
+path = "src/main.rs"
+
+[dependencies]
+snip-ipc = { path = "../snip-ipc" }
+serde_json.workspace = true

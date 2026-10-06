@@ -1,0 +1,9 @@
+[package]
+name = "snip-hypr"
+description = "Hyprland IPC: one-shot requests, socket2 events, runtime rules"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde_json.workspace = true
