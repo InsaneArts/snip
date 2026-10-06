@@ -254,7 +254,7 @@ OpLog        append-only [{seq, op, args, inverse}]  → undo/redo, crash recove
   - **Export = an offscreen render of the same scene** (`QQuickRenderControl`) at native pixel size, tiled when it is larger than `GL_MAX_TEXTURE_SIZE` (scroll captures). This gives a single renderer, so preview equals output.
   - Qt Canvas Painter (6.11 tech preview) is assessed in spike S8 as a simpler alternative.
 - **Redaction is security-critical.** Pixelating and blurring text can be reversed (Hill et al. 2016: 94–96 % recovery; Depix; Unredacter). So:
-  1. The default **Redact** style is an opaque solid fill.
+  1. The default style of the Pixelate/Blur tool is **Pixelate**, as in CleanShot (D26); Black out (opaque fill) is one click away.
   2. The "Pixelate" and "Blur" styles **build their look from pixels outside the region** (Flameshot 13's approach) or from seeded random tiles. Styles that use the content itself are labelled "not secure".
   3. Redaction is flattened into the source pixels at export. Exports carry no layers, history or private chunks.
   4. Files are written as temp, then fsync, then rename: no aCropalypse-style tail leaks.
