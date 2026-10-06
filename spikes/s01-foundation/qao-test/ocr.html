@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>SNIP-OCR</title>
+<style>
+  html, body { margin: 0; background: #888; }
+  #marker { position: absolute; left: 0; top: 0; width: 100px; height: 10px; background: #2d0a4e; }
+  .s { position: absolute; width: 560px; padding: 14px 18px; box-sizing: border-box; white-space: pre; line-height: 1.45; }
+  .ui-light { background: #ffffff; color: #1d1d1f; font: 13px system-ui, sans-serif; }
+  .ui-dark { background: #1e1e22; color: #e6e6e6; font: 13px system-ui, sans-serif; }
+  .small { background: #fafafa; color: #8a8a8a; font: 11px system-ui, sans-serif; }
+  .code { background: #0f111a; color: #c3cee3; font: 13px "JetBrains Mono", monospace; }
+  .kat { background: #ffffff; color: #222; font: 15px "Noto Sans Georgian", system-ui, sans-serif; white-space: pre-wrap; }
+  .rus { background: #ffffff; color: #222; font: 14px system-ui, sans-serif; white-space: pre-wrap; }
+  .mixed { background: #f3f0ff; color: #2a1f5a; font: 14px system-ui, sans-serif; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<div id="marker"></div>
+<div id="samples"></div>
+<script>
+const S = window.SAMPLES = {
+  "ui-light": "Show Quick Access Overlay\nCapture history: keep for 1 week\nSave also copies to clipboard\nExport folder: ~/Pictures/Screenshots\nShortcut: Super+Shift+4",
+  "ui-dark": "Recording 00:12  ·  1920 × 1080  ·  60 fps\nMicrophone: Built-in Audio Analog Stereo\nSystem audio: on   Keystrokes: off\nPress Esc to cancel or Enter to start",
+  "small": "Last updated 6 Oct 2026, 20:41 by gomareli\nRetention removes captures older than 7 days.\nTip: hold Alt while dragging to keep the card.",
+  "code": "fn crop_png(b: &ShmBuf, x: i32, y: i32) -> Encoded {\n    let stride = b.stride as usize;\n    for row in y..y + h {\n        if row % 2 == 0 {\n            rgb.push(px[2]);\n        }\n    }\n}",
+  "kat": "გამარჯობა, ეს არის ტექსტის ამოცნობის ტესტი.\nეკრანის ანაბეჭდი შეინახება ისტორიაში.\nდააკოპირეთ სურათი ან შეინახეთ ფაილად.",
+  "rus": "Быстрый снимок экрана и распознавание текста.\nИстория снимков хранится одну неделю.\nНажмите Esc, чтобы отменить выделение.",
+  "mixed": "Snip — სკრინშოტები Omarchy-სთვის\nVersion 0.1 · ვერსია 0.1 · build 2026-10-06",
+};
+const order = ["ui-light", "ui-dark", "small", "code", "kat", "rus", "mixed"];
+const box = document.getElementById('samples');
+order.forEach((k, i) => {
+  const d = document.createElement('div');
+  d.className = 's ' + k; d.id = k; d.textContent = S[k];
+  d.style.left = (20 + (i % 3) * 580) + 'px'; d.style.top = (30 + Math.floor(i / 3) * 230) + 'px';
+  box.appendChild(d);
+});
+// expose layout for the driver
+window.LAYOUT = order.map(k => { const r = document.getElementById(k).getBoundingClientRect(); return { k, x: r.left, y: r.top, w: r.width, h: r.height }; });
+document.title = 'SNIP-OCR ' + JSON.stringify(window.LAYOUT.map(o => [o.k, Math.round(o.x), Math.round(o.y), Math.round(o.w), Math.round(o.h)]));
+</script>
+</body>
+</html>

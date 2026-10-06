@@ -253,7 +253,7 @@ A normal floating window (Hyprland rule: float, centred, with optional pin / alw
 | OCR-01 | Select a region and copy the recognised text; toast "Text copied" or "No text detected" | P0 | On-device only. |
 | OCR-02 | Keep line breaks: setting plus separate hotkeys (with or without line breaks) | P0 | |
 | OCR-03 | QR and barcode detection: show the decoded value; "Open link?" with an Always/Never preference | P0 | 2D codes by default; 1D codes opt-in (they false-positive on dense UI). Values are copied as **sensitive**, because OTP URIs are secrets and Omarchy's clipboard history skips sensitive entries. |
-| OCR-04 | Languages: automatic, or a pinned list. **Georgian, Cyrillic and CJK supported** | P0 | Engine choice is in the architecture doc. |
+| OCR-04 | Languages: automatic, or a pinned list. **Georgian, Cyrillic and CJK supported** | P0 | **Spike S07:** Tesseract + `tessdata_fast` + upscale/invert + TSV clean-up gives 0 % CER on Georgian, 2.5 % on Russian, 0–2 % on UI text, 6.6 % on mixed Georgian/English, at about 50–65 ms per region. CJK still needs testing. |
 | OCR-05 | Link detection in the result (setting) | P0 | |
 | OCR-06 | OCR from a file, the clipboard, a pin, a QAO card or a video frame | P0 | |
 
