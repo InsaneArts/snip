@@ -87,6 +87,9 @@ QtObject {
             color: "black"
             flags: Qt.FramelessWindowHint
 
+            // LayerShellQt >= 6.6: the output must be set here; QWindow::screen alone
+            // is not reliably honoured (spike S01: both overlays landed on DP-2).
+            LayerShell.Window.screen: ScreenLookup.byName(win.modelData.name)
             LayerShell.Window.scope: "snip-select"
             LayerShell.Window.layer: LayerShell.Window.LayerOverlay
             LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorBottom

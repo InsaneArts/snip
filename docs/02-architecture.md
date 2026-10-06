@@ -208,7 +208,12 @@ OpLog        append-only [{seq, op, args, inverse}]  → undo/redo, crash recove
 ## 6. Subsystems
 
 ### 6.1 Selection overlay
-- One `LayerShellQt` window per output: layer `overlay`, anchored on all edges, `exclusive_zone=-1`, keyboard exclusive, namespace `snip-select`. The frozen texture is drawn by a custom `QQuickItem` sampling 1:1 (`smooth:false`, origin snapped to device pixels).
+- One `LayerShellQt` window per output, **created from C++ for each `QScreen` and passed the real `QScreen*`** through `LayerShellQt::Window::setScreen` (spike S01: QML screen wrappers put every overlay on the first monitor). Layer `overlay`, anchored on all edges, `exclusive_zone=-1`, keyboard exclusive, namespace `snip-select`.
+- The frozen texture is drawn by a custom `QQuickItem`:
+  - a geometry node with nearest sampling and the origin at device pixel 0;
+  - texture coordinates apply the frame's `wl_output` transform (`rotate_ccw^k(flip?(u,v))`).
+  
+  It is verified pixel-exact at scales 1, 1.25, 1.5, 5/3 and 2 and transforms 0, 1, 3, 4 and 5 (S01).
 - All coordinates are in physical pixels internally. Logical↔physical conversion goes through one tested module. It covers fractional scales N/120, all 8 transforms, and negative global coordinates (floor division).
 - Window and monitor hit-testing reuses Omarchy's semantics: the smallest containing rectangle wins; Tab and arrow keys cycle.
 - Keyboard is routed centrally (focus lands on one overlay, so the overlay under the pointer forwards).

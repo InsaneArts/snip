@@ -438,7 +438,16 @@ impl State {
                         parts.push(format!("{{\"output\":\"{name}\",\"error\":\"missing buffer\"}}"));
                         continue;
                     };
-                    parts.push(diff_report(name, &a.buf, &b.buf));
+                    let rep = diff_report(name, &a.buf, &b.buf);
+                    if let Ok(dir) = std::env::var("SNIP_DUMP_DIR") {
+                        if !rep.contains("\"diff_pixels\":0,") {
+                            for (tag, buf) in [("freeze", &a.buf), ("verify", &b.buf)] {
+                                let e = crate::encode::crop_png(buf, 0, 0, buf.width as i32, buf.height as i32);
+                                let _ = std::fs::write(format!("{dir}/{name}-{tag}.png"), &e.png);
+                            }
+                        }
+                    }
+                    parts.push(rep);
                 }
                 (self.ui)(UiEvent::VerifyDone { report: format!("[{}]", parts.join(",")) });
             }

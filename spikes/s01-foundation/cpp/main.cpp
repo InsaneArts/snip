@@ -5,6 +5,8 @@
 #include <time.h>
 
 #include "frozenframe.h"
+#include "screens.h"
+#include <QQmlContext>
 #include "snip_spike/src/bridge.cxxqt.h"
 
 static double
@@ -41,7 +43,9 @@ main(int argc, char* argv[])
 
   qmlRegisterType<FrozenFrame>("SnipCpp", 1, 0, "FrozenFrame");
 
+  ScreenLookup screenLookup; // must outlive the engine (bindings re-evaluate on teardown)
   QQmlApplicationEngine engine;
+  engine.rootContext()->setContextProperty(QStringLiteral("ScreenLookup"), &screenLookup);
   engine.setInitialProperties({ { QStringLiteral("mode"), mode } });
   engine.load(QUrl(QStringLiteral("qrc:/qt/qml/com/snip/spike/qml/Main.qml")));
   if (engine.rootObjects().isEmpty())

@@ -50,6 +50,8 @@ Format: *situation* → **expected behaviour**. IDs link to the product spec.
 - Rotated monitor (transform 1/3, or a flipped variant 4–7) → the frozen frame is shown with the buffer transform; the selection is mapped through the inverse transform; the output is upright.
 - A monitor at negative global coordinates → only matters for hyprctl and gsr conversions (floor division); tested.
 - Scale 5/3 → physical rectangles that integer logical coordinates can't express are fine for stills (we crop from memory). Recording snaps to the nearest rectangle gsr can express.
+- **Software cursor active** (tearing, `no_hardware_cursors`, or a headless or virtual output such as a streaming dummy plug) → the cursor is baked into monitor captures, so the frozen frame and the screenshot would contain it (seen in spike S01). → For the capture frame only, set `cursor:invisible` (or force hardware cursors, as Omarchy does) and restore it immediately. "Show cursor" draws the cursor ourselves from the cursor session.
+- **Overlay placement on multi-monitor** → each overlay's layer surface must get the real `QScreen*` through LayerShellQt's `screen`. QML screen wrappers silently place every overlay on the first monitor (spike S01 bug).
 - A fullscreen game with tearing or direct scanout → capture forces compositing (one hitch). Software cursor → excluded from screenshots by Omarchy's workaround; we use the cursor session for "show cursor".
 - 10-bit monitor with `screencopy_force_8b=false` → convert `XBGR2101010` to 8-bit sRGB correctly (not the format-flip hack).
 - HDR monitor → the frozen frame is tone-mapped sRGB, so HDR content looks different during the freeze. Document it; don't fight it.

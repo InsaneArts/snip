@@ -368,12 +368,13 @@ A normal floating window (Hyprland rule: float, centred, with optional pin / alw
 | `ALT+PRINT` | Record screen (pressed again: stop) | Omarchy's habit |
 | `SUPER+CTRL+PRINT` | Capture Text | Omarchy's habit |
 | `SUPER+PRINT` | Unchanged (hyprpicker colour picker) | |
-| unbound by default | All-In-One, scrolling, previous area, self-timer, pin last, history, restore last, toggle pins, hide or show overlays | Open: `SUPER+SHIFT+5` for All-In-One (macOS Cmd+Shift+5)? It would replace *Move window to workspace 5*. |
+| `SUPER+SHIFT+5` | **All-In-One** (decided 2026-10-06; macOS Cmd+Shift+5) | Replaces Omarchy's *Move window to workspace 5* (`code:14`) |
+| unbound by default | scrolling, previous area, self-timer, pin last, history, restore last, toggle pins, hide or show overlays | |
 
 **Conflict handling (onboarding, Q3 "offer"):**
-- Omarchy binds `SUPER+SHIFT+1…0` to *Move window to workspace N*. Taking 3 and 4 removes two of those.
-- Onboarding shows this, offers the swap, and keeps *Move window silently to workspace 3/4* (`SUPER+SHIFT+ALT+3/4`) untouched.
-- It offers an alternative pair (for example `SUPER+CTRL+SHIFT+3/4`) for users who rely on moving windows to workspaces 3 and 4.
+- Omarchy binds `SUPER+SHIFT+1…0` to *Move window to workspace N*. Taking 3, 4 and 5 removes three of those.
+- Onboarding shows this, offers the swap, and keeps *Move window silently to workspace 3/4/5* (`SUPER+SHIFT+ALT+3/4/5`) untouched.
+- It offers an alternative set (for example `SUPER+CTRL+SHIFT+3/4/5`) for users who rely on moving windows to workspaces 3, 4 and 5.
 - The binds are written as `hl.unbind("SUPER + SHIFT + code:12")` plus `hl.bind(..., hl.dsp.global("snip:fullscreen"))` in Snip's Lua module, so removing `require("snip")` restores Omarchy's defaults.
 - In spike S01 they were applied at runtime with exactly these calls, and `hyprctl reload` restores Omarchy's bindings.
 

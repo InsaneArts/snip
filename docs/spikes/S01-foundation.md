@@ -112,7 +112,35 @@ Copying a 1600×900 region from the frozen frame:
 2. **Performance budgets updated:** the PSS-based idle budget, and the keep-warm policy.
 3. **Startup:** unsetting `QT_QPA_PLATFORMTHEME` is confirmed worthwhile (QGuiApplication in 4 ms).
 
+## Round 1b: multi-monitor, scales and transforms (2026-10-06)
+
+**Method.** `multiscale.sh` adds a temporary headless output (`hyprctl output create headless SNIPTEST`, 1920×1080) next to DP-2. For each scale and transform it runs `--selftest`, which captures every output, shows the overlays, re-captures and diffs per output. Then it removes the output.
+
+**Final results** (after the fixes below):
+
+| Second output | DP-2 (1.25) | SNIPTEST |
+|---|---|---|
+| scale 1, 1.25, 1.5, 5/3, 2 (transform 0) | 0 * | **0** |
+| 1.25, transform 1 (90°) | 0 * | **0** |
+| 1.5, transform 3 (270°) | 0 * | **0** |
+| 2, transform 4 (flipped) | 0 * | **0** |
+| 5/3, transform 5 (flipped-90), cursor hidden | **0** | **0** |
+
+\* With a headless output present, DP-2 showed exactly **309 px in a 20×29 box at the cursor position**. With `cursor:invisible` set, the diff was **0**. Hyprland falls back to a **software cursor**, which is baked into captures, and the overlay changes its shape (arrow to crosshair). This confirms the software-cursor edge case from the platform research.
+
+**Bugs found and fixed (all carry over to the product):**
+1. **Every overlay landed on the first monitor.** The cause: QML's `Qt.application.screens` yields `QQuickScreenInfo` wrappers. Neither `Window.screen` nor LayerShellQt's `screen` (which wants a `QScreen*`) placed the layer surface correctly. **Fix:** pass the real `QScreen*` (C++ `ScreenLookup.byName`) to `LayerShell.Window.screen`. The product creates its overlay windows from C++, one per `QScreen`.
+2. **Rotated and flipped outputs were fully wrong.** The captured buffer is in the panel's native orientation (`frame.transform` = the transform applied to the contents). **Fix:** draw with a geometry node whose texture coordinates are `rotate_ccw^k(flip?(u,v))`. All transforms tested (0, 1, 3, 4, 5) are exact.
+3. Minor: a context-property object must outlive the QML engine (bindings re-evaluate during teardown).
+
+**Still open for the product:**
+- **Crop and export on rotated outputs.** Map the selection to buffer coordinates and un-rotate the cropped pixels. The display is correct; the copy path in the spike still assumes transform 0.
+- **Software-cursor policy.** When Hyprland renders the cursor in software (tearing, `no_hardware_cursors`, or a headless or virtual output present), monitor captures contain the cursor. The plan:
+  - for the one capture frame, set `cursor:invisible` (eval, about 1–2 ms) or force hardware cursors, as Omarchy does, then restore;
+  - when "show cursor" is on, draw the cursor ourselves from the ext cursor session.
+- **Input routing across monitors** with exclusive keyboard on every overlay (R18). Rendering is correct; pointer and keyboard routing needs synthetic input. It moves to Round 2, which builds virtual-pointer test input anyway.
+
 ## Next (Round 1 leftovers)
-- Scales 1.5, 5/3 and 2 and a rotated output, via a temporary `hyprctl output create headless` monitor (a few seconds; needs the user's OK because it briefly adds a virtual monitor).
-- Multi-monitor exclusive-keyboard routing (R18), on the same headless monitor.
+- ~~Scales 1.5, 5/3 and 2 and rotated outputs~~ done (Round 1b).
+- Multi-monitor input routing (R18), moved to Round 2 (synthetic input).
 - `wp_presentation` feedback for exact photon time (currently swap plus ≤ 1 refresh).

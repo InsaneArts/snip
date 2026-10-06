@@ -31,7 +31,8 @@ cxx_qt_import_qml_module(snip_spike_qml
 add_executable(snip-spike
   cpp/main.cpp
   cpp/frozenframe.cpp
-  cpp/frozenframe.h)
+  cpp/frozenframe.h
+  cpp/screens.h)
 
 target_link_libraries(snip-spike PRIVATE snip_spike_qml Qt::Quick)
 qt_import_qml_plugins(snip-spike)

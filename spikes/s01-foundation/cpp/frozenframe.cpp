@@ -2,7 +2,8 @@
 
 #include <QImage>
 #include <QQuickWindow>
-#include <QSGSimpleTextureNode>
+#include <QSGGeometryNode>
+#include <QSGTextureMaterial>
 #include <cmath>
 #include <time.h>
 
@@ -21,6 +22,25 @@ void
 mark(const QString& ev, const QString& extra = {})
 {
   snip::mark_time(ev, extra);
+}
+// Display corner (u,v) in [0,1]^2 -> buffer texture coordinate, for a buffer
+// whose contents had wl_output transform `t` applied (ext-image-copy-capture
+// frame.transform): buffer = rotate_ccw^k(flip?(content)).
+QPointF
+bufferCoord(double u, double v, unsigned t)
+{
+  if (t >= 4)
+    u = 1.0 - u; // flipped variants: flip around the vertical axis first
+  switch (t % 4) {
+    case 1:
+      return { v, 1.0 - u }; // 90 ccw
+    case 2:
+      return { 1.0 - u, 1.0 - v }; // 180
+    case 3:
+      return { 1.0 - v, u }; // 270 ccw
+    default:
+      return { u, v };
+  }
 }
 } // namespace
 
@@ -81,7 +101,7 @@ FrozenFrame::toPhysical(const QRectF& l) const
 QSGNode*
 FrozenFrame::updatePaintNode(QSGNode* old, UpdatePaintNodeData*)
 {
-  auto* node = static_cast<QSGSimpleTextureNode*>(old);
+  auto* node = static_cast<QSGGeometryNode*>(old);
   if (m_epoch != m_uploadedEpoch) {
     const snip::FrameInfo fi = snip::frame_info(m_output);
     if (fi.valid) {
@@ -93,27 +113,46 @@ FrozenFrame::updatePaintNode(QSGNode* old, UpdatePaintNodeData*)
                        qsizetype(fi.stride),
                        QImage::Format_RGB32);
       QSGTexture* tex = window()->createTextureFromImage(img, QQuickWindow::TextureIsOpaque);
+      tex->setFiltering(QSGTexture::Nearest);
       if (!node) {
-        node = new QSGSimpleTextureNode;
-        node->setOwnsTexture(true);
+        node = new QSGGeometryNode;
+        auto* geom = new QSGGeometry(QSGGeometry::defaultAttributes_TexturedPoint2D(), 4);
+        geom->setDrawingMode(QSGGeometry::DrawTriangleStrip);
+        node->setGeometry(geom);
+        node->setFlag(QSGNode::OwnsGeometry);
+        auto* mat = new QSGOpaqueTextureMaterial;
+        node->setMaterial(mat);
+        node->setFlag(QSGNode::OwnsMaterial);
       }
-      node->setTexture(tex);
-      node->setFiltering(QSGTexture::Nearest);
+      auto* mat = static_cast<QSGOpaqueTextureMaterial*>(node->material());
+      delete mat->texture();
+      mat->setTexture(tex);
+      mat->setFiltering(QSGTexture::Nearest);
+      m_transform = fi.transform;
       m_uploadedEpoch = m_epoch;
       m_awaitSwapEpoch.store(m_epoch);
       mark(QStringLiteral("texture_uploaded"),
-           QStringLiteral("\"output\":\"%1\",\"epoch\":%2,\"upload_ms\":%3,\"dpr\":%4,\"item\":[%5,%6]")
+           QStringLiteral("\"output\":\"%1\",\"epoch\":%2,\"upload_ms\":%3,\"dpr\":%4,\"item\":[%5,%6],\"transform\":%7")
              .arg(m_output)
              .arg(m_epoch)
              .arg(double(nowNs() - t0) / 1e6, 0, 'f', 2)
              .arg(window()->effectiveDevicePixelRatio())
              .arg(width())
-             .arg(height()));
+             .arg(height())
+             .arg(fi.transform));
     }
   }
   if (!node)
     return nullptr;
-  node->setRect(boundingRect());
+  // Strip order: TL, BL, TR, BR.
+  const double w = width(), h = height();
+  const double us[4] = { 0, 0, 1, 1 }, vs[4] = { 0, 1, 0, 1 };
+  auto* v = node->geometry()->vertexDataAsTexturedPoint2D();
+  for (int i = 0; i < 4; ++i) {
+    const QPointF tc = bufferCoord(us[i], vs[i], m_transform);
+    v[i].set(float(us[i] * w), float(vs[i] * h), float(tc.x()), float(tc.y()));
+  }
+  node->markDirty(QSGNode::DirtyGeometry | QSGNode::DirtyMaterial);
   return node;
 }
 

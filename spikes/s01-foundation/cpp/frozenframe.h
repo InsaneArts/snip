@@ -43,6 +43,7 @@ private:
   QString m_output;
   int m_epoch = 0;
   int m_uploadedEpoch = 0;
+  unsigned m_transform = 0;
   QSize m_frameSize;
   std::atomic<int> m_awaitSwapEpoch{ 0 };
   QMetaObject::Connection m_swapConn;
