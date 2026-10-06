@@ -1,0 +1,250 @@
+//! `~/.config/snip/config.toml`: the single source of truth for settings
+//! (product SET-01). Unknown keys are ignored with a warning; missing keys use
+//! defaults; edits made by the settings UI go through `toml_edit` so the
+//! user's comments and ordering survive.
+
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct General {
+    /// Where Save writes. Default: $XDG_PICTURES_DIR/Screenshots
+    pub export_dir: String,
+    pub file_name: String,
+    pub format: ImageFormat,
+    /// Decided 2026-10-06: Save writes the file *and* copies it.
+    pub save_also_copies: bool,
+    pub sounds: bool,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ImageFormat {
+    Png,
+    Jpg,
+    Webp,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AfterCapture {
+    ShowQao,
+    Copy,
+    Save,
+    Annotate,
+    Pin,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct AfterCaptureRules {
+    /// Capture lifecycle §5.0: by default only the Quick Access card appears.
+    pub screenshot: Vec<AfterCapture>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Side {
+    Left,
+    Right,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct QuickAccess {
+    pub position: Side,
+    pub auto_close: bool,
+    pub auto_close_seconds: u32,
+    pub max_visible: u32,
+    /// card width in logical px (CleanShot "overlay size" slider)
+    pub size: u32,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Retention {
+    Never,
+    #[serde(rename = "1d")]
+    Day1,
+    #[serde(rename = "3d")]
+    Days3,
+    #[serde(rename = "1w")]
+    Week1,
+    #[serde(rename = "1m")]
+    Month1,
+    Forever,
+}
+
+impl Retention {
+    pub fn max_age_secs(self) -> Option<i64> {
+        match self {
+            Retention::Never => Some(0),
+            Retention::Day1 => Some(86_400),
+            Retention::Days3 => Some(3 * 86_400),
+            Retention::Week1 => Some(7 * 86_400),
+            Retention::Month1 => Some(30 * 86_400),
+            Retention::Forever => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct History {
+    pub retention: Retention,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct Clipboard {
+    /// Offer copies with x-kde-passwordManagerHint so Omarchy's clipboard
+    /// history skips them (SET-07b).
+    pub sensitive: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct Capture {
+    pub freeze: bool,
+    /// Keep the GPU context warm this long after the last capture (S01).
+    pub keep_warm_minutes: u32,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct Config {
+    pub general: General,
+    pub after_capture: AfterCaptureRules,
+    pub quick_access: QuickAccess,
+    pub history: History,
+    pub clipboard: Clipboard,
+    pub capture: Capture,
+}
+
+impl Default for General {
+    fn default() -> Self {
+        Self {
+            export_dir: crate::paths::default_screenshot_dir().to_string_lossy().into_owned(),
+            file_name: crate::naming::DEFAULT_TEMPLATE.into(),
+            format: ImageFormat::Png,
+            save_also_copies: true,
+            sounds: true,
+        }
+    }
+}
+
+impl Default for AfterCaptureRules {
+    fn default() -> Self {
+        Self { screenshot: vec![AfterCapture::ShowQao] }
+    }
+}
+
+impl Default for QuickAccess {
+    fn default() -> Self {
+        Self { position: Side::Left, auto_close: true, auto_close_seconds: 10, max_visible: 5, size: 280 }
+    }
+}
+
+impl Default for History {
+    fn default() -> Self {
+        Self { retention: Retention::Week1 }
+    }
+}
+
+impl Default for Clipboard {
+    fn default() -> Self {
+        Self { sensitive: false }
+    }
+}
+
+impl Default for Capture {
+    fn default() -> Self {
+        Self { freeze: true, keep_warm_minutes: 10 }
+    }
+}
+
+impl Config {
+    pub fn path() -> PathBuf {
+        crate::paths::config_dir().join("config.toml")
+    }
+
+    /// Parse; on error return defaults plus the error so the UI can show it
+    /// instead of refusing to start.
+    pub fn parse(text: &str) -> (Config, Option<String>) {
+        match toml_edit::de::from_str::<Config>(text) {
+            Ok(c) => (c, None),
+            Err(e) => (Config::default(), Some(e.to_string())),
+        }
+    }
+
+    pub fn load() -> (Config, Option<String>) {
+        match std::fs::read_to_string(Self::path()) {
+            Ok(t) => Self::parse(&t),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => (Config::default(), None),
+            Err(e) => (Config::default(), Some(e.to_string())),
+        }
+    }
+
+    pub fn export_dir(&self) -> PathBuf {
+        crate::paths::expand(&self.general.export_dir)
+    }
+}
+
+/// Set one dotted key (e.g. "quick_access.position") in the user's file,
+/// preserving comments and ordering.
+pub fn set_value(text: &str, dotted: &str, value: toml_edit::Item) -> Result<String, String> {
+    let mut doc: toml_edit::DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| e.to_string())?;
+    let mut parts = dotted.split('.').collect::<Vec<_>>();
+    let key = parts.pop().ok_or("empty key")?;
+    let mut table = doc.as_table_mut();
+    for p in parts {
+        table = table
+            .entry(p)
+            .or_insert(toml_edit::Item::Table(toml_edit::Table::new()))
+            .as_table_mut()
+            .ok_or_else(|| format!("{p} is not a table"))?;
+    }
+    table.insert(key, value);
+    Ok(doc.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn defaults_follow_decisions() {
+        let c = Config::default();
+        assert_eq!(c.after_capture.screenshot, vec![AfterCapture::ShowQao]);
+        assert!(c.general.save_also_copies);
+        assert_eq!(c.history.retention, Retention::Week1);
+        assert_eq!(c.quick_access.position, Side::Left);
+    }
+
+    #[test]
+    fn partial_file_keeps_defaults() {
+        let (c, err) = Config::parse("[quick_access]\nposition = \"right\"\n[history]\nretention = \"1m\"\n");
+        assert!(err.is_none(), "{err:?}");
+        assert_eq!(c.quick_access.position, Side::Right);
+        assert_eq!(c.quick_access.auto_close_seconds, 10);
+        assert_eq!(c.history.retention, Retention::Month1);
+    }
+
+    #[test]
+    fn bad_file_falls_back_with_error() {
+        let (c, err) = Config::parse("[quick_access]\nposition = 7\n");
+        assert!(err.is_some());
+        assert_eq!(c, Config::default());
+    }
+
+    #[test]
+    fn set_value_preserves_comments() {
+        let src = "# my settings\n[quick_access] # bottom card\nposition = \"left\" # keep\n";
+        let out = set_value(src, "quick_access.position", toml_edit::value("right")).unwrap();
+        assert!(out.contains("# my settings") && out.contains("# bottom card"));
+        assert!(out.contains("position = \"right\""));
+        let out = set_value(&out, "history.retention", toml_edit::value("1d")).unwrap();
+        assert_eq!(Config::parse(&out).0.history.retention, Retention::Day1);
+    }
+}

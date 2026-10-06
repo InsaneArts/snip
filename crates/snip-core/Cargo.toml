@@ -1,0 +1,16 @@
+[package]
+name = "snip-core"
+description = "Snip core: geometry, capture lifecycle, history, naming, config, encoding, theme tokens"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+toml_edit.workspace = true
+rusqlite.workspace = true
+png.workspace = true
+rustix.workspace = true
+chrono.workspace = true
+ulid.workspace = true

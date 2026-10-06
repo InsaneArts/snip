@@ -17,3 +17,4 @@
 spikes/**/out/
 *.png.tmp
 .qmlls.ini
+/Cargo.lock.bak
