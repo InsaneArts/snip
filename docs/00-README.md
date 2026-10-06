@@ -1,6 +1,6 @@
 # Snip planning docs
 
-**Snip** is the CleanShot X experience for **Omarchy** (Arch + Hyprland). It matches CleanShot's features, UX and UI, **except CleanShot Cloud**. It is built on Omasnap's engine, has a Rust core and a Qt Quick UI, and is licensed GPL-3.0-or-later.
+**Snip** is the CleanShot X experience for **Omarchy** (Arch + Hyprland). It matches CleanShot's features, UX and UI, **except CleanShot Cloud**. It has a Rust core and a Qt Quick UI, shares no code with Omasnap (D27), and is licensed GPL-3.0-or-later.
 
 Phase: **specification. No product code yet.**
 Last updated: 2026-10-06.
