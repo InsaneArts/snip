@@ -2,6 +2,7 @@
 
 #include <QGuiApplication>
 #include <QObject>
+#include <QQmlEngine>
 #include <QScreen>
 
 // QML's Qt.application.screens yields QQuickScreenInfo wrappers, which
@@ -14,8 +15,13 @@ public:
   Q_INVOKABLE QScreen* byName(const QString& name) const
   {
     for (QScreen* s : QGuiApplication::screens())
-      if (s->name() == name)
+      if (s->name() == name) {
+        // QObjects returned to QML without a parent become JS-owned: the GC
+        // would deleteLater() Qt's real QScreen, every window loses its screen
+        // and the next map segfaults in QWaylandWindow::devicePixelRatio (S17).
+        QQmlEngine::setObjectOwnership(s, QQmlEngine::CppOwnership);
         return s;
+      }
     return nullptr;
   }
 };

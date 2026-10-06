@@ -35,6 +35,7 @@ Likelihood and impact are rated H (high), M (medium) or L (low). "Spike" refers 
 | R22 | **Name and packaging:** the AUR name `snip` is taken (an abandoned snippet manager that probably ships `/usr/bin/snip`); "Mathpix Snip" is an unrelated OCR product | M | L | Package `snip-screenshot` with `conflicts=('snip')`; no Mathpix-like branding | — |
 | R23 | **Design tension:** CleanShot polish vs arbitrary Omarchy themes (26 or more, light and dark, gradient borders, square corners). Some themes will make the UI ugly or unreadable. | H | M | A token mapping with fallbacks, a runtime contrast guard, a gallery that renders every installed theme, and visual-regression goldens (design doc §6) | S17 |
 | R24 | **Vendored Omasnap C++ drift:** upstream improves the stitcher while our copy stays behind; C++ inside a Rust core | M | L | Pin the upstream commit. Use the replay harness to compare. Port to Rust once it stabilises. | S16 |
+| R25 | **QML garbage-collects C++-owned objects** returned from `Q_INVOKABLE`s without a parent. Spike S03: QML deleted Qt's real `QScreen`, every window lost its screen, and the next map segfaulted inside QtWayland. | M | H | Set `QQmlEngine::CppOwnership` on every object handed to QML. Unit-test the ownership of every exposed object. Run ASan in CI. | done (S03) |
 
 ## Part B: Edge-case catalogue
 

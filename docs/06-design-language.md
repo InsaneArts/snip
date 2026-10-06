@@ -63,6 +63,12 @@ The Rust `snip-core::theme` service resolves tokens and exposes them to QML as a
 
 **Why semantic colours are chosen by hue:** ANSI slots are not semantic across themes. In Aetheria, `color1` is **green** (`#c8e967`). Picking "the palette colour closest to red" keeps a stop button red in every theme.
 
+**Verified in spike S03** across all 26 installed themes ([gallery](spikes/S03-themes-and-hide-desktop.md)):
+- Omarchy's own resolver returns `red` = `#c8e967` (lime) for Aetheria, so hue picking is required.
+- 6 monochrome themes fall back to the fixed red.
+- Text contrast is at least 6.7:1 everywhere.
+- Snip uses Omarchy's resolver (`omarchy-theme-color --all`) for the palette, so its colours match every other themed app.
+
 **Contrast guard:** every text and surface pair is checked for WCAG contrast at runtime. Below 4.5:1 (3:1 for large text and icons), the text colour is moved along lightness until it passes. Themes vary widely, so this is required.
 
 **Light themes:** `mode`/`light.mode` switches shadow strength, scrim colour and checkerboard tones. No component has a hard-coded "dark" look.

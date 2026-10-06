@@ -273,4 +273,169 @@ QtObject {
             }
         }
     }
+
+    // ---------------------------------------------------------------- S17 theme gallery
+    property Window gallery: Window {
+        id: gal
+        visible: root.mode === "gallery" && themeList.length > 0
+        color: "#0b0b0d"
+        flags: Qt.FramelessWindowHint
+        screen: Qt.application.screens[0]
+        LayerShell.Window.screen: ScreenLookup.byName(Qt.application.screens[0].name)
+        LayerShell.Window.scope: "snip-gallery"
+        LayerShell.Window.layer: LayerShell.Window.LayerOverlay
+        LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorBottom
+                                   | LayerShell.Window.AnchorLeft | LayerShell.Window.AnchorRight
+        LayerShell.Window.exclusionZone: -1
+        LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityNone
+
+        property var themeList: root.mode === "gallery" ? JSON.parse(SnipCore.themes()) : []
+        readonly property int cols: 7
+        Component.onCompleted: SnipCore.log("gallery_init", "\"mode\":\"" + root.mode + "\",\"themes\":" + themeList.length + ",\"visible\":" + visible)
+        onVisibleChanged: SnipCore.log("gallery_visible", "\"visible\":" + visible)
+        Timer { running: gal.visible; interval: 2500; onTriggered: SnipCore.log("gallery_ready", "\"themes\":" + gal.themeList.length) }
+        Timer { running: gal.visible; interval: 9000; onTriggered: Qt.quit() }
+
+        Grid {
+            anchors.fill: parent; anchors.margins: 10
+            columns: gal.cols; spacing: 8
+            Repeater {
+                model: gal.themeList
+                delegate: Item {
+                    id: tile
+                    required property var modelData
+                    readonly property var t: modelData
+                    width: (gal.width - 20 - (gal.cols - 1) * 8) / gal.cols
+                    height: (gal.height - 20 - 3 * 8) / 4
+                    clip: true
+
+                    Rectangle { anchors.fill: parent; color: tile.t.background }
+                    Image {
+                        anchors.fill: parent
+                        source: tile.t.wallpaper ? "file://" + tile.t.wallpaper : ""
+                        fillMode: Image.PreserveAspectCrop
+                        sourceSize.width: 600; asynchronous: true
+                    }
+                    // selection with scrim outside
+                    readonly property rect sel: Qt.rect(width * 0.36, height * 0.30, width * 0.40, height * 0.34)
+                    Rectangle { color: tile.t.scrim; x: 0; y: 0; width: parent.width; height: tile.sel.y }
+                    Rectangle { color: tile.t.scrim; x: 0; y: tile.sel.y + tile.sel.height; width: parent.width; height: parent.height - y }
+                    Rectangle { color: tile.t.scrim; x: 0; y: tile.sel.y; width: tile.sel.x; height: tile.sel.height }
+                    Rectangle { color: tile.t.scrim; x: tile.sel.x + tile.sel.width; y: tile.sel.y; width: parent.width - x; height: tile.sel.height }
+                    Rectangle { x: tile.sel.x - 1; y: tile.sel.y - 1; width: tile.sel.width + 2; height: tile.sel.height + 2
+                                color: "transparent"; border.color: tile.t.accent; border.width: 1 }
+                    Rectangle {  // dimension pill
+                        x: tile.sel.x + tile.sel.width - width; y: tile.sel.y + tile.sel.height + 5
+                        width: dim.implicitWidth + 12; height: 18; radius: 9; color: tile.t.surface
+                        Text { id: dim; anchors.centerIn: parent; text: "1600 × 900"; color: tile.t.text; font.pixelSize: 10; font.features: { "tnum": 1 } }
+                    }
+                    // toolbar
+                    Rectangle {
+                        id: bar
+                        x: (parent.width - width) / 2; y: 8; height: 26; radius: 8
+                        width: tools.implicitWidth + 12; color: tile.t.surface
+                        Row {
+                            id: tools; anchors.centerIn: parent; spacing: 2
+                            Repeater {
+                                model: ["↖", "▭", "◯", "╱", "➚", "T", "▦", "①", "✎"]
+                                delegate: Rectangle {
+                                    required property string modelData
+                                    required property int index
+                                    width: 20; height: 20; radius: 5
+                                    color: index === 4 ? tile.t.accent : "transparent"
+                                    Text { anchors.centerIn: parent; text: modelData; font.pixelSize: 11
+                                           color: index === 4 ? tile.t.onAccent : tile.t.text }
+                                }
+                            }
+                        }
+                    }
+                    Rectangle {  // signature gradient
+                        anchors.top: bar.bottom; anchors.topMargin: 3; anchors.horizontalCenter: bar.horizontalCenter
+                        width: bar.width - 16; height: 2; radius: 1
+                        gradient: Gradient {
+                            orientation: Gradient.Horizontal
+                            GradientStop { position: 0; color: tile.t.signature[0] }
+                            GradientStop { position: 1; color: tile.t.signature[tile.t.signature.length - 1] }
+                        }
+                    }
+                    // recording pill
+                    Rectangle {
+                        anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 8
+                        width: 66; height: 22; radius: 11; color: tile.t.surface
+                        Row { anchors.centerIn: parent; spacing: 5
+                            Rectangle { width: 9; height: 9; radius: 5; color: tile.t.danger; anchors.verticalCenter: parent.verticalCenter }
+                            Text { text: "00:12"; color: tile.t.text; font.pixelSize: 10; font.features: { "tnum": 1 } }
+                        }
+                    }
+                    // QAO card
+                    Rectangle {
+                        x: 8; y: parent.height - height - 30
+                        width: parent.width * 0.38; height: width * 0.5625 + 0; radius: 7
+                        color: tile.t.surface; border.color: Qt.rgba(1, 1, 1, tile.t.mode === "dark" ? 0.12 : 0.0); border.width: 1
+                        clip: true
+                        Image { anchors.fill: parent; anchors.margins: 1; source: "file:///home/tgomareli/Development/OpenShotX/spikes/s01-foundation/qao-test/test.png"
+                                fillMode: Image.PreserveAspectCrop; sourceSize.width: 300; opacity: 0.85 }
+                        Row { anchors.centerIn: parent; spacing: 4
+                            Rectangle { width: 40; height: 18; radius: 9; color: tile.t.accent
+                                        Text { anchors.centerIn: parent; text: "Copy"; color: tile.t.onAccent; font.pixelSize: 9; font.weight: Font.DemiBold } }
+                            Rectangle { width: 40; height: 18; radius: 9; color: tile.t.surface
+                                        Text { anchors.centerIn: parent; text: "Save"; color: tile.t.text; font.pixelSize: 9; font.weight: Font.DemiBold } }
+                        }
+                    }
+                    // label
+                    Rectangle {
+                        anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
+                        height: 22; color: tile.t.surface
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter; anchors.left: parent.left; anchors.leftMargin: 6
+                            text: tile.t.name + "  ·  " + tile.t.mode
+                                  + (tile.t.report.text_adjusted ? "  ·  text adj" : "")
+                                  + (tile.t.report.accent_adjusted ? "  ·  accent adj" : "")
+                                  + (tile.t.report.danger_fallback ? "  ·  danger fb" : "")
+                            color: tile.t.text; font.pixelSize: 10
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter; anchors.right: parent.right; anchors.rightMargin: 6
+                            text: "Aa " + tile.t.report.text_contrast.toFixed(1) + ":1"; color: tile.t.textSecondary; font.pixelSize: 10
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------- S15 hide-desktop cover
+    // Covers the bar with the matching wallpaper slice, rendered exactly like
+    // omarchy-shell's background (same QML Image, same fill, same item size),
+    // so the bar keeps its reserved space and windows never re-layout.
+    property Window cover: Window {
+        id: cov
+        readonly property int barHeight: Number(Qt.application.arguments[Qt.application.arguments.indexOf("--cover") + 1]) || 35
+        visible: root.mode === "cover" && wp.status === Image.Ready
+        height: barHeight
+        color: "black"
+        flags: Qt.FramelessWindowHint
+        LayerShell.Window.screen: ScreenLookup.byName(Qt.application.screens[0].name)
+        LayerShell.Window.scope: "snip-cover"
+        LayerShell.Window.layer: LayerShell.Window.LayerOverlay
+        LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorLeft | LayerShell.Window.AnchorRight
+        LayerShell.Window.exclusionZone: -1
+        LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityNone
+        onVisibleChanged: if (visible) coverReady.start()
+        Timer { id: coverReady; interval: 400; onTriggered: SnipCore.log("cover_ready", "\"bar_h\":" + cov.barHeight + ",\"w\":" + cov.width) }
+        Item {
+            width: Qt.application.screens[0].width      // full output, logical
+            height: Qt.application.screens[0].height
+            Image {
+                id: wp
+                anchors.fill: parent
+                source: root.mode === "cover" ? "file://" + SnipCore.wallpaperPath() : ""
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: false
+                cache: true
+                mipmap: Qt.application.arguments.indexOf("--cover-mipmap") >= 0
+                smooth: Qt.application.arguments.indexOf("--cover-nosmooth") < 0
+            }
+        }
+    }
 }

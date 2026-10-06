@@ -62,6 +62,14 @@ pub mod qobject {
         #[qinvokable]
         fn log(self: &SnipCore, ev: QString, extra_json: QString);
 
+        /// S15: the wallpaper omarchy-shell is drawing (resolved symlink).
+        #[qinvokable]
+        fn wallpaper_path(self: &SnipCore) -> QString;
+
+        /// S17: every installed Omarchy theme resolved into Snip tokens (JSON).
+        #[qinvokable]
+        fn themes(self: &SnipCore) -> QString;
+
         #[qsignal]
         fn frames_ready(self: Pin<&mut SnipCore>, epoch: i32);
 
@@ -196,6 +204,19 @@ impl qobject::SnipCore {
             }
             Err(e) => mark("copy_file_error", &format!("\"msg\":\"{e}\"")),
         }
+    }
+
+    fn wallpaper_path(&self) -> QString {
+        let link = format!("{}/.local/state/omarchy/current/background", std::env::var("HOME").unwrap_or_default());
+        let p = std::fs::canonicalize(link).map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+        QString::from(p.as_str())
+    }
+
+    fn themes(&self) -> QString {
+        let t0 = now_ns();
+        let json = crate::theme::themes_json();
+        mark("themes_resolved", &format!("\"ms\":{:.1}", (now_ns() - t0) as f64 / 1e6));
+        QString::from(json.as_str())
     }
 
     fn log(&self, ev: QString, extra_json: QString) {

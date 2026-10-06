@@ -6,4 +6,5 @@ mod clock;
 mod encode;
 mod frames;
 mod hypr;
+mod theme;
 mod wl;
