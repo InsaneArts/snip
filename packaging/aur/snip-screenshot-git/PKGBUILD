@@ -1,0 +1,56 @@
+# Maintainer: Snip contributors
+# Snip: CleanShot X's workflow for Omarchy / Hyprland.
+# All downloads happen in prepare(); build() runs offline.
+pkgname=snip-screenshot-git
+_pkgname=snip
+pkgver=r21.f1c0005
+pkgrel=1
+pkgdesc="Screenshot tool for Omarchy/Hyprland with CleanShot X's workflow: instant overlay, Quick Access cards, OCR"
+arch=(x86_64)
+url="https://github.com/tgomareli/snip"
+license=(GPL-3.0-or-later)
+depends=(hyprland qt6-base qt6-declarative qt6-wayland layer-shell-qt kcoreaddons wayland sqlite gcc-libs glibc)
+makedepends=(cargo cmake ninja corrosion git)
+optdepends=('tesseract-data-eng: Capture Text (OCR)'
+            'pipewire: capture sounds (pw-play)'
+            'glib2: Move to Trash for saved files'
+            'tensaku: Annotate until Snip'"'"'s own editor ships')
+provides=(snip-screenshot)
+conflicts=(snip-screenshot)
+options=(!lto)
+source=("snip::git+file://${SNIP_REPO:-$HOME/Development/OpenShotX}#branch=${SNIP_BRANCH:-m1}"
+        "cxx-qt-cmake::git+https://github.com/kdab/cxx-qt-cmake.git#tag=0.10.0")
+sha256sums=('SKIP' 'SKIP')
+
+pkgver() {
+  cd snip
+  printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)"
+}
+
+prepare() {
+  cd snip
+  export RUSTUP_TOOLCHAIN=stable
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+  cd snip
+  export RUSTUP_TOOLCHAIN=stable CARGO_NET_OFFLINE=true
+  cmake -B build -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DFETCHCONTENT_SOURCE_DIR_CXXQT="$srcdir/cxx-qt-cmake" \
+    -DFETCHCONTENT_FULLY_DISCONNECTED=ON
+  cmake --build build
+}
+
+check() {
+  cd snip
+  export RUSTUP_TOOLCHAIN=stable CARGO_NET_OFFLINE=true
+  cargo test --locked --release -p snip-core -p snip-ipc -p snip-hypr
+}
+
+package() {
+  cd snip
+  DESTDIR="$pkgdir" cmake --install build
+}

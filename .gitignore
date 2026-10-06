@@ -18,3 +18,8 @@ spikes/**/out/
 *.png.tmp
 .qmlls.ini
 /Cargo.lock.bak
+packaging/aur/*/src/
+packaging/aur/*/pkg/
+packaging/aur/*/snip/
+packaging/aur/*/cxx-qt-cmake/
+packaging/aur/*/*.pkg.tar.zst
