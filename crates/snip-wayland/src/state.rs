@@ -263,6 +263,14 @@ impl State {
                     p.frame();
                 }
             }
+            Request::PointerNudge => {
+                if let Some((_, p)) = &self.vptr {
+                    p.motion(now_ms(), 1.0, 0.0);
+                    p.frame();
+                    p.motion(now_ms(), -1.0, 0.0);
+                    p.frame();
+                }
+            }
             Request::PointerAxis { dy } => {
                 if let Some((_, p)) = &self.vptr {
                     p.axis_source(wl_pointer::AxisSource::Wheel);

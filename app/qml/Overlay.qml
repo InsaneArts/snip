@@ -91,7 +91,18 @@ Window {
     // Area mode leaves the display undimmed until a drag starts.
     readonly property bool dimmed: selecting || c.windowMode || hoverWin !== null
 
+    // the first frame of a session: then take the pointer (Engine.refocusPointer)
+    property bool awaitRefocus: false
+    Connections {
+        target: Platform
+        function onFramePresented(w) {
+            if (w === win && win.awaitRefocus) { win.awaitRefocus = false; win.c.refocusPointer() }
+        }
+    }
+
     function resetSession() {
+        awaitRefocus = true
+        Platform.notifyNextFrame(win)
         pressed = false; dragging = false; moving = false; pick = -1
         raw = Qt.rect(0, 0, 0, 0)
         hovered = !!(c.session && c.session.cursor && c.session.cursor.output === outputName)

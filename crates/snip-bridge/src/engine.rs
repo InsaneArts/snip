@@ -333,6 +333,19 @@ impl Inner {
         });
     }
 
+    /// Hyprland hands pointer focus to a freshly mapped overlay only on real
+    /// motion; without it a click made without moving the mouse would go to
+    /// the window underneath.
+    pub fn nudge_pointer(self: &Arc<Self>) {
+        // At the overlay's first frame Hyprland has not taken the new layer
+        // into account yet (measured: an immediate nudge is ignored).
+        let me = self.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(40));
+            me.wl(Wl::PointerNudge);
+        });
+    }
+
     pub fn capture_ready(&self, req: u64) {
         let source = self.deferred.lock().unwrap().remove(&req);
         if let Some((source, cursor)) = source {
@@ -1116,6 +1129,10 @@ impl Inner {
             }
             "sweep" => {
                 self.sweep();
+                Response::ok(Value::Null)
+            }
+            "nudge" => {
+                self.nudge_pointer();
                 Response::ok(Value::Null)
             }
             "extract" => {

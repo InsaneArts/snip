@@ -29,7 +29,16 @@ QtObject {
     property var activeOverlay: null
     property string lastOutput: ""
 
+    // Once per session, whichever overlay presents first.
+    property bool pointerRefocused: false
+    function refocusPointer() {
+        if (pointerRefocused) return
+        pointerRefocused = true
+        Engine.refocusPointer()
+    }
+
     function openSession() {
+        pointerRefocused = false
         try { session = JSON.parse(Engine.session || "{}") } catch (e) { session = {} }
         stickyWindow = session.mode === "window"
         spaceHeld = false
