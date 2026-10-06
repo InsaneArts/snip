@@ -52,7 +52,7 @@ pub fn spawn(f: impl Fn(Change) + Send + 'static) {
                         let name = OsStr::new(std::str::from_utf8(&name).unwrap_or(""));
                         if ev.wd() == wd_cfg && name == "config.toml" {
                             cfg = true;
-                        } else if ev.wd() == wd_theme && name == "theme" {
+                        } else if ev.wd() == wd_theme && (name == "theme" || name == "theme.name" || name == "background") {
                             theme = true;
                         }
                         let _ = ReadFlags::empty();

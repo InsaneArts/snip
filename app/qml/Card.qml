@@ -13,7 +13,8 @@ Item {
     readonly property string cardId: data_.id
     readonly property real aspect: data_.width > 0 ? data_.height / data_.width : 0.5625
     readonly property real clamped: Math.max(0.42, Math.min(1.25, aspect))
-    readonly property bool hovered: bodyHover.hovered || hover.pressed
+    property bool forceHover: false   // design gallery
+    readonly property bool hovered: forceHover || bodyHover.hovered || hover.pressed
     property bool copied: false
     readonly property bool saved: !!data_.saved
     property real swipe: 0                // horizontal gesture offset (QAO-08)

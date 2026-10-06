@@ -134,14 +134,22 @@ pub fn resolve_dir(name: &str, dir: &Path, rounding: u32) -> serde_json::Value {
 }
 
 /// The theme Omarchy currently applies (~/.local/state/omarchy/current/theme).
+/// Omarchy 4 copies the theme into `current/theme/` and records its name in
+/// `current/theme.name`; the wallpaper in use is the `current/background` link.
 pub fn current(rounding: u32) -> serde_json::Value {
-    let home = std::env::var("HOME").unwrap_or_default();
-    let dir = PathBuf::from(format!("{home}/.local/state/omarchy/current/theme"));
-    let name = std::fs::read_link(format!("{home}/.local/state/omarchy/current/theme"))
+    let cur = current_dir();
+    let dir = cur.join("theme");
+    let name = std::fs::read_to_string(cur.join("theme.name"))
         .ok()
-        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .or_else(|| std::fs::read_link(&dir).ok().and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned())))
         .unwrap_or_else(|| "current".into());
-    resolve_dir(&name, &dir, rounding)
+    let mut v = resolve_dir(&name, &dir, rounding);
+    if let Ok(bg) = std::fs::canonicalize(cur.join("background")) {
+        v["wallpaper"] = serde_json::json!(bg.to_string_lossy());
+    }
+    v
 }
 
 /// Directory to watch for theme switches.

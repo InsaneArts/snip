@@ -141,7 +141,10 @@ QtObject {
         if (a[0] !== "keydown") keyReleased(ev, w)
     }
 
-    Component.onCompleted: Engine.start(mode === "interactive" ? "interactive" : "test")
+    Component.onCompleted: {
+        Engine.start(mode === "interactive" ? "interactive" : "test")
+        if (mode === "gallery") gallery = galleryComponent.createObject(null)
+    }
 
     // ---------------------------------------------------------------- surfaces
     property Instantiator overlays: Instantiator {
@@ -153,8 +156,7 @@ QtObject {
     property Toast toast: Toast {}
     property Preview preview: Preview {}
 
-    property Loader gallery: Loader {
-        active: root.mode === "gallery"
-        sourceComponent: Gallery { controller: root }
-    }
+    // (a Loader-created Window never maps: spike S8; create it directly)
+    property Component galleryComponent: Component { Gallery { controller: root } }
+    property var gallery: null
 }
