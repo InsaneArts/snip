@@ -30,6 +30,30 @@ Each spike answers one question with a measurement and a go/no-go. The results a
 | S16 | Omasnap stitcher vendored as C++ behind `cxx`, driven from Rust, checked with Omasnap's `stitch-replay` corpus | replay results identical to upstream Omasnap | SCR, §10 reuse plan |
 | S17 | Theme tokens: resolve every installed Omarchy theme (26 or more) into Snip tokens, with the contrast guard; render the QAO card and the toolbar in all of them | no contrast failures after the guard; screenshots reviewed | design language |
 
+### M0 status (2026-10-06)
+
+| Spike | Status | Result | Doc |
+|---|---|---|---|
+| S1 warm latency | ✅ | hotkey → overlay p95 16.4 ms (cold ≈ 170 ms) | [S01](spikes/S01-foundation.md) |
+| S2 pixel exactness | ✅ | 0 diff at scales 1/1.25/1.5/5⁄3/2, transforms 0/1/3/4/5, multi-monitor | [S01](spikes/S01-foundation.md) |
+| S3 drag-and-drop | ✅ | 7 apps; drag offers URI + portal, no `image/png` | [S02](spikes/S02-quick-access-dnd.md) |
+| S4 text input / IME | ✅ / ⚠️ | Latin and Unicode on toplevel and layer; Georgian **layout** needs a manual check; CJK IME untested | [S08](spikes/S08-text-input.md) |
+| S5 NVIDIA soak (basic loop) | ⏳ running | flat memory for the first 77 min | [S01](spikes/S01-foundation.md) |
+| S5b soak (threaded loop) | ⏳ running | started 20:55 | [S05](spikes/S05-annotation-renderer.md) |
+| S6 pins | ✅ | over fullscreen, all workspaces; lock = layer surface | [S04](spikes/S04-pins.md) |
+| S7 gpu-screen-recorder | ⏸ deferred | before M4 (recording) | — |
+| S8 renderer | ✅ | export = preview (98 dB), 144 fps with 200 objects (threaded loop) | [S05](spikes/S05-annotation-renderer.md) |
+| S9 keystroke hook | ⏸ deferred | before M4 | — |
+| S10 paste matrix | ✅ | `image/png` paste works in Chromium, Zen, Nautilus, VS Code | [S02](spikes/S02-quick-access-dnd.md) |
+| S11 stitching | ✅ | 400/400 rows, sticky header and footer once (opaque and translucent) | [S06](spikes/S06-scrolling-capture.md) |
+| S12 OCR | ✅ | Tesseract fast + clean-up: 0 % Georgian, ≤ 2.5 % UI/Russian, 8 % code | [S07](spikes/S07-ocr.md) |
+| S13 Rust + Qt build | ✅ | CMake/cxx-qt/Corrosion; offline AUR PKGBUILD builds and passes the self-test | [S01](spikes/S01-foundation.md) |
+| S14 clipboard ownership | ✅ | ext-data-control; sensitive hint skips Omarchy history | [S02](spikes/S02-quick-access-dnd.md) |
+| S15 hide-desktop cover | ✅ | visually seamless (46 dB), no re-layout | [S03](spikes/S03-themes-and-hide-desktop.md) |
+| S16 Omasnap reuse | ✅ | `stitch.cpp` builds as-is on the Qt side | [S06](spikes/S06-scrolling-capture.md) |
+| S17 theme tokens | ✅ | 26 themes, contrast ≥ 6.7:1; QScreen ownership crash found and fixed | [S03](spikes/S03-themes-and-hide-desktop.md) |
+| R18 multi-monitor input | ✅ | a drag on the second monitor and Esc both route correctly | [S01](spikes/S01-foundation.md) |
+
 **Exit:** the decided stack (Qt Quick + Rust core) is confirmed by S1, S2, S5 and S13, or the fallback is triggered with data. Q-S2 (process split) is settled.
 
 ## M1: Capture core and the Quick Access experience (L)

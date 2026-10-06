@@ -98,7 +98,11 @@ Copying a 1600×900 region from the frozen frame:
 - Gotchas found, both one-line fixes:
   1. The bridge `namespace` also applies to imported `QString`. Put `#[namespace = ""]` on the extern C++ block.
   2. cxx-qt 0.10 no longer camelCases names. Add `#[auto_cxx_name]` to the `extern "RustQt"` block.
-- Still to do for the full S13 criteria: an AUR PKGBUILD build in a clean chroot, and a CI job.
+- **AUR packaging verified (`packaging/aur/snip-spike-git/PKGBUILD`):**
+  - All downloads happen in `prepare()`: `cargo fetch --locked`, plus cxx-qt-cmake as a git source.
+  - `build()` runs **offline**: `CARGO_NET_OFFLINE=true` and `FETCHCONTENT_SOURCE_DIR_CXXQT` with `FETCHCONTENT_FULLY_DISCONNECTED=ON`.
+  - `makepkg` built the package in **59 s**: 1.8 MB, a 5.4 MB stripped binary. **The packaged binary passes `--selftest` (0 differing pixels).**
+  - Still to do: a clean-chroot build (`extra-x86_64-build`), and the CI job once the repository has a remote.
 
 ## S5: NVIDIA soak. ⏳ RUNNING
 - Started 2026-10-06 19:35 as the transient user unit `snip-soak.service`.
