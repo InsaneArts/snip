@@ -198,10 +198,19 @@ class Env:
                 os.kill(pid, 15)
             except ProcessLookupError:
                 pass
+        # Put the pointer back only if the tests left it on the test output;
+        # if the user has moved it since, leave it where they put it.
+        try:
+            mon = self.monitor()
+            cur = hypr_json("cursorpos")
+            ours = mon["x"] <= cur["x"] < mon["x"] + mon["width"] / mon["scale"]
+        except StopIteration:
+            ours = False
         sh("hyprctl", "output", "remove", OUT, check=False)
         time.sleep(0.3)
         c = self.prev_cursor
-        hypr_eval(f'hl.dispatch(hl.dsp.cursor.move({{ x = {c["x"]}, y = {c["y"]} }}))')
+        if ours:
+            hypr_eval(f'hl.dispatch(hl.dsp.cursor.move({{ x = {c["x"]}, y = {c["y"]} }}))')
         if self.prev_focus:
             hypr_eval(f'hl.dispatch(hl.dsp.focus({{ window = "address:{self.prev_focus}" }}))')
 

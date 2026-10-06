@@ -50,6 +50,7 @@ qt_add_qml_module(snipd
     app/qml/CardMenu.qml
     app/qml/Pill.qml
     app/qml/IconButton.qml
+    app/qml/FrostButton.qml
     app/qml/Icon.qml
     app/qml/Toast.qml
     app/qml/Preview.qml

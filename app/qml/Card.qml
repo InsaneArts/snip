@@ -2,52 +2,74 @@ import QtQuick
 import QtQuick.Effects
 import Snip.Core
 
-// One Quick Access card (QAO-01..11): the capture is the hero; actions fade
-// in on hover. Copy/Save in the middle, round buttons in the corners.
+// One Quick Access card, modelled on CleanShot X's (measured from its demo
+// videos, docs/design/qao-motion.md): a fixed-size thumbnail that fills the
+// card; on hover it frosts (blur + tint) under light capsule buttons and
+// corner circles; the newest card carries an accent ring outside its edge.
 Item {
     id: card
     required property var data_       // the card JSON
     required property var host        // the QuickAccess window
     property bool newest: false
     property real cardWidth: 280
-    readonly property string cardId: data_.id
-    readonly property real aspect: data_.width > 0 ? data_.height / data_.width : 0.5625
-    readonly property real clamped: Math.max(0.42, Math.min(1.25, aspect))
     property bool forceHover: false   // design gallery
-    readonly property bool hovered: forceHover || bodyHover.hovered || hover.pressed
-    property bool copied: false
+    property string status: ""        // "" | "copied" | "saved" | "text"
+    property bool dragging: false
+    property real swipe: 0             // horizontal gesture offset (QAO-08)
+
+    readonly property string cardId: data_.id
     readonly property bool saved: !!data_.saved
-    property real swipe: 0                // horizontal gesture offset (QAO-08)
+    readonly property bool hovered: forceHover || bodyHover.hovered || hover.pressed
+    // 0..1: thumbnail frosting and hover controls (CleanShot: ~150 ms)
+    readonly property bool frosted: (hovered && !dragging) || status !== ""
+    property real frost: frosted ? 1 : 0
+    Behavior on frost { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
 
     signal closeRequested(bool animated)
     signal menuRequested(real x, real y)
 
     width: cardWidth
-    height: Math.round(cardWidth * clamped)
+    height: Math.round(cardWidth * 0.705)    // CleanShot's card aspect
 
+    // ---------------------------------------------------------------- shadow
     RectangularShadow {
         anchors.fill: body
         radius: body.radius
-        offset.y: Theme.shadowOffset
-        blur: Theme.shadowBlur
-        spread: -4
+        offset.y: Theme.shadowOffset * 0.6
+        blur: Theme.shadowBlur * 0.8
+        spread: -2
         color: Theme.shadow
         opacity: body.opacity
     }
 
+    // ---------------------------------------------------------------- newest ring (outside the card)
+    Rectangle {
+        readonly property real w: 2.5
+        x: body.x - w; y: body.y - w
+        width: body.width + 2 * w; height: body.height + 2 * w
+        radius: body.radius > 0 ? body.radius + w : 0
+        color: "transparent"
+        border.width: w
+        border.color: Theme.accent
+        opacity: card.newest && !card.dragging ? body.opacity : 0
+        Behavior on opacity { NumberAnimation { duration: 200 } }
+    }
+
     Item {
         id: body
-        anchors.fill: parent
+        width: card.width
+        height: card.height
         readonly property real radius: Theme.radius
         x: card.swipe
-        opacity: 1 - Math.min(0.7, Math.abs(card.swipe) / card.width)
+        opacity: (card.dragging ? 0.5 : 1) * (1 - Math.min(0.8, Math.abs(card.swipe) / card.width))
+        Behavior on opacity { NumberAnimation { duration: 140 } }
 
         Item {
             id: content
             anchors.fill: parent
-            layer.enabled: body.radius > 0
+            layer.enabled: true
             layer.effect: MultiEffect {
-                maskEnabled: true
+                maskEnabled: body.radius > 0
                 maskSource: mask
                 maskThresholdMin: 0.5
                 maskSpreadAtMin: 1.0
@@ -57,17 +79,33 @@ Item {
                 id: thumb
                 anchors.fill: parent
                 source: "file://" + (card.data_.thumb || card.data_.path)
-                fillMode: Math.abs(card.aspect - card.clamped) < 0.001 ? Image.PreserveAspectCrop : Image.PreserveAspectFit
+                fillMode: Image.PreserveAspectCrop
                 asynchronous: false
                 cache: false
                 smooth: true
                 mipmap: true
+                sourceSize.width: Math.round(card.width * 2)
             }
-            Rectangle {   // hover scrim (design §4: gentle, 120 ms)
+            // frosted copy of the thumbnail, scaled up so the blur's soft
+            // edges stay outside the card
+            MultiEffect {
+                anchors.fill: thumb
+                source: thumb
+                visible: card.frost > 0.01
+                opacity: card.frost
+                scale: 1.12
+                blurEnabled: true
+                blur: 1.0
+                blurMax: 48
+                blurMultiplier: 0.6
+                saturation: -0.15
+                brightness: Theme.light ? -0.04 : -0.12
+            }
+            Rectangle {   // tint: the frosted glass colour
                 anchors.fill: parent
-                color: Theme.hoverScrim
-                opacity: card.hovered ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: 120 } }
+                // a mid-tone in light themes too, so the light controls read (CleanShot does the same)
+                color: Theme.light ? Qt.rgba(0.10, 0.08, 0.08, 0.26) : Qt.rgba(0.04, 0.05, 0.08, 0.38)
+                opacity: card.frost
             }
         }
         Item {
@@ -77,17 +115,17 @@ Item {
             layer.enabled: true
             Rectangle { anchors.fill: parent; radius: body.radius; color: "black" }
         }
-        Rectangle {   // hairline, and the newest-capture indicator
+        Rectangle {   // hairline
             anchors.fill: parent
             radius: body.radius
             color: "transparent"
-            border.width: card.newest ? 2 : 1
-            border.color: card.newest ? Theme.accent : Theme.hairline
+            border.width: 1
+            border.color: Theme.light ? Qt.rgba(0, 0, 0, 0.10) : Qt.rgba(1, 1, 1, 0.10)
         }
 
         HoverHandler { id: bodyHover }
 
-        // the card body: drag out, double-click, right-click, gestures
+        // the card body: drag out, double-click, right-click
         MouseArea {
             id: hover
             anchors.fill: parent
@@ -104,25 +142,22 @@ Item {
                 if (!pressed || dragged || !(m.buttons & Qt.LeftButton)) return
                 if (Math.hypot(m.x - p0.x, m.y - p0.y) > 6) {
                     dragged = true
-                    card.host.dragging = true
-                    const path = Engine.dragFile(card.cardId)
-                    Platform.startDrag(card, path, card.data_.thumb || "")
-                    card.host.dragging = false
+                    card.host.drag(card)
                 }
             }
             onDoubleClicked: (m) => { if (m.button === Qt.LeftButton) card.host.act("annotate", card) }
         }
 
+        // two-finger swipes (QAO-08): sideways dismisses, down hides all
         WheelHandler {
-            id: wheel
             acceptedDevices: PointerDevice.TouchPad
             orientation: Qt.Horizontal | Qt.Vertical
             onWheel: (e) => {
                 const dx = e.pixelDelta.x, dy = e.pixelDelta.y
                 if (Math.abs(dx) >= Math.abs(dy)) {
-                    card.swipe += (e.inverted ? -dx : dx) * -1
+                    card.swipe += e.inverted ? dx : -dx
                     gestureEnd.restart()
-                } else if (dy < -24 && !e.inverted || dy > 24 && e.inverted) {
+                } else if ((e.inverted ? dy : -dy) > 24) {
                     card.host.command("hide")
                 }
             }
@@ -131,80 +166,92 @@ Item {
             id: gestureEnd
             interval: 120
             onTriggered: {
-                if (Math.abs(card.swipe) > card.width * 0.33) card.closeRequested(true)
+                if (Math.abs(card.swipe) > card.width * 0.3) card.host.dismiss(card, card.swipe)
                 else swipeBack.start()
             }
         }
-        NumberAnimation { id: swipeBack; target: card; property: "swipe"; to: 0; duration: 220; easing.type: Easing.OutBack }
+        NumberAnimation { id: swipeBack; target: card; property: "swipe"; to: 0; duration: 260; easing.type: Easing.OutBack }
 
-        // --- saved badge (always visible once saved)
+        // ---------------------------------------------------------------- Saved chip (at rest)
         Rectangle {
-            visible: card.saved
+            visible: opacity > 0
+            opacity: card.saved && card.frost < 0.5 ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: 140 } }
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.top
             anchors.topMargin: 8
-            height: 22
+            height: 20
             width: savedRow.implicitWidth + 14
-            radius: 11
-            color: Theme.pillBg
-            opacity: card.hovered ? 0 : 1
-            Behavior on opacity { NumberAnimation { duration: 120 } }
+            radius: 10
+            color: Qt.rgba(0.93, 0.93, 0.94, 0.9)
             Row {
                 id: savedRow
                 anchors.centerIn: parent
                 spacing: 4
-                Icon { name: "check"; size: 12; stroke: 2.5; color: Theme.success; anchors.verticalCenter: parent.verticalCenter }
-                Text { text: "Saved"; color: Theme.text; font.family: Theme.fontUi; font.pixelSize: 11; font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
+                Icon { name: "check"; size: 11; stroke: 2.6; color: "#1d1d1f"; anchors.verticalCenter: parent.verticalCenter }
+                Text { text: "Saved"; color: "#1d1d1f"; font.family: Theme.fontUi; font.pixelSize: 11; font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
             }
         }
 
-        // --- hover actions
+        // ---------------------------------------------------------------- hover controls
         Item {
             anchors.fill: parent
-            opacity: card.hovered ? 1 : 0
-            visible: opacity > 0
-            Behavior on opacity { NumberAnimation { duration: 120 } }
+            opacity: card.status === "" ? card.frost : 0
+            visible: opacity > 0.01
+            enabled: card.hovered && card.status === ""
 
             Column {
                 anchors.centerIn: parent
-                spacing: 8
-                Pill {
+                spacing: 10
+                FrostButton {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    width: Math.max(implicitWidth, 112)
-                    label: card.copied ? "Copied" : "Copy"
-                    icon: card.copied ? "check" : ""
+                    label: "Copy"
                     onClicked: card.host.act("copy", card)
                 }
-                Pill {
+                FrostButton {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    width: Math.max(implicitWidth, 112)
                     label: card.saved ? "Show in Files" : "Save"
-                    icon: card.saved ? "folder" : ""
                     onClicked: card.host.act(card.saved ? "show" : "save", card)
                 }
             }
-            IconButton {
-                x: 8; y: 8
-                icon: "x"
-                onClicked: card.closeRequested(true)
+            FrostButton { x: 8; y: 8; icon: "x"; onClicked: card.host.dismiss(card, -1) }
+            FrostButton { x: parent.width - width - 8; y: 8; icon: "more"; onClicked: card.menuRequested(x + width / 2, y + height) }
+            FrostButton { x: 8; y: parent.height - height - 8; icon: "pencil"; onClicked: card.host.act("annotate", card) }
+            FrostButton { x: parent.width - width - 8; y: parent.height - height - 8; icon: "scan-text"; onClicked: card.host.act("text", card) }
+        }
+
+        // ---------------------------------------------------------------- status (Copied / Saved / reading text)
+        Column {
+            anchors.centerIn: parent
+            spacing: 6
+            opacity: card.status !== "" ? card.frost : 0
+            visible: opacity > 0.01
+            scale: 0.9 + 0.1 * opacity
+            Rectangle {
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: 34; height: 34; radius: 17
+                color: Qt.rgba(0.95, 0.95, 0.96, 0.95)
+                Icon {
+                    anchors.centerIn: parent
+                    name: card.status === "text" ? "scan-text" : "check"
+                    size: 17; stroke: 2.6; color: "#1d1d1f"
+                }
             }
-            IconButton {
-                x: 8; y: parent.height - height - 8
-                icon: "pencil"
-                onClicked: card.host.act("annotate", card)
-            }
-            IconButton {
-                x: parent.width - width - 8; y: parent.height - height - 8
-                icon: "more"
-                onClicked: card.menuRequested(x + width / 2, y)
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: card.status === "copied" ? "Copied" : card.status === "saved" ? "Saved" : "Reading text…"
+                color: "white"
+                font.family: Theme.fontUi
+                font.pixelSize: 13
+                font.weight: Font.DemiBold
             }
         }
     }
 
-    Timer {
-        id: copiedReset
-        interval: 1400
-        onTriggered: card.copied = false
+    Timer { id: statusReset; onTriggered: card.status = "" }
+    // show a status for `ms` (0 = until cleared)
+    function flash(s, ms) {
+        status = s
+        if (ms > 0) { statusReset.interval = ms; statusReset.restart() }
     }
-    function flashCopied() { copied = true; copiedReset.restart() }
 }

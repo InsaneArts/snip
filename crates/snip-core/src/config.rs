@@ -65,6 +65,8 @@ pub struct QuickAccess {
     pub max_visible: u32,
     /// card width in logical px (CleanShot "overlay size" slider)
     pub size: u32,
+    /// CleanShot "Close after dragging" (Alt while dragging keeps the card)
+    pub close_after_drag: bool,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -204,6 +206,7 @@ impl Default for QuickAccess {
             auto_close_action: AutoCloseAction::Close,
             max_visible: 5,
             size: 280,
+            close_after_drag: true,
         }
     }
 }

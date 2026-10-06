@@ -91,6 +91,8 @@ Window {
         property bool dragging: false
         function act(a, c) {}
         function command(c) {}
+        function drag(c) {}
+        function dismiss(c, d) {}
     }
 
     Item {
@@ -190,10 +192,11 @@ Window {
 
         // ------------------------------------------------ Quick Access stack
         Repeater {
+            // CleanShot order: the newest on top (accent ring), oldest in the corner
             model: [
-                { y: 420, saved: false, hover: false, newest: false, crop: [0, 0, 1920, 1080] },
-                { y: 610, saved: true, hover: false, newest: false, crop: [400, 200, 1200, 900] },
-                { y: 800, saved: false, hover: true, newest: true, crop: [800, 400, 1600, 800] }
+                { y: 380, saved: false, hover: true, newest: true, status: "" },
+                { y: 593, saved: true, hover: false, newest: false, status: "" },
+                { y: 806, saved: false, hover: false, newest: false, status: "copied" }
             ]
             delegate: Card {
                 required property var modelData
@@ -203,6 +206,7 @@ Window {
                 host: host
                 newest: modelData.newest
                 forceHover: modelData.hover
+                Component.onCompleted: if (modelData.status) flash(modelData.status, 0)
                 data_: ({ id: "g" + modelData.y, path: Theme.wallpaper, width: 1600, height: modelData.y === 420 ? 900 : 1000,
                           saved: modelData.saved ? "/tmp/x.png" : null, output: "" })
             }

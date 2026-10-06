@@ -170,8 +170,12 @@ impl Inner {
     }
 
     /// The output under the cursor (CAP-04, QAO-01), else the focused one.
+    /// A test instance (SNIP_OUTPUTS) always uses its own output.
     fn cursor_output(&self) -> Option<String> {
         let names = self.output_names();
+        if let Some(o) = std::env::var("SNIP_OUTPUTS").ok().filter(|o| names.contains(o)) {
+            return Some(o);
+        }
         if let Some((x, y)) = snip_hypr::cursor_pos() {
             if let Some(o) = self.outputs.lock().unwrap().iter().find(|o| o.logical.contains(x, y)) {
                 return Some(o.name.clone());
@@ -857,6 +861,7 @@ impl Inner {
                 "autoCloseAction": c.quick_access.auto_close_action,
                 "maxVisible": c.quick_access.max_visible,
                 "size": c.quick_access.size,
+                "closeAfterDrag": c.quick_access.close_after_drag,
             },
             "capture": c.capture,
             "sounds": c.general.sounds,

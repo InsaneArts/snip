@@ -1,11 +1,19 @@
 import QtQuick
 import QtQuick.Window
+import QtQuick.Effects
 import org.kde.layershell as LayerShell
 import Snip.Core
 
-// The Quick Access stack (QAO-*): one layer surface in a bottom corner of
-// the monitor that was captured. The surface is a tall transparent column;
-// the input region covers only the cards, so the rest stays click-through.
+// The Quick Access stack (QAO-*), with CleanShot X's layout and motion
+// (measured from its demo videos; docs/design/qao-motion.md):
+//   - new cards appear on TOP of the stack; the oldest stays in the corner
+//   - entrance: slide in from the screen edge by 20% of the card width with a
+//     ~10% spring overshoot while fading in (settles at ~220 ms)
+//   - exit: slide back toward the edge, accelerating, fading (~220 ms); the
+//     cards above glide down into the gap
+//   - hide all: the stack slides off the bottom edge, leaving a small tab
+// One layer surface in a bottom corner of the captured monitor: a tall
+// transparent column whose input region covers only the cards.
 Window {
     id: qa
     required property var controller
@@ -13,10 +21,13 @@ Window {
     readonly property var st: c.settings.quickAccess || ({})
     readonly property bool right: st.position === "right"
     readonly property real cardWidth: st.size || 280
+    readonly property real cardHeight: Math.round(cardWidth * 0.705)
     readonly property int maxVisible: Math.max(1, st.maxVisible || 5)
-    readonly property real margin: 20
-    readonly property real spacing: 14
+    readonly property real margin: 24
+    readonly property real spacing: 16
     readonly property real menuSpace: 236
+    readonly property real travel: Math.round(cardWidth * 0.22)
+    readonly property int outward: right ? 1 : -1
 
     property string output: ""
     property bool hidden: false
@@ -27,12 +38,12 @@ Window {
     property var menuCard: null
     property real menuX: 0
     property real menuY: 0
-    property var heights: []
     readonly property bool hovering: stackHover.hovered
     readonly property int count: cards.count
     readonly property int firstVisible: expanded ? 0 : Math.max(0, count - maxVisible)
+    readonly property bool collapsed: count > maxVisible && !expanded
 
-    visible: count > 0 && !hidden && !remap && output !== ""
+    visible: count > 0 && !remap && output !== ""
     color: "transparent"
     flags: Qt.FramelessWindowHint
     width: cardWidth + 2 * margin + menuSpace
@@ -58,7 +69,7 @@ Window {
             if (cards.get(i).cardId === card.id) { cards.remove(i); break }
         cards.append({ cardId: card.id, json: JSON.stringify(card) })
         hidden = false
-        relayout()
+        Qt.callLater(updateMask)
     }
 
     function update(id, card) {
@@ -70,7 +81,9 @@ Window {
         if (cmd === "close-all") closeAll()
         else if (cmd === "hide") { menuCard = null; hidden = true }
         else if (cmd === "show") hidden = false
+        else if (cmd === "dismiss" && stack.newestCard) dismiss(stack.newestCard, outward)   // test hook
         else if (cmd === "restore") { if (hidden && count > 0) hidden = false; else Engine.restoreLast() }
+        Qt.callLater(updateMask)
     }
 
     function moveTo(o) {
@@ -92,7 +105,8 @@ Window {
         if (toClosed) Engine.cardClosed(id)
         if (menuCard && menuCard.cardId === id) menuCard = null
         if (count <= maxVisible) expanded = false
-        relayout()
+        if (count === 0) hidden = false
+        Qt.callLater(updateMask)
     }
 
     function closeAll() {
@@ -101,11 +115,28 @@ Window {
         for (let i = 0; i < cards.count; i++) ids.push(cards.get(i).cardId)
         for (const id of ids) Engine.cardClosed(id)
         cards.clear()
-        relayout()
+        hidden = false
     }
 
     function saveAll() {
         for (let i = 0; i < cards.count; i++) Engine.save(cards.get(i).cardId)
+    }
+
+    // Dismiss with the exit animation, toward the edge (or the swipe's way).
+    function dismiss(card, direction) {
+        if (card && card.leave) card.leave(direction)
+    }
+
+    // Drag out (QAO-04): the card dims while dragging and closes after a
+    // drop (CleanShot's "Close after dragging"; Alt keeps it).
+    function drag(card) {
+        dragging = true
+        card.dragging = true
+        const path = Engine.dragFile(card.cardId)
+        const result = Platform.startDrag(card, path, card.data_.thumb || "")
+        card.dragging = false
+        dragging = false
+        if (result === "copy" && st.closeAfterDrag !== false && !c.altHeld) dismiss(card, outward)
     }
 
     // Card actions (buttons, menu, keys).
@@ -116,18 +147,18 @@ Window {
         switch (action) {
         case "copy":
             if (Engine.copy(id)) {
-                card.flashCopied()
-                // CleanShot: Copy closes the card; Alt+Copy keeps it.
-                if (!c.altHeld) closeLater.schedule(card)
+                // CleanShot: Copy closes the card (Alt+Copy keeps it).
+                if (c.altHeld) card.flash("copied", 900)
+                else { card.flash("copied", 0); card.leaveAfter(420) }
             }
             break
-        case "save": Engine.save(id); break
+        case "save": Engine.save(id); card.flash("saved", 900); break
         case "show": Engine.showInFiles(id); break
         case "annotate": Engine.annotate(id); break
-        case "text": Engine.extractText(id); break
+        case "text": Engine.extractText(id); card.flash("text", 900); break
         case "preview": c.preview.open(card.data_); break
-        case "trash": Engine.trash(id); card.closeRequested(false); remove(id, false); break
-        case "close": card.closeRequested(true); break
+        case "trash": Engine.trash(id); remove(id, false); break
+        case "close": dismiss(card, outward); break
         case "close-all": closeAll(); break
         case "save-all": saveAll(); break
         case "hide": command("hide"); break
@@ -161,58 +192,56 @@ Window {
     }
     Timer { id: captureGo; interval: 40; onTriggered: qa.releaseCapture() }
 
-    QtObject {
-        id: closeLater
-        property var pending: null
-        function schedule(card) { pending = card; t.restart() }
-        property Timer t: Timer { interval: 450; onTriggered: if (closeLater.pending) closeLater.pending.closeRequested(true) }
+    // The window has shown a frame since it was (re)mapped.
+    property bool presented: false
+    property var presentQueue: []
+    function whenPresented(fn) { presentQueue.push(fn); Platform.notifyNextFrame(qa) }
+    Connections {
+        target: Platform
+        function onFramePresented(w) {
+            if (w !== qa) return
+            qa.presented = true
+            const q = qa.presentQueue
+            qa.presentQueue = []
+            for (const fn of q) fn()
+        }
     }
 
     // ---------------------------------------------------------------- layout
-    function heightFor(json) {
-        const d = JSON.parse(json)
-        const a = d.width > 0 ? d.height / d.width : 0.5625
-        return Math.round(cardWidth * Math.max(0.42, Math.min(1.25, a)))
-    }
-
-    function relayout() {
-        const h = []
-        for (let i = 0; i < cards.count; i++) h.push(heightFor(cards.get(i).json))
-        heights = h
-        Qt.callLater(updateMask)
-        Engine.log("qa_layout", "\"w\":" + width + ",\"h\":" + height + ",\"heights\":" + JSON.stringify(h) + ",\"ys\":" + JSON.stringify(h.map((_, i) => yFor(i))) + ",\"x\":" + cardX)
-    }
-
-    // Newest at the bottom (nearest the corner), older ones stacked above.
-    function yFor(i) {
-        let y = qa.height - margin
-        for (let j = cards.count - 1; j >= i; j--) {
-            if (j < firstVisible) break
-            y -= (heights[j] || 0)
-            if (j > i) y -= spacing
-        }
-        return y
-    }
-
     readonly property real cardX: right ? width - margin - cardWidth : margin
-    readonly property real topY: count > 0 ? yFor(firstVisible) : height
+    readonly property real badgeSpace: collapsed ? 26 + 10 : 0
+    readonly property real bottomY: height - margin - badgeSpace
+    // oldest visible card in the corner slot; each newer one above it
+    function yFor(i) {
+        const slot = Math.max(0, i - firstVisible)
+        return bottomY - cardHeight - slot * (cardHeight + spacing)
+    }
+    readonly property real topY: count > 0 ? yFor(count - 1) : height
+    // hide all: everything below the bottom edge
+    readonly property real hideShift: hidden ? height - topY + 40 : 0
 
     function updateMask() {
         const r = []
         if (menuCard) {
             r.push(Qt.rect(0, 0, width, height))      // a click anywhere in the column closes the menu
+        } else if (hidden) {
+            r.push(Qt.rect(tab.x - 6, tab.y - 6, tab.width + 12, tab.height + 12))
         } else {
             for (let i = firstVisible; i < cards.count; i++)
-                r.push(Qt.rect(cardX - 4, yFor(i) - 4, cardWidth + 8, (heights[i] || 0) + 8))
-            if (stackBar.visible || moreBadge.visible)
-                r.push(Qt.rect(cardX, topY - 44, cardWidth, 40))
+                r.push(Qt.rect(cardX - 6, yFor(i) - 6, cardWidth + 12, cardHeight + 12))
+            if (collapsed)
+                r.push(Qt.rect(cardX, height - margin - 26, cardWidth, 26))
         }
         Platform.setInputRects(qa, r)
     }
-    onHeightChanged: relayout()
+    onHeightChanged: Qt.callLater(updateMask)
     onMenuCardChanged: Qt.callLater(updateMask)
     onFirstVisibleChanged: Qt.callLater(updateMask)
-    onVisibleChanged: if (visible) Qt.callLater(updateMask)
+    onHiddenChanged: Qt.callLater(updateMask)
+    onVisibleChanged: {
+        if (visible) Qt.callLater(updateMask)
+        else presented = false
+    }
 
     // ---------------------------------------------------------------- content
     Item {
@@ -220,8 +249,20 @@ Window {
         anchors.fill: parent
         opacity: qa.capturing ? 0 : 1
         enabled: !qa.capturing
+        transform: Translate {
+            y: qa.hideShift
+            Behavior on y { NumberAnimation { duration: 340; easing.type: Easing.InOutCubic } }
+        }
 
-        HoverHandler { id: stackHover; enabled: !qa.menuCard }
+        HoverHandler { id: stackHover; enabled: !qa.menuCard && !qa.hidden }
+        readonly property var newestCard: {
+            let best = null
+            for (let i = 0; i < children.length; i++) {
+                const ch = children[i]
+                if (ch.cardId !== undefined && !ch.leaving && (best === null || ch.index > best.index)) best = ch
+            }
+            return best
+        }
 
         Timer {
             id: keyDwell
@@ -254,76 +295,92 @@ Window {
                 host: qa
                 cardWidth: qa.cardWidth
                 newest: index === qa.count - 1 && qa.count > 1
-                visible: index >= qa.firstVisible
-                y: qa.yFor(index)
-                x: entered ? qa.cardX : (qa.right ? qa.width + 8 : -qa.cardWidth - 8)
-                property bool entered: false
-                property bool leaving: false
-                Behavior on y { enabled: cardItem.entered; NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
-                Behavior on x { NumberAnimation { duration: cardItem.leaving ? 200 : 300; easing.type: cardItem.leaving ? Easing.InCubic : Easing.OutBack; easing.overshoot: 1.05 } }
-                Component.onCompleted: Qt.callLater(() => entered = true)
+                visible: index >= qa.firstVisible && opacity > 0.01
 
-                // QAO-07: auto-close, paused while hovered, dragging or in a menu.
+                // motion state: horizontal offset from the slot, and fade
+                property real slide: qa.outward * qa.travel
+                property real fade: 0
+                property bool leaving: false
+                property bool settled: false
+                x: qa.cardX + slide
+                y: qa.yFor(index)
+                opacity: fade
+                Behavior on y {
+                    enabled: cardItem.settled
+                    NumberAnimation { duration: 300; easing.type: Easing.OutCubic }
+                }
+
+                ParallelAnimation {
+                    id: enterAnim
+                    // fitted to CleanShot's entrance (rms 4.5 %): +10 % at ~150 ms, settled ~250 ms
+                    NumberAnimation { target: cardItem; property: "slide"; to: 0; duration: 270
+                                      easing.type: Easing.BezierSpline; easing.bezierCurve: [0.40, 1.40, 0.40, 1.10, 1, 1] }
+                    NumberAnimation { target: cardItem; property: "fade"; to: 1; duration: 180 }   // linear, as measured
+                    onFinished: cardItem.settled = true
+                }
+                // Start once the card can actually be seen: the first card maps the
+                // window, and frames rendered before that would eat the motion.
+                Component.onCompleted: {
+                    if (qa.presented) enterAnim.start()
+                    else qa.whenPresented(() => enterAnim.start())
+                }
+                // SNIP_TRACE: the rendered motion, one line per frame (docs/design/qao-motion.md)
+                FrameAnimation {
+                    running: enterAnim.running || leaveAnim.running
+                    onTriggered: Engine.log("qao_motion", "\"id\":\"" + cardItem.cardId + "\",\"leaving\":" + cardItem.leaving
+                                            + ",\"slide\":" + cardItem.slide.toFixed(2) + ",\"fade\":" + cardItem.fade.toFixed(3))
+                }
+
+                ParallelAnimation {
+                    id: leaveAnim
+                    property real to: qa.outward * qa.travel * 1.4
+                    NumberAnimation { target: cardItem; property: "slide"; to: leaveAnim.to; duration: 220; easing.type: Easing.InCubic }
+                    NumberAnimation { target: cardItem; property: "fade"; to: 0; duration: 200 }
+                    onFinished: qa.remove(cardItem.cardId, true)
+                }
+                // direction < 0: toward the left, > 0: toward the right
+                function leave(direction) {
+                    if (leaving) return
+                    leaving = true
+                    enterAnim.stop()
+                    const dir = direction === 0 ? qa.outward : Math.sign(direction)
+                    // a swipe carries on from where the finger left the card
+                    slide = slide + swipe
+                    swipe = 0
+                    leaveAnim.to = slide + dir * qa.travel * 1.4
+                    leaveAnim.start()
+                }
+                Timer { id: leaveDelay; onTriggered: cardItem.leave(qa.outward) }
+                function leaveAfter(ms) { leaveDelay.interval = ms; leaveDelay.restart() }
+
+                // QAO-07: auto-close, paused while hovered, dragging, in a menu or hidden.
                 Timer {
                     interval: Math.max(2, qa.st.autoCloseSeconds || 10) * 1000
-                    running: qa.st.autoClose !== false && !qa.hovering && !qa.dragging && !qa.menuCard && !qa.hidden && qa.visible
+                    running: qa.st.autoClose !== false && !qa.hovering && !qa.dragging && !qa.menuCard && !qa.hidden && qa.visible && !cardItem.leaving
                     onTriggered: {
                         if (qa.st.autoCloseAction === "save_and_close") Engine.save(cardItem.cardId)
-                        cardItem.closeRequested(true)
+                        cardItem.leave(qa.outward)
                     }
                 }
 
-                onCloseRequested: (animated) => {
-                    if (leaving) return
-                    if (!animated) { qa.remove(cardId, true); return }
-                    leaving = true
-                    entered = false       // slides back out to the edge
-                    leaveTimer.start()
-                }
-                Timer { id: leaveTimer; interval: 200; onTriggered: qa.remove(cardItem.cardId, true) }
+                onCloseRequested: (animated) => animated ? leave(qa.outward) : qa.remove(cardId, true)
                 onMenuRequested: (mx, my) => {
-                    qa.menuX = qa.right ? qa.cardX - menu.width - 8 : qa.cardX + qa.cardWidth + 8
+                    qa.menuX = qa.right ? qa.cardX - menu.width - 10 : qa.cardX + qa.cardWidth + 10
                     qa.menuY = Math.max(8, Math.min(qa.height - menu.height - 8, cardItem.y + my - 12))
                     qa.menuCard = cardItem
                 }
             }
         }
 
-        // "+k" for collapsed older cards (QAO-06)
-        Rectangle {
+        // "+k" for collapsed older cards (QAO-06), under the stack
+        FrostButton {
             id: moreBadge
-            visible: qa.count > qa.maxVisible && !qa.expanded
+            visible: qa.collapsed
             x: qa.cardX + (qa.cardWidth - width) / 2
-            y: qa.topY - height - 10
-            height: 26
-            width: moreText.implicitWidth + 20
-            radius: 13
-            color: Theme.pillBg
-            border.width: 1
-            border.color: Theme.hairline
-            Text {
-                id: moreText
-                anchors.centerIn: parent
-                text: "+" + (qa.count - qa.maxVisible) + " more"
-                color: Theme.text
-                font.family: Theme.fontUi
-                font.pixelSize: 12
-                font.weight: Font.DemiBold
-                font.features: { "tnum": 1 }
-            }
-            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { qa.expanded = true; qa.relayout() } }
-        }
-
-        // Close All / Save All above the stack while it is hovered
-        Row {
-            id: stackBar
-            visible: qa.count > 1 && qa.hovering && !moreBadge.visible && !qa.menuCard
-            x: qa.cardX + (qa.cardWidth - width) / 2
-            y: qa.topY - height - 10
-            spacing: 8
-            Pill { label: "Close All"; implicitHeight: 26; onClicked: qa.closeAll() }
-            Pill { label: "Save All"; implicitHeight: 26; onClicked: qa.saveAll() }
-            onVisibleChanged: Qt.callLater(qa.updateMask)
+            y: qa.height - qa.margin - height
+            implicitHeight: 26
+            label: "+" + (qa.count - qa.maxVisible) + " more"
+            onClicked: qa.expanded = true
         }
 
         CardMenu {
@@ -333,6 +390,44 @@ Window {
             y: qa.menuY
             card: qa.menuCard
             onTriggered: (action) => qa.act(action, qa.menuCard)
+        }
+    }
+
+    // ---------------------------------------------------------------- hidden: a tab peeks from the bottom edge
+    Rectangle {
+        id: tab
+        readonly property bool lifted: tabArea.containsMouse
+        width: tabRow.implicitWidth + 24
+        height: 30
+        radius: 15
+        x: qa.cardX + (qa.cardWidth - width) / 2
+        y: qa.hidden ? qa.height - (lifted ? height - 2 : 14) : qa.height + 8
+        Behavior on y { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
+        color: Qt.rgba(0.93, 0.93, 0.94, 0.95)
+        RectangularShadow { z: -1; anchors.fill: parent; radius: parent.radius; blur: 16; offset.y: 2; color: Theme.shadow }
+        Row {
+            id: tabRow
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: 5
+            spacing: 5
+            Icon { name: "layers"; size: 13; stroke: 2.2; color: "#1d1d1f"; anchors.verticalCenter: parent.verticalCenter }
+            Text {
+                text: qa.count
+                color: "#1d1d1f"
+                font.family: Theme.fontUi
+                font.pixelSize: 12
+                font.weight: Font.DemiBold
+                font.features: { "tnum": 1 }
+                anchors.verticalCenter: parent.verticalCenter
+            }
+        }
+        MouseArea {
+            id: tabArea
+            anchors.fill: parent
+            anchors.margins: -6
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: qa.command("show")
         }
     }
 
