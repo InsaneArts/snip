@@ -1,0 +1,16 @@
+[package]
+name = "snip-wayland"
+description = "Snip's own Wayland connection: capture, clipboard, global shortcuts, virtual pointer, toplevels"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+snip-core = { path = "../snip-core" }
+wayland-client.workspace = true
+wayland-protocols.workspace = true
+wayland-protocols-hyprland.workspace = true
+wayland-protocols-wlr.workspace = true
+calloop.workspace = true
+calloop-wayland-source.workspace = true
+rustix.workspace = true

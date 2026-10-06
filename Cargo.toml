@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/snip-core"]
+members = ["crates/snip-core", "crates/snip-wayland"]
 
 [workspace.package]
 version = "0.1.0"
@@ -20,7 +20,7 @@ ulid = "1"
 calloop = "0.14"
 calloop-wayland-source = "0.4"
 wayland-client = "0.31"
-wayland-protocols = { version = "0.32", features = ["client", "staging"] }
+wayland-protocols = { version = "0.32", features = ["client", "staging", "unstable"] }
 wayland-protocols-hyprland = { version = "1.2", features = ["client"] }
 wayland-protocols-wlr = { version = "0.3", features = ["client"] }
 cxx = "1"
