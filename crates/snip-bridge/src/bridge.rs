@@ -56,6 +56,10 @@ pub mod qobject {
         #[qinvokable]
         fn cancel(self: Pin<&mut Engine>);
 
+        /// The overlay is on screen: hand it the pointer even if it hasn't moved.
+        #[qinvokable]
+        fn refocus_pointer(self: &Engine);
+
         /// The Quick Access stack is off screen: run the deferred capture.
         #[qinvokable]
         fn capture_ready(self: Pin<&mut Engine>, request: i32);
@@ -278,6 +282,13 @@ impl qobject::Engine {
     fn capture_ready(self: Pin<&mut Self>, request: i32) {
         if let Some(i) = self.inner() {
             i.capture_ready(request as u64);
+        }
+    }
+
+    fn refocus_pointer(&self) {
+        trace::trace("refocus_pointer", "");
+        if let Some(i) = self.inner() {
+            i.nudge_pointer();
         }
     }
 

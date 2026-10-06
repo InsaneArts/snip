@@ -67,6 +67,9 @@ pub enum Request {
     /// Linux button code: 0x110 left, 0x111 right, 0x112 middle
     PointerButton { down: bool, button: u32 },
     PointerAxis { dy: f64 },
+    /// 1 px of real pointer motion and back: makes the compositor give pointer
+    /// focus to a surface that just mapped under a pointer that hasn't moved.
+    PointerNudge,
 }
 
 pub type Sink = Box<dyn Fn(Event) + Send>;
