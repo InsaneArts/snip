@@ -52,6 +52,8 @@ main(int argc, char* argv[])
       mode = QStringLiteral("cover");
     else if (a == QLatin1String("--editor"))
       mode = QStringLiteral("editor");
+    else if (a == QLatin1String("--textinput"))
+      mode = QStringLiteral("textinput");
   }
 
   qmlRegisterType<FrozenFrame>("SnipCpp", 1, 0, "FrozenFrame");

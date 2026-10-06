@@ -534,4 +534,37 @@ QtObject {
         editorWin.visible = true
         SnipCore.log("editor_loaded", "\"objects\":" + editorWin.extraObjects)
     }
+
+    // ---------------------------------------------------------------- S4 text input
+    readonly property string textTarget: Qt.application.arguments.indexOf("layer") >= 0 ? "layer" : "toplevel"
+    property Window textTop: Window {
+        title: "snip-text"
+        visible: root.mode === "textinput" && root.textTarget === "toplevel"
+        width: 640; height: 160; color: "#1d1d22"
+        flags: Qt.FramelessWindowHint
+        TextEdit {
+            id: teTop; anchors.fill: parent; anchors.margins: 16; focus: true
+            color: "white"; font.pixelSize: 22; wrapMode: TextEdit.Wrap
+            onTextChanged: SnipCore.log("text", "\"target\":\"toplevel\",\"text\":" + JSON.stringify(text))
+            onPreeditTextChanged: SnipCore.log("preedit", "\"text\":" + JSON.stringify(preeditText))
+        }
+        onVisibleChanged: if (visible) { requestActivate(); teTop.forceActiveFocus() }
+    }
+    property Window textLayer: Window {
+        visible: root.mode === "textinput" && root.textTarget === "layer"
+        width: 640; height: 160; color: "#1d1d22"
+        flags: Qt.FramelessWindowHint
+        LayerShell.Window.screen: ScreenLookup.byName(Qt.application.screens[0].name)
+        LayerShell.Window.scope: "snip-text"
+        LayerShell.Window.layer: LayerShell.Window.LayerOverlay
+        LayerShell.Window.anchors: LayerShell.Window.AnchorNone
+        LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityExclusive
+        TextEdit {
+            id: teLay; anchors.fill: parent; anchors.margins: 16; focus: true
+            color: "white"; font.pixelSize: 22; wrapMode: TextEdit.Wrap
+            onTextChanged: SnipCore.log("text", "\"target\":\"layer\",\"text\":" + JSON.stringify(text))
+            onPreeditTextChanged: SnipCore.log("preedit", "\"text\":" + JSON.stringify(preeditText))
+        }
+        onVisibleChanged: if (visible) teLay.forceActiveFocus()
+    }
 }
