@@ -1,0 +1,26 @@
+[package]
+name = "snip_bridge"
+description = "cxx-qt bridge: the Engine QML singleton (Snip.Core) driving snipd"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+snip-core = { path = "../snip-core" }
+snip-wayland = { path = "../snip-wayland" }
+snip-hypr = { path = "../snip-hypr" }
+snip-ipc = { path = "../snip-ipc" }
+cxx.workspace = true
+cxx-qt.workspace = true
+cxx-qt-lib.workspace = true
+serde_json.workspace = true
+serde.workspace = true
+chrono.workspace = true
+rustix = { workspace = true, features = ["event"] }
+png.workspace = true
+
+[build-dependencies]
+cxx-qt-build.workspace = true

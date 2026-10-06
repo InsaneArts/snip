@@ -1,0 +1,29 @@
+[Desktop Entry]
+Type=Application
+Name=Snip
+GenericName=Screenshot Tool
+Comment=Screenshots with CleanShot's workflow, in Omarchy's colours
+Exec=snip area
+Icon=snip
+Terminal=false
+Categories=Utility;Graphics;
+Keywords=screenshot;capture;screen;ocr;
+NoDisplay=false
+X-GNOME-UsesNotifications=false
+Actions=Area;Fullscreen;Window;Text;
+
+[Desktop Action Area]
+Name=Capture Area
+Exec=snip area
+
+[Desktop Action Fullscreen]
+Name=Capture Fullscreen
+Exec=snip fullscreen
+
+[Desktop Action Window]
+Name=Capture Window
+Exec=snip window
+
+[Desktop Action Text]
+Name=Capture Text
+Exec=snip text

@@ -1,0 +1,1020 @@
+//! The daemon's brain (everything that is not drawing): capture sessions,
+//! the capture lifecycle (product §5.0), the Quick Access card list, the
+//! ctl.sock API, and live config/theme. It runs on whichever thread an event
+//! arrives on (Wayland, ctl, Qt) and talks to QML only through `ui()`.
+
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{mpsc, Arc, Mutex, OnceLock, RwLock};
+use std::thread::JoinHandle;
+use std::time::Duration;
+
+use cxx_qt::CxxQtThread;
+use cxx_qt_lib::QString;
+use serde_json::{json, Value};
+
+use snip_core::config::{AfterCapture, ClipboardMode, Config, Retention};
+use snip_core::geometry::Rect;
+use snip_core::history::Record;
+use snip_core::store::{CaptureMeta, Store};
+use snip_core::trace::{self, js};
+use snip_core::{encode, naming, ocr, paths, theme, window};
+use snip_hypr::Client;
+use snip_ipc::{Request as Ctl, Response};
+use snip_wayland::{CaptureResult, Event, Features, Frame, OutputInfo, Request as Wl, Source};
+
+use crate::bridge::qobject::Engine;
+use crate::frames;
+
+pub type Waiter = mpsc::Sender<Response>;
+
+const SHUTTER: &[u8] = include_bytes!("../../../app/sounds/shutter.wav");
+const CLOSED_KEEP: usize = 50;
+
+#[derive(Default)]
+struct Snapshot {
+    clients: Vec<Client>,
+    cursor: Option<(i32, i32)>,
+}
+
+fn snapshot() -> Snapshot {
+    Snapshot { clients: snip_hypr::visible_windows(), cursor: snip_hypr::cursor_pos() }
+}
+
+enum Pending {
+    /// Frames for a selection overlay (area / window / text)
+    Overlay { mode: String, waiter: Option<Waiter>, snap: JoinHandle<Snapshot> },
+    /// A rectangle (or the whole output when `rect` is None) of one output
+    Region { waiter: Option<Waiter>, output: String, rect: Option<Rect>, kind: String },
+    /// A clean window buffer (CAP-05)
+    Window { waiter: Option<Waiter>, client: Client, output: String, shadow: bool, fallback: Option<Frame>, rect: Rect },
+}
+
+struct Session {
+    mode: String,
+    waiter: Option<Waiter>,
+    clients: Vec<Client>,
+}
+
+pub struct Inner {
+    qt: CxxQtThread<Engine>,
+    wl: OnceLock<snip_wayland::Handle>,
+    pub store: Store,
+    cfg: RwLock<Config>,
+    cfg_error: Mutex<Option<String>>,
+    outputs: Mutex<Vec<OutputInfo>>,
+    features: Mutex<Features>,
+    next_req: AtomicU64,
+    pending: Mutex<HashMap<u64, Pending>>,
+    session: Mutex<Option<Session>>,
+    last_area: Mutex<Option<(String, Rect)>>,
+    /// open cards (id, output), oldest first
+    cards: Mutex<Vec<(String, String)>>,
+    closed: Mutex<Vec<String>>,
+    ocr_langs: OnceLock<String>,
+}
+
+fn reply(w: Option<Waiter>, r: Response) {
+    if let Some(w) = w {
+        let _ = w.send(r);
+    }
+}
+
+fn cancelled() -> Response {
+    Response::err("cancelled")
+}
+
+fn now_secs() -> i64 {
+    chrono::Local::now().timestamp()
+}
+
+pub fn card_json(rec: &Record, output: &str) -> Value {
+    json!({
+        "id": rec.id,
+        "path": rec.source,
+        "width": rec.width,
+        "height": rec.height,
+        "kind": rec.kind,
+        "saved": rec.saved,
+        "created": rec.created_at,
+        "output": output,
+    })
+}
+
+/// Width and height from a PNG's IHDR.
+fn png_size(b: &[u8]) -> Option<(u32, u32)> {
+    if b.len() < 24 || &b[1..4] != b"PNG" {
+        return None;
+    }
+    Some((u32::from_be_bytes(b[16..20].try_into().ok()?), u32::from_be_bytes(b[20..24].try_into().ok()?)))
+}
+
+impl Inner {
+    pub fn new(qt: CxxQtThread<Engine>) -> Result<Arc<Self>, String> {
+        let (cfg, err) = Config::load();
+        if let Some(e) = &err {
+            trace::warn("config_error", &format!("\"msg\":{}", js(e)));
+        }
+        let store = Store::open(&paths::history_dir(), paths::data_dir().join("counter")).map_err(|e| e.to_string())?;
+        Ok(Arc::new(Self {
+            qt,
+            wl: OnceLock::new(),
+            store,
+            cfg: RwLock::new(cfg),
+            cfg_error: Mutex::new(err),
+            outputs: Mutex::new(vec![]),
+            features: Mutex::new(Features::default()),
+            next_req: AtomicU64::new(1),
+            pending: Mutex::new(HashMap::new()),
+            session: Mutex::new(None),
+            last_area: Mutex::new(load_last_area()),
+            cards: Mutex::new(vec![]),
+            closed: Mutex::new(vec![]),
+            ocr_langs: OnceLock::new(),
+        }))
+    }
+
+    pub fn set_wayland(&self, h: snip_wayland::Handle) {
+        let _ = self.wl.set(h);
+    }
+
+    fn wl(&self, r: Wl) {
+        if let Some(h) = self.wl.get() {
+            h.send(r);
+        }
+    }
+
+    pub fn cfg(&self) -> Config {
+        self.cfg.read().unwrap().clone()
+    }
+
+    fn ui(&self, f: impl FnOnce(std::pin::Pin<&mut Engine>) + Send + 'static) {
+        let _ = self.qt.queue(f);
+    }
+
+    fn toast(&self, text: impl Into<String>) {
+        let t = text.into();
+        self.ui(move |e| e.toast(&QString::from(t.as_str())));
+    }
+
+    fn next(&self) -> u64 {
+        self.next_req.fetch_add(1, Ordering::Relaxed)
+    }
+
+    fn output_names(&self) -> Vec<String> {
+        self.outputs.lock().unwrap().iter().map(|o| o.name.clone()).collect()
+    }
+
+    /// The output under the cursor (CAP-04, QAO-01), else the focused one.
+    fn cursor_output(&self) -> Option<String> {
+        let names = self.output_names();
+        if let Some((x, y)) = snip_hypr::cursor_pos() {
+            if let Some(o) = self.outputs.lock().unwrap().iter().find(|o| o.logical.contains(x, y)) {
+                return Some(o.name.clone());
+            }
+        }
+        snip_hypr::monitors().into_iter().find(|m| m.focused).map(|m| m.name).filter(|n| names.contains(n)).or_else(|| names.first().cloned())
+    }
+
+    // ------------------------------------------------------------------ events
+
+    pub fn on_wayland(self: &Arc<Self>, ev: Event) {
+        match ev {
+            Event::Ready { outputs, features } => {
+                trace::trace(
+                    "wayland_ready",
+                    &format!(
+                        "\"outputs\":{},\"data_control\":{},\"shortcuts\":{},\"toplevel\":{}",
+                        outputs.len(),
+                        features.data_control,
+                        features.global_shortcuts,
+                        features.toplevel_capture
+                    ),
+                );
+                *self.outputs.lock().unwrap() = outputs;
+                *self.features.lock().unwrap() = features;
+            }
+            Event::OutputsChanged { outputs } => *self.outputs.lock().unwrap() = outputs,
+            Event::Shortcut { id, pressed: true, t_ns } => {
+                trace::trace("shortcut", &format!("\"id\":{},\"t_ns\":{t_ns}", js(&id)));
+                self.shortcut(&id);
+            }
+            Event::Shortcut { .. } => {}
+            Event::Captured(r) => {
+                let p = self.pending.lock().unwrap().remove(&r.request);
+                if let Some(p) = p {
+                    let me = self.clone();
+                    std::thread::spawn(move || me.captured(p, r));
+                }
+            }
+            Event::ClipboardLost => {}
+            Event::Error(e) => trace::error("wayland", &format!("\"msg\":{}", js(&e))),
+        }
+    }
+
+    fn shortcut(self: &Arc<Self>, id: &str) {
+        match id {
+            "area" | "fullscreen" | "window" | "previous" | "text" | "all-in-one" => self.begin(id, None, None),
+            "restore" => self.ui(|e| e.cards_command(&QString::from("restore"))),
+            "close-all" => self.ui(|e| e.cards_command(&QString::from("close-all"))),
+            _ => {}
+        }
+    }
+
+    // ------------------------------------------------------------------ capture
+
+    /// Start a capture. `waiter` gets the outcome (the CLI blocks on it).
+    pub fn begin(self: &Arc<Self>, mode: &str, monitor: Option<String>, waiter: Option<Waiter>) {
+        let t0 = trace::now_ns();
+        match mode {
+            "area" | "window" | "text" | "all-in-one" => {
+                // SEL-09: the capture hotkey while the overlay is up cancels it.
+                if let Some(s) = self.session.lock().unwrap().take() {
+                    reply(s.waiter, cancelled());
+                    reply(waiter, cancelled());
+                    frames::clear();
+                    self.ui(|e| e.cancel_requested());
+                    return;
+                }
+                if self.pending.lock().unwrap().values().any(|p| matches!(p, Pending::Overlay { .. })) {
+                    reply(waiter, cancelled());
+                    return;
+                }
+                // All-In-One (CAP-07) is an M1 stand-in: the area overlay.
+                let mode = if mode == "all-in-one" { "area" } else { mode }.to_string();
+                let req = self.next();
+                let snap = std::thread::spawn(snapshot);
+                if self.cfg().capture.freeze {
+                    self.pending.lock().unwrap().insert(req, Pending::Overlay { mode, waiter, snap });
+                    self.wl(Wl::Capture { request: req, source: Source::Outputs(None), cursor: false });
+                } else {
+                    let snap = snap.join().unwrap_or_default();
+                    self.open_session(mode, req, waiter, snap, vec![]);
+                }
+                trace::trace("capture_begin", &format!("\"req\":{req},\"ms\":{:.2}", trace::ms_since(t0)));
+            }
+            "fullscreen" => {
+                let Some(output) = monitor.filter(|m| self.output_names().contains(m)).or_else(|| self.cursor_output()) else {
+                    reply(waiter, Response::err("no output"));
+                    return;
+                };
+                self.play("shutter");
+                let req = self.next();
+                self.pending.lock().unwrap().insert(req, Pending::Region { waiter, output: output.clone(), rect: None, kind: "fullscreen".into() });
+                self.wl(Wl::Capture { request: req, source: Source::Outputs(Some(vec![output])), cursor: false });
+            }
+            "previous" => {
+                // CAP-03: the last rectangle, in physical pixels, on its monitor.
+                let Some((mut output, rect)) = self.last_area.lock().unwrap().clone() else {
+                    self.toast("No previous area yet");
+                    reply(waiter, Response::err("no previous area"));
+                    return;
+                };
+                if !self.output_names().contains(&output) {
+                    let Some(o) = self.cursor_output() else {
+                        reply(waiter, Response::err("no output"));
+                        return;
+                    };
+                    self.toast(format!("{output} is gone; captured the same area on {o}"));
+                    output = o;
+                }
+                self.play("shutter");
+                let req = self.next();
+                self.pending.lock().unwrap().insert(req, Pending::Region { waiter, output: output.clone(), rect: Some(rect), kind: "area".into() });
+                self.wl(Wl::Capture { request: req, source: Source::Outputs(Some(vec![output])), cursor: false });
+            }
+            other => reply(waiter, Response::err(format!("unknown capture mode '{other}'"))),
+        }
+    }
+
+    fn captured(self: &Arc<Self>, p: Pending, r: CaptureResult) {
+        if !r.failed.is_empty() {
+            trace::warn("capture_failed", &format!("\"which\":{}", js(&r.failed.join(","))));
+        }
+        match p {
+            Pending::Overlay { mode, waiter, snap } => {
+                if r.frames.is_empty() {
+                    self.toast("Screen capture failed");
+                    reply(waiter, Response::err("capture failed"));
+                    return;
+                }
+                let snap = snap.join().unwrap_or_default();
+                trace::trace(
+                    "frames_captured",
+                    &format!("\"req\":{},\"n\":{},\"ms\":{:.2}", r.request, r.frames.len(), (r.t_done_ns - r.t_start_ns) as f64 / 1e6),
+                );
+                self.open_session(mode, r.request, waiter, snap, r.frames);
+            }
+            Pending::Region { waiter, output, rect, kind } => {
+                let Some(frame) = r.frames.into_iter().next() else {
+                    self.toast("Screen capture failed");
+                    reply(waiter, Response::err("capture failed"));
+                    return;
+                };
+                let (uw, uh) = frame.upright_size();
+                let rect = rect.unwrap_or(Rect::new(0, 0, uw, uh));
+                self.finish_from_frame(&frame, rect, &kind, &output, waiter);
+            }
+            Pending::Window { waiter, client, output, shadow, fallback, rect } => {
+                match r.frames.into_iter().next() {
+                    Some(f) => self.finish_window_frame(&f, &client, &output, shadow, waiter),
+                    None => match fallback {
+                        // no toplevel capture: what was on screen (frozen frame)
+                        Some(f) => self.finish_from_frame(&f, rect, "window", &output, waiter),
+                        None => {
+                            self.toast("Window capture failed");
+                            reply(waiter, Response::err("capture failed"));
+                        }
+                    },
+                }
+            }
+        }
+    }
+
+    fn open_session(self: &Arc<Self>, mode: String, epoch: u64, waiter: Option<Waiter>, snap: Snapshot, frames_: Vec<Frame>) {
+        let outputs = self.outputs.lock().unwrap().clone();
+        let mut out_json = serde_json::Map::new();
+        for o in &outputs {
+            let f = frames_.iter().find(|f| f.output == o.name);
+            let wins: Vec<Value> = snap
+                .clients
+                .iter()
+                .filter(|c| Rect::new(c.x, c.y, c.w, c.h).intersect(&o.logical).area() > 0)
+                .map(|c| {
+                    json!({
+                        "address": format!("{:x}", c.address),
+                        "x": c.x - o.logical.x, "y": c.y - o.logical.y, "w": c.w, "h": c.h,
+                        "title": c.title, "class": c.class,
+                    })
+                })
+                .collect();
+            out_json.insert(
+                o.name.clone(),
+                json!({
+                    "x": o.logical.x, "y": o.logical.y, "w": o.logical.w, "h": o.logical.h,
+                    "scale": f.map(|f| f.scale).unwrap_or(0.0),
+                    "frozen": f.is_some(),
+                    "windows": wins,
+                }),
+            );
+        }
+        let cursor = snap.cursor.and_then(|(x, y)| {
+            outputs.iter().find(|o| o.logical.contains(x, y)).map(|o| json!({"output": o.name, "x": x - o.logical.x, "y": y - o.logical.y}))
+        });
+        let cfg = self.cfg();
+        let session = json!({
+            "mode": mode,
+            "epoch": epoch,
+            "freeze": !frames_.is_empty(),
+            "outputs": out_json,
+            "cursor": cursor,
+            "crosshair": cfg.capture.crosshair,
+            "magnifier": cfg.capture.magnifier,
+            "toplevel": self.features.lock().unwrap().toplevel_capture,
+        })
+        .to_string();
+        trace::trace("session", &format!("\"json\":{session}"));
+        frames::publish(frames_);
+        *self.session.lock().unwrap() = Some(Session { mode, waiter, clients: snap.clients });
+        self.ui(move |mut e| {
+            e.as_mut().set_session(QString::from(session.as_str()));
+            e.as_mut().set_epoch(epoch as i32);
+            e.as_mut().frames_ready(epoch as i32);
+        });
+    }
+
+    /// The user finished a selection (physical px of `output`).
+    pub fn finish_area(self: &Arc<Self>, output: String, rect: Rect, kind: String) {
+        trace::trace("finish_area", &format!("\"output\":{},\"rect\":[{},{},{},{}],\"kind\":{}", js(&output), rect.x, rect.y, rect.w, rect.h, js(&kind)));
+        let Some(s) = self.session.lock().unwrap().take() else { return };
+        let kind = if s.mode == "text" { "text".to_string() } else { kind };
+        if kind != "text" {
+            self.play("shutter");
+        }
+        if kind == "area" {
+            *self.last_area.lock().unwrap() = Some((output.clone(), rect));
+            save_last_area(&output, rect);
+        }
+        match frames::get(&output) {
+            Some(frame) => {
+                frames::clear();
+                let me = self.clone();
+                std::thread::spawn(move || me.finish_from_frame(&frame, rect, &kind, &output, s.waiter));
+            }
+            None => {
+                // live mode (freeze off): re-capture once the overlay is gone
+                let req = self.next();
+                self.pending.lock().unwrap().insert(req, Pending::Region { waiter: s.waiter, output: output.clone(), rect: Some(rect), kind });
+                let me = self.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(Duration::from_millis(90));
+                    me.wl(Wl::Capture { request: req, source: Source::Outputs(Some(vec![output])), cursor: false });
+                });
+            }
+        }
+    }
+
+    /// Window mode click (CAP-05): the window's own buffer, never occluded.
+    pub fn finish_window(self: &Arc<Self>, address: &str, output: String, rect: Rect, invert: bool) {
+        let Some(s) = self.session.lock().unwrap().take() else { return };
+        let Some(addr) = u64::from_str_radix(address.trim_start_matches("0x"), 16).ok() else { return };
+        let client = s.clients.iter().find(|c| c.address == addr).cloned();
+        self.play("shutter");
+        let fallback = frames::get(&output);
+        frames::clear();
+        let shadow = self.cfg().capture.window_shadow != invert;
+        match client {
+            Some(client) if self.features.lock().unwrap().toplevel_capture => {
+                let req = self.next();
+                self.pending.lock().unwrap().insert(req, Pending::Window { waiter: s.waiter, client, output, shadow, fallback, rect });
+                self.wl(Wl::Capture { request: req, source: Source::Window(addr), cursor: false });
+            }
+            _ => match fallback {
+                Some(f) => {
+                    let me = self.clone();
+                    std::thread::spawn(move || me.finish_from_frame(&f, rect, "window", &output, s.waiter));
+                }
+                None => reply(s.waiter, Response::err("window not found")),
+            },
+        }
+    }
+
+    pub fn cancel(&self) {
+        if let Some(s) = self.session.lock().unwrap().take() {
+            reply(s.waiter, cancelled());
+        }
+        frames::clear();
+    }
+
+    fn finish_from_frame(self: &Arc<Self>, frame: &Frame, rect: Rect, kind: &str, output: &str, waiter: Option<Waiter>) {
+        if kind == "text" {
+            let (data, w, h, alpha) = encode::crop_upright(frame, rect);
+            let t0 = trace::now_ns();
+            let langs = self.ocr_languages();
+            match ocr::recognize(&data, w, h, if alpha { 4 } else { 3 }, frame.scale, &langs) {
+                Ok(text) if !text.trim().is_empty() => {
+                    trace::trace("ocr", &format!("\"chars\":{},\"ms\":{:.1}", text.chars().count(), trace::ms_since(t0)));
+                    self.set_clipboard_text(&text);
+                    let n = text.chars().count();
+                    self.toast(format!("Copied {n} character{}", if n == 1 { "" } else { "s" }));
+                    reply(waiter, Response::ok(json!(text)));
+                }
+                Ok(_) => {
+                    self.toast("No text found");
+                    reply(waiter, Response::err("no text found"));
+                }
+                Err(e) => {
+                    self.toast(format!("Text recognition failed: {e}"));
+                    reply(waiter, Response::err(e.to_string()));
+                }
+            }
+            return;
+        }
+        let (uw, uh) = frame.upright_size();
+        if rect.intersect(&Rect::new(0, 0, uw, uh)).area() <= 0 {
+            trace::warn("empty_crop", &format!("\"output\":{},\"rect\":[{},{},{},{}],\"frame\":[{uw},{uh}]", js(output), rect.x, rect.y, rect.w, rect.h));
+            reply(waiter, Response::err("empty selection"));
+            return;
+        }
+        let e = encode::crop_and_encode(frame, rect);
+        trace::trace(
+            "encoded",
+            &format!("\"w\":{},\"h\":{},\"crop_ms\":{:.2},\"encode_ms\":{:.2},\"bytes\":{}", e.width, e.height, e.crop_ms, e.encode_ms, e.png.len()),
+        );
+        let (app, title) = self.window_meta_at(output, rect, frame.scale);
+        self.ingest(e.png, e.width, e.height, CaptureMeta { kind: kind.into(), output: output.into(), app, title }, output, waiter);
+    }
+
+    fn finish_window_frame(self: &Arc<Self>, f: &Frame, client: &Client, output: &str, shadow: bool, waiter: Option<Waiter>) {
+        let t0 = trace::now_ns();
+        let (uw, uh) = f.upright_size();
+        let (data, w, h, alpha) = encode::crop_upright(f, Rect::new(0, 0, uw, uh));
+        let rgba = if alpha { data } else { data.chunks_exact(3).flat_map(|p| [p[0], p[1], p[2], 255]).collect() };
+        let scale = if client.w > 0 { w as f64 / client.w as f64 } else { 1.0 };
+        let cfg = self.cfg();
+        let corners = (cfg.capture.window_rounding && !client.fullscreen).then(|| window::Corners {
+            radius: snip_hypr::option_int("decoration:rounding").unwrap_or(0) as f64 * scale,
+            power: snip_hypr::option_float("decoration:rounding_power").unwrap_or(2.0),
+        });
+        let shadow = (shadow && !client.fullscreen).then(|| window::Shadow::float(scale));
+        let (out, ow, oh) = window::decorate(rgba, w, h, corners, shadow);
+        let png = encode::encode_png(&out, ow, oh, true);
+        trace::trace("window_encoded", &format!("\"w\":{ow},\"h\":{oh},\"ms\":{:.1}", trace::ms_since(t0)));
+        let meta = CaptureMeta { kind: "window".into(), output: output.into(), app: Some(client.class.clone()), title: Some(client.title.clone()) };
+        self.ingest(png, ow, oh, meta, output, waiter);
+    }
+
+    /// Window title and class for %t / %a: the window that contains the
+    /// selection's centre (Omarchy's "smart" semantics: the smallest wins).
+    fn window_meta_at(&self, output: &str, rect: Rect, scale: f64) -> (Option<String>, Option<String>) {
+        let o = self.outputs.lock().unwrap().iter().find(|o| o.name == output).map(|o| o.logical);
+        let Some(o) = o else { return (None, None) };
+        let s = if scale > 0.0 { scale } else { 1.0 };
+        let cx = o.x + ((rect.x as f64 + rect.w as f64 / 2.0) / s) as i32;
+        let cy = o.y + ((rect.y as f64 + rect.h as f64 / 2.0) / s) as i32;
+        snip_hypr::visible_windows()
+            .into_iter()
+            .filter(|c| Rect::new(c.x, c.y, c.w, c.h).contains(cx, cy))
+            .min_by_key(|c| c.w as i64 * c.h as i64)
+            .map(|c| (Some(c.class), Some(c.title)))
+            .unwrap_or((None, None))
+    }
+
+    fn ingest(self: &Arc<Self>, png: Vec<u8>, w: u32, h: u32, meta: CaptureMeta, output: &str, waiter: Option<Waiter>) {
+        let t0 = trace::now_ns();
+        match self.store.ingest(png, w, h, meta, now_secs()) {
+            Ok(rec) => {
+                trace::trace("ingested", &format!("\"id\":\"{}\",\"ms\":{:.2}", rec.id, trace::ms_since(t0)));
+                self.after_capture(&rec, output);
+                reply(waiter, Response::ok(serde_json::to_value(&rec).unwrap_or(Value::Null)));
+            }
+            Err(e) => {
+                self.toast(format!("Could not store the capture: {e}"));
+                reply(waiter, Response::err(e.to_string()));
+            }
+        }
+    }
+
+    /// SET-03 After Capture rules (default: only the Quick Access card).
+    fn after_capture(self: &Arc<Self>, rec: &Record, output: &str) {
+        let rules = self.cfg().after_capture.screenshot;
+        if rules.contains(&AfterCapture::Save) {
+            let _ = self.save(&rec.id);
+        } else if rules.contains(&AfterCapture::Copy) {
+            let _ = self.copy(&rec.id);
+        }
+        if rules.contains(&AfterCapture::Annotate) {
+            self.annotate(&rec.id);
+        }
+        if rules.contains(&AfterCapture::ShowQao) || rules.is_empty() {
+            self.show_card(rec, output);
+        }
+    }
+
+    fn show_card(&self, rec: &Record, output: &str) {
+        self.cards.lock().unwrap().push((rec.id.clone(), output.to_string()));
+        self.closed.lock().unwrap().retain(|i| i != &rec.id);
+        let j = card_json(rec, output).to_string();
+        self.ui(move |e| e.card_add(&QString::from(j.as_str())));
+    }
+
+    pub fn card_closed(&self, id: &str) {
+        self.cards.lock().unwrap().retain(|(i, _)| i != id);
+        let mut c = self.closed.lock().unwrap();
+        c.retain(|i| i != id);
+        c.push(id.to_string());
+        let n = c.len();
+        if n > CLOSED_KEEP {
+            c.drain(..n - CLOSED_KEEP);
+        }
+        drop(c);
+        // history "Never": nothing outlives its card (unless it was saved)
+        if self.cfg().history.retention == Retention::Never {
+            let _ = self.store.delete(id);
+        }
+    }
+
+    pub fn restore_last(&self) -> Result<Value, String> {
+        let id = self.closed.lock().unwrap().pop().ok_or("nothing to restore")?;
+        let rec = self.store.get(&id).map_err(|e| e.to_string())?;
+        let out = self.cursor_output().unwrap_or_default();
+        self.show_card(&rec, &out);
+        Ok(card_json(&rec, &out))
+    }
+
+    // ------------------------------------------------------------------ actions
+
+    fn resolve_id(&self, id: Option<String>) -> Result<String, String> {
+        match id.filter(|s| !s.is_empty()) {
+            Some(id) => Ok(id),
+            None => self.store.recent(1).map_err(|e| e.to_string())?.into_iter().next().map(|r| r.id).ok_or_else(|| "history is empty".into()),
+        }
+    }
+
+    /// Copy (§5.0): clipboard only.
+    pub fn copy(&self, id: &str) -> Result<(), String> {
+        let cfg = self.cfg();
+        let png = self.store.bytes(id).map_err(|e| e.to_string())?;
+        let mut offers: Vec<(String, Arc<Vec<u8>>)> = vec![];
+        if cfg.clipboard.mode != ClipboardMode::File {
+            offers.push(("image/png".into(), png));
+        }
+        if cfg.clipboard.mode != ClipboardMode::Image {
+            let p = self.drag_file(id)?;
+            let uri = format!("file://{}", percent_encode(&p));
+            offers.push(("text/uri-list".into(), Arc::new(format!("{uri}\r\n").into_bytes())));
+            offers.push(("x-special/gnome-copied-files".into(), Arc::new(format!("copy\n{uri}").into_bytes())));
+        }
+        if cfg.clipboard.sensitive {
+            offers.push(("x-kde-passwordManagerHint".into(), Arc::new(b"secret".to_vec())));
+        }
+        self.wl(Wl::SetClipboard { offers });
+        trace::trace("copied", &format!("\"id\":\"{id}\""));
+        Ok(())
+    }
+
+    fn set_clipboard_text(&self, text: &str) {
+        let b = Arc::new(text.as_bytes().to_vec());
+        let mut offers = vec![("text/plain;charset=utf-8".to_string(), b.clone()), ("text/plain".to_string(), b.clone()), ("UTF8_STRING".to_string(), b)];
+        if self.cfg().clipboard.sensitive {
+            offers.push(("x-kde-passwordManagerHint".into(), Arc::new(b"secret".to_vec())));
+        }
+        self.wl(Wl::SetClipboard { offers });
+    }
+
+    pub fn copy_text(&self, text: &str) {
+        self.set_clipboard_text(text);
+    }
+
+    /// Save (§5.0): export folder, and the clipboard when save_also_copies.
+    pub fn save(&self, id: &str) -> Result<PathBuf, String> {
+        let cfg = self.cfg();
+        let path = self.store.save(id, &cfg, chrono::Local::now()).map_err(|e| e.to_string())?;
+        if cfg.general.save_also_copies {
+            let _ = self.copy(id);
+        }
+        trace::trace("saved", &format!("\"id\":\"{id}\",\"path\":{}", js(&path.to_string_lossy())));
+        if let Ok(rec) = self.store.get(id) {
+            let out = self.cards.lock().unwrap().iter().find(|(i, _)| i == id).map(|(_, o)| o.clone()).unwrap_or_default();
+            let j = card_json(&rec, &out).to_string();
+            let id = id.to_string();
+            self.ui(move |e| e.card_update(&QString::from(id.as_str()), &QString::from(j.as_str())));
+        }
+        Ok(path)
+    }
+
+    /// A file to drag out (QAO-04): the saved file, or a nicely named copy in
+    /// the drag cache (never the history path, which has no useful name).
+    pub fn drag_file(&self, id: &str) -> Result<PathBuf, String> {
+        let rec = self.store.get(id).map_err(|e| e.to_string())?;
+        if let Some(p) = rec.saved.filter(|p| p.exists()) {
+            return Ok(p);
+        }
+        let dir = paths::drag_dir().join(id);
+        if let Some(existing) = std::fs::read_dir(&dir).ok().and_then(|mut rd| rd.next()).and_then(|e| e.ok()).map(|e| e.path()) {
+            return Ok(existing);
+        }
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        let cfg = self.cfg();
+        let when = chrono::DateTime::from_timestamp(rec.created_at, 0).map(|t| t.with_timezone(&chrono::Local)).unwrap_or_else(chrono::Local::now);
+        let ctx = naming::NameContext { window_title: rec.title.clone(), app_name: rec.app.clone(), counter: 0, random: id.chars().rev().take(4).collect() };
+        let stem = naming::render(&cfg.general.file_name, when, &ctx);
+        let path = dir.join(format!("{stem}.png"));
+        if std::fs::hard_link(&rec.source, &path).is_err() {
+            std::fs::copy(&rec.source, &path).map_err(|e| e.to_string())?;
+        }
+        Ok(path)
+    }
+
+    pub fn show_in_files(&self, id: &str) {
+        let Ok(rec) = self.store.get(id) else { return };
+        let path = match rec.saved.filter(|p| p.exists()) {
+            Some(p) => p,
+            None => match self.drag_file(id) {
+                Ok(p) => p,
+                Err(_) => return,
+            },
+        };
+        let uri = format!("file://{}", percent_encode(&path));
+        spawn_detached(
+            "gdbus",
+            &[
+                "call", "--session", "--dest", "org.freedesktop.FileManager1", "--object-path", "/org/freedesktop/FileManager1",
+                "--method", "org.freedesktop.FileManager1.ShowItems", &format!("['{uri}']"), "",
+            ],
+        );
+    }
+
+    /// Move to Trash: the saved file goes to the trash; the capture leaves history.
+    pub fn trash(&self, id: &str) {
+        if let Ok(rec) = self.store.get(id) {
+            if let Some(p) = rec.saved.filter(|p| p.exists()) {
+                spawn_detached("gio", &["trash", &p.to_string_lossy()]);
+            }
+        }
+        let _ = std::fs::remove_dir_all(paths::drag_dir().join(id));
+        let _ = self.store.delete(id);
+        self.cards.lock().unwrap().retain(|(i, _)| i != id);
+        self.closed.lock().unwrap().retain(|i| i != id);
+    }
+
+    /// Annotate / double-click: the external editor until M2's editor lands.
+    pub fn annotate(&self, id: &str) {
+        let editor = self.cfg().general.external_editor;
+        if editor.trim().is_empty() {
+            return;
+        }
+        if let Ok(p) = self.drag_file(id) {
+            let mut parts = editor.split_whitespace();
+            if let Some(cmd) = parts.next() {
+                let mut args: Vec<String> = parts.map(String::from).collect();
+                args.push(p.to_string_lossy().into_owned());
+                let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+                spawn_detached(cmd, &refs);
+            }
+        }
+    }
+
+    /// Extract text from a stored capture (QAO-09).
+    pub fn extract_text(self: &Arc<Self>, id: &str) {
+        let me = self.clone();
+        let id = id.to_string();
+        std::thread::spawn(move || {
+            let Ok(bytes) = me.store.bytes(&id) else { return };
+            let Ok((data, w, h, bpp)) = decode_png(&bytes) else { return };
+            let langs = me.ocr_languages();
+            match ocr::recognize(&data, w, h, bpp, 2.0, &langs) {
+                Ok(t) if !t.trim().is_empty() => {
+                    me.set_clipboard_text(&t);
+                    let n = t.chars().count();
+                    me.toast(format!("Copied {n} character{}", if n == 1 { "" } else { "s" }));
+                }
+                Ok(_) => me.toast("No text found"),
+                Err(e) => me.toast(format!("Text recognition failed: {e}")),
+            }
+        });
+    }
+
+    fn ocr_languages(&self) -> String {
+        let configured = self.cfg().ocr.languages;
+        if !configured.trim().is_empty() {
+            return configured;
+        }
+        self.ocr_langs
+            .get_or_init(|| {
+                let layouts = snip_hypr::option_str("input:kb_layout").unwrap_or_default();
+                ocr::languages_for_layouts(&layouts, &ocr::installed_languages())
+            })
+            .clone()
+    }
+
+    pub fn open_file(self: &Arc<Self>, path: &str) -> Result<Value, String> {
+        let bytes = std::fs::read(path).map_err(|e| format!("{path}: {e}"))?;
+        let (w, h) = png_size(&bytes).ok_or("only PNG files can be opened for now")?;
+        let title = Path::new(path).file_stem().map(|s| s.to_string_lossy().into_owned());
+        let out = self.cursor_output().unwrap_or_default();
+        let rec = self
+            .store
+            .ingest(bytes, w, h, CaptureMeta { kind: "import".into(), output: out.clone(), app: None, title }, now_secs())
+            .map_err(|e| e.to_string())?;
+        self.show_card(&rec, &out);
+        Ok(card_json(&rec, &out))
+    }
+
+    // ------------------------------------------------------------------ sound
+
+    pub fn play(&self, name: &str) {
+        if !self.cfg().general.sounds {
+            return;
+        }
+        let user = paths::config_dir().join("sounds").join(format!("{name}.wav"));
+        let path = if user.exists() {
+            user
+        } else {
+            let p = paths::runtime_dir().join(format!("{name}.wav"));
+            if !p.exists() {
+                let _ = paths::ensure_private_dir(&paths::runtime_dir());
+                let _ = std::fs::write(&p, SHUTTER);
+            }
+            p
+        };
+        spawn_detached("pw-play", &["--volume=0.6", &path.to_string_lossy()]);
+    }
+
+    // ------------------------------------------------------------------ live config / theme
+
+    pub fn reload_config(&self) {
+        let (cfg, err) = Config::load();
+        *self.cfg.write().unwrap() = cfg;
+        *self.cfg_error.lock().unwrap() = err.clone();
+        if let Some(e) = err {
+            self.toast(format!("config.toml: {e}"));
+        }
+        self.push_settings();
+    }
+
+    pub fn push_settings(&self) {
+        let c = self.cfg();
+        let j = json!({
+            "quickAccess": {
+                "position": c.quick_access.position,
+                "autoClose": c.quick_access.auto_close,
+                "autoCloseSeconds": c.quick_access.auto_close_seconds,
+                "autoCloseAction": c.quick_access.auto_close_action,
+                "maxVisible": c.quick_access.max_visible,
+                "size": c.quick_access.size,
+            },
+            "capture": c.capture,
+            "sounds": c.general.sounds,
+            "saveAlsoCopies": c.general.save_also_copies,
+        })
+        .to_string();
+        self.ui(move |mut e| e.as_mut().set_settings(QString::from(j.as_str())));
+    }
+
+    pub fn push_theme(&self) {
+        let rounding = snip_hypr::option_int("decoration:rounding").unwrap_or(0).max(0) as u32;
+        let mut t = theme::current(rounding);
+        t["roundingPower"] = json!(snip_hypr::option_float("decoration:rounding_power").unwrap_or(2.0));
+        let j = t.to_string();
+        trace::trace("theme", &format!("\"name\":{}", t["name"]));
+        self.ui(move |mut e| e.as_mut().set_theme(QString::from(j.as_str())));
+    }
+
+    pub fn sweep(&self) {
+        let r = self.cfg().history.retention;
+        // "Never" removes captures as their cards close; at start nothing is open.
+        let max_age = if r == Retention::Never && !self.cards.lock().unwrap().is_empty() { return } else { r.max_age_secs() };
+        if let Ok(n) = self.store.sweep(now_secs(), max_age) {
+            if n > 0 {
+                trace::trace("history_sweep", &format!("\"removed\":{n}"));
+            }
+        }
+        // drag copies of captures that are gone
+        if let Ok(rd) = std::fs::read_dir(paths::drag_dir()) {
+            for e in rd.flatten() {
+                let id = e.file_name().to_string_lossy().into_owned();
+                if self.store.get(&id).is_err() {
+                    let _ = std::fs::remove_dir_all(e.path());
+                }
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ ctl.sock
+
+    pub fn handle_ctl(self: &Arc<Self>, req: Ctl) -> Response {
+        let ok_or = |r: Result<Value, String>| match r {
+            Ok(v) => Response::ok(v),
+            Err(e) => Response::err(e),
+        };
+        match req {
+            Ctl::Ping => Response::ok(json!("pong")),
+            Ctl::Capture { mode, monitor } => {
+                let (tx, rx) = mpsc::channel();
+                self.begin(&mode, monitor, Some(tx));
+                rx.recv_timeout(Duration::from_secs(590)).unwrap_or_else(|_| Response::err("timed out"))
+            }
+            Ctl::Open { path } => ok_or(self.open_file(&path)),
+            Ctl::Copy { id } => ok_or(self.resolve_id(id).and_then(|id| self.copy(&id).map(|_| json!(id)))),
+            Ctl::Save { id } => ok_or(self.resolve_id(id).and_then(|id| self.save(&id).map(|p| json!(p)))),
+            Ctl::List { n } => ok_or(self.store.recent(n).map(|v| serde_json::to_value(v).unwrap_or(Value::Null)).map_err(|e| e.to_string())),
+            Ctl::RestoreLast => {
+                // QML decides: un-hide hidden cards, else reopen the last closed one
+                self.ui(|e| e.cards_command(&QString::from("restore")));
+                Response::ok(Value::Null)
+            }
+            Ctl::CloseAll => {
+                self.ui(|e| e.cards_command(&QString::from("close-all")));
+                Response::ok(Value::Null)
+            }
+            Ctl::Status => Response::ok(self.status()),
+            Ctl::Reload => {
+                self.reload_config();
+                self.push_theme();
+                let _ = snip_hypr::install_runtime_rules();
+                match self.cfg_error.lock().unwrap().clone() {
+                    Some(e) => Response::err(format!("config.toml: {e}")),
+                    None => Response::ok(Value::Null),
+                }
+            }
+            Ctl::Quit => {
+                self.ui(|e| e.quit_requested());
+                Response::ok(Value::Null)
+            }
+            Ctl::Debug { op, args } => self.debug(&op, &args),
+        }
+    }
+
+    fn status(&self) -> Value {
+        let f = *self.features.lock().unwrap();
+        json!({
+            "version": env!("CARGO_PKG_VERSION"),
+            "pid": std::process::id(),
+            "outputs": self.outputs.lock().unwrap().iter().map(|o| json!({"name": o.name, "x": o.logical.x, "y": o.logical.y, "w": o.logical.w, "h": o.logical.h, "transform": o.transform})).collect::<Vec<_>>(),
+            "features": {"data_control": f.data_control, "global_shortcuts": f.global_shortcuts, "virtual_pointer": f.virtual_pointer, "toplevel_capture": f.toplevel_capture},
+            "overlay": self.session.lock().unwrap().as_ref().map(|s| s.mode.clone()),
+            "cards": self.cards.lock().unwrap().iter().map(|(i, _)| i.clone()).collect::<Vec<_>>(),
+            "closed": self.closed.lock().unwrap().len(),
+            "history_bytes": self.store.disk_usage(),
+            "config_error": *self.cfg_error.lock().unwrap(),
+        })
+    }
+
+    /// Automation for tests/e2e: synthetic pointer (wlr virtual pointer) and
+    /// UI commands. Only meaningful on dedicated test workspaces.
+    fn debug(self: &Arc<Self>, op: &str, a: &[String]) -> Response {
+        let n = |i: usize| a.get(i).and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0);
+        match op {
+            "move" => {
+                let output = a.first().cloned().unwrap_or_default();
+                let lw = self.outputs.lock().unwrap().iter().find(|o| o.name == output).map(|o| (o.logical.w, o.logical.h));
+                let Some((w, h)) = lw else { return Response::err("no such output") };
+                self.wl(Wl::PointerMove { output, x: n(1) as u32, y: n(2) as u32, w: w as u32, h: h as u32 });
+                Response::ok(Value::Null)
+            }
+            "down" | "up" | "rdown" | "rup" => {
+                let button = if op.starts_with('r') { 0x111 } else { 0x110 };
+                self.wl(Wl::PointerButton { down: op.ends_with("down"), button });
+                Response::ok(Value::Null)
+            }
+            "scroll" => {
+                self.wl(Wl::PointerAxis { dy: n(0) });
+                Response::ok(Value::Null)
+            }
+            "ui" => {
+                // forward a command to QML (e.g. "key Escape", "key space", "finish")
+                let cmd = a.join(" ");
+                self.ui(move |e| e.debug_command(&QString::from(cmd.as_str())));
+                Response::ok(Value::Null)
+            }
+            "sweep" => {
+                self.sweep();
+                Response::ok(Value::Null)
+            }
+            _ => Response::err(format!("unknown debug op '{op}'")),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------- helpers
+
+fn last_area_file() -> PathBuf {
+    paths::data_dir().join("last-area.json")
+}
+
+fn load_last_area() -> Option<(String, Rect)> {
+    let v: Value = serde_json::from_str(&std::fs::read_to_string(last_area_file()).ok()?).ok()?;
+    let g = |k: &str| v[k].as_i64().map(|x| x as i32);
+    Some((v["output"].as_str()?.to_string(), Rect::new(g("x")?, g("y")?, g("w")?, g("h")?)))
+}
+
+fn save_last_area(output: &str, r: Rect) {
+    let _ = std::fs::create_dir_all(paths::data_dir());
+    let _ = std::fs::write(last_area_file(), json!({"output": output, "x": r.x, "y": r.y, "w": r.w, "h": r.h}).to_string());
+}
+
+fn percent_encode(p: &Path) -> String {
+    let mut s = String::new();
+    for b in p.to_string_lossy().bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'/' | b'-' | b'_' | b'.' | b'~' => s.push(b as char),
+            _ => s.push_str(&format!("%{b:02X}")),
+        }
+    }
+    s
+}
+
+/// Fire and forget, reaped on a helper thread (no zombies in a long-lived daemon).
+fn spawn_detached(cmd: &str, args: &[&str]) {
+    use std::process::{Command, Stdio};
+    match Command::new(cmd).args(args).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn() {
+        Ok(mut c) => {
+            std::thread::spawn(move || {
+                let _ = c.wait();
+            });
+        }
+        Err(e) => trace::warn("spawn_failed", &format!("\"cmd\":{},\"msg\":{}", js(cmd), js(&e.to_string()))),
+    }
+}
+
+fn decode_png(bytes: &[u8]) -> Result<(Vec<u8>, u32, u32, usize), String> {
+    let mut dec = png::Decoder::new(std::io::Cursor::new(bytes));
+    dec.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
+    let mut r = dec.read_info().map_err(|e| e.to_string())?;
+    let mut buf = vec![0; r.output_buffer_size().ok_or("png too large")?];
+    let info = r.next_frame(&mut buf).map_err(|e| e.to_string())?;
+    buf.truncate(info.buffer_size());
+    let bpp = match info.color_type {
+        png::ColorType::Rgba => 4,
+        png::ColorType::Rgb => 3,
+        png::ColorType::GrayscaleAlpha => {
+            buf = buf.chunks_exact(2).flat_map(|p| [p[0], p[0], p[0], p[1]]).collect();
+            4
+        }
+        _ => {
+            buf = buf.iter().flat_map(|&g| [g, g, g]).collect();
+            3
+        }
+    };
+    Ok((buf, info.width, info.height, bpp))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn percent_encoding_keeps_paths_readable() {
+        assert_eq!(percent_encode(Path::new("/a b/Snip 2026.png")), "/a%20b/Snip%202026.png");
+    }
+
+    #[test]
+    fn png_size_reads_ihdr() {
+        let png = encode::encode_png(&[0u8; 3 * 6], 3, 2, false);
+        assert_eq!(png_size(&png), Some((3, 2)));
+        let (d, w, h, bpp) = decode_png(&png).unwrap();
+        assert_eq!((d.len(), w, h, bpp), (18, 3, 2, 3));
+    }
+}

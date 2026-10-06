@@ -256,10 +256,10 @@ impl State {
                     p.frame();
                 }
             }
-            Request::PointerButton { down } => {
+            Request::PointerButton { down, button } => {
                 if let Some((_, p)) = &self.vptr {
                     let st = if down { wl_pointer::ButtonState::Pressed } else { wl_pointer::ButtonState::Released };
-                    p.button(now_ms(), 0x110, st);
+                    p.button(now_ms(), button, st);
                     p.frame();
                 }
             }

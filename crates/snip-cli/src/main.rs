@@ -8,7 +8,8 @@ use std::time::Duration;
 const USAGE: &str = "usage: snip [--json] <command>
 
 capture
-  area | fullscreen | window | previous [--monitor NAME]
+  area | fullscreen | window | previous | text | all-in-one [--monitor NAME]
+  open FILE        add an image as a capture (also: edit FILE)
 captures (default: the most recent)
   copy [ID]        put a capture on the clipboard
   save [ID]        save to the export folder (and copy)
@@ -38,9 +39,17 @@ fn main() -> ExitCode {
     };
     let arg1 = args.get(1).cloned();
     let (req, timeout) = match cmd.as_str() {
-        "area" | "fullscreen" | "window" | "previous" => {
+        "area" | "fullscreen" | "window" | "previous" | "text" | "all-in-one" => {
             let monitor = flag(&mut args, "--monitor");
             (Request::Capture { mode: cmd.clone(), monitor }, Duration::from_secs(600))
+        }
+        "open" | "edit" => {
+            let Some(p) = arg1 else {
+                eprintln!("snip: {cmd} needs a file");
+                return ExitCode::from(2);
+            };
+            let abs = std::fs::canonicalize(&p).unwrap_or_else(|_| p.into());
+            (Request::Open { path: abs.to_string_lossy().into_owned() }, Duration::from_secs(10))
         }
         "copy" => (Request::Copy { id: arg1 }, Duration::from_secs(10)),
         "save" => (Request::Save { id: arg1 }, Duration::from_secs(10)),

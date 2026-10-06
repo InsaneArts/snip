@@ -16,6 +16,8 @@ pub struct General {
     /// Decided 2026-10-06: Save writes the file *and* copies it.
     pub save_also_copies: bool,
     pub sounds: bool,
+    /// Annotate / double-click until Snip's own editor lands (M2).
+    pub external_editor: String,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -56,9 +58,18 @@ pub struct QuickAccess {
     pub position: Side,
     pub auto_close: bool,
     pub auto_close_seconds: u32,
+    /// What auto-close does (QAO-07). The capture stays in history either way.
+    pub auto_close_action: AutoCloseAction,
     pub max_visible: u32,
     /// card width in logical px (CleanShot "overlay size" slider)
     pub size: u32,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AutoCloseAction {
+    Close,
+    SaveAndClose,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -98,9 +109,26 @@ pub struct History {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct Clipboard {
+    /// What Copy offers (SET-07).
+    pub mode: ClipboardMode,
     /// Offer copies with x-kde-passwordManagerHint so Omarchy's clipboard
     /// history skips them (SET-07b).
     pub sensitive: bool,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ClipboardMode {
+    Image,
+    File,
+    ImageAndFile,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct Ocr {
+    /// Tesseract languages ("eng+kat"); empty = English plus installed models.
+    pub languages: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -109,6 +137,24 @@ pub struct Capture {
     pub freeze: bool,
     /// Keep the GPU context warm this long after the last capture (S01).
     pub keep_warm_minutes: u32,
+    /// SEL-04: full-screen crosshair lines with a coordinate readout.
+    pub crosshair: Crosshair,
+    /// SEL-05: loupe with pixel grid and hex colour (shown with the crosshair).
+    pub magnifier: bool,
+    /// CAP-05: window captures keep their transparent background; Shift in
+    /// window mode inverts this (with wallpaper comes with M2's Background tool).
+    pub window_shadow: bool,
+    /// Draw Hyprland's corner rounding into window captures.
+    pub window_rounding: bool,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Crosshair {
+    Off,
+    Always,
+    /// only while Ctrl is held
+    Ctrl,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -120,6 +166,7 @@ pub struct Config {
     pub history: History,
     pub clipboard: Clipboard,
     pub capture: Capture,
+    pub ocr: Ocr,
 }
 
 impl Default for General {
@@ -130,6 +177,7 @@ impl Default for General {
             format: ImageFormat::Png,
             save_also_copies: true,
             sounds: true,
+            external_editor: "tensaku-edit".into(),
         }
     }
 }
@@ -142,7 +190,14 @@ impl Default for AfterCaptureRules {
 
 impl Default for QuickAccess {
     fn default() -> Self {
-        Self { position: Side::Left, auto_close: true, auto_close_seconds: 10, max_visible: 5, size: 280 }
+        Self {
+            position: Side::Left,
+            auto_close: true,
+            auto_close_seconds: 10,
+            auto_close_action: AutoCloseAction::Close,
+            max_visible: 5,
+            size: 280,
+        }
     }
 }
 
@@ -154,13 +209,20 @@ impl Default for History {
 
 impl Default for Clipboard {
     fn default() -> Self {
-        Self { sensitive: false }
+        Self { mode: ClipboardMode::Image, sensitive: false }
     }
 }
 
 impl Default for Capture {
     fn default() -> Self {
-        Self { freeze: true, keep_warm_minutes: 10 }
+        Self {
+            freeze: true,
+            keep_warm_minutes: 10,
+            crosshair: Crosshair::Ctrl,
+            magnifier: true,
+            window_shadow: true,
+            window_rounding: true,
+        }
     }
 }
 

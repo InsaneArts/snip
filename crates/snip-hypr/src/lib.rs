@@ -137,6 +137,15 @@ pub fn option_int(name: &str) -> Option<i64> {
     json(&format!("j/getoption {name}"))["int"].as_i64()
 }
 
+pub fn option_str(name: &str) -> Option<String> {
+    json(&format!("j/getoption {name}"))["str"].as_str().map(String::from)
+}
+
+pub fn option_float(name: &str) -> Option<f64> {
+    let v = json(&format!("j/getoption {name}"));
+    v["float"].as_f64().or_else(|| v["int"].as_f64())
+}
+
 /// Run Lua in Hyprland (0.56+ config API). Returns the reply ("ok" on success).
 pub fn eval(lua: &str) -> std::io::Result<String> {
     request(&format!("eval {lua}"))

@@ -64,7 +64,8 @@ pub enum Request {
     SetClipboard { offers: Vec<(String, Arc<Vec<u8>>)> },
     RegisterShortcut { id: String, description: String },
     PointerMove { output: String, x: u32, y: u32, w: u32, h: u32 },
-    PointerButton { down: bool },
+    /// Linux button code: 0x110 left, 0x111 right, 0x112 middle
+    PointerButton { down: bool, button: u32 },
     PointerAxis { dy: f64 },
 }
 

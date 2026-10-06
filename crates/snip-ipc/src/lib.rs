@@ -11,7 +11,7 @@ use std::time::Duration;
 #[serde(tag = "cmd", rename_all = "kebab-case")]
 pub enum Request {
     Ping,
-    /// Capture: area | fullscreen | window | previous
+    /// Capture: area | fullscreen | window | previous | text | all-in-one
     Capture {
         mode: String,
         #[serde(default)]
@@ -27,6 +27,9 @@ pub enum Request {
         #[serde(default)]
         id: Option<String>,
     },
+    /// Add an image file as a capture with a Quick Access card (OMA-06:
+    /// Snip as OMARCHY_SCREENSHOT_EDITOR; opens the editor once M2 lands)
+    Open { path: String },
     /// Recent captures from history
     List {
         #[serde(default = "default_n")]

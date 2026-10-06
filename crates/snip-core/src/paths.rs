@@ -23,8 +23,10 @@ pub fn cache_dir() -> PathBuf {
     env_dir("XDG_CACHE_HOME", || home().join(".cache")).join("snip")
 }
 
+/// `SNIP_RUNTIME_DIR` lets a test instance run next to the user's daemon
+/// (XDG_RUNTIME_DIR itself can't move: the Wayland socket lives there).
 pub fn runtime_dir() -> PathBuf {
-    env_dir("XDG_RUNTIME_DIR", std::env::temp_dir).join("snip")
+    env_dir("SNIP_RUNTIME_DIR", || env_dir("XDG_RUNTIME_DIR", std::env::temp_dir).join("snip"))
 }
 
 pub fn ctl_socket() -> PathBuf {
