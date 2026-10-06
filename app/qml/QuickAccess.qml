@@ -55,10 +55,14 @@ Window {
     LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorBottom
                                | (qa.right ? LayerShell.Window.AnchorRight : LayerShell.Window.AnchorLeft)
     LayerShell.Window.exclusionZone: 0
-    // QAO-03: keys reach the cards only while the pointer rests on them.
-    LayerShell.Window.keyboardInteractivity: (keyDwell.ready && qa.hovering) || qa.menuCard
+    // QAO-03: keys reach the cards only while the pointer rests on them. With
+    // the menu open the keyboard is on-demand, not exclusive: Hyprland keeps
+    // all pointer events on an exclusive layer, and the menu's outside-click
+    // catcher would never see a click (found by e2e menu_closes_on_any_click).
+    LayerShell.Window.keyboardInteractivity: keyDwell.ready && qa.hovering && !qa.menuCard
                                              ? LayerShell.Window.KeyboardInteractivityExclusive
-                                             : LayerShell.Window.KeyboardInteractivityNone
+                                             : qa.menuCard ? LayerShell.Window.KeyboardInteractivityOnDemand
+                                                           : LayerShell.Window.KeyboardInteractivityNone
 
     ListModel { id: cards }   // { cardId, json }, oldest first
 
