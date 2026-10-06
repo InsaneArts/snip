@@ -19,6 +19,7 @@ calloop = "0.14"
 calloop-wayland-source = "0.4"
 rustix = { version = "1", features = ["fs", "mm", "time", "pipe"] }
 png = "0.18"
+serde_json = "1"
 
 [build-dependencies]
 cxx-qt-build = { version = "0.10", features = ["link_qt_object_files"] }

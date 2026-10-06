@@ -9,9 +9,13 @@ cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build
 
 # runtime-only Hyprland setup (gone on config reload)
 hyprctl eval 'hl.layer_rule({ match = { namespace = "^snip-" }, no_anim = true, animation = "none" })'
-hyprctl eval 'SNIPSPIKE_BIND = hl.bind("SUPER + ALT + PRINT", hl.dsp.global("snipspike:area"))'
+hyprctl eval 'hl.unbind("SUPER + SHIFT + code:12")'   # Omarchy: move window to workspace 3
+hyprctl eval 'hl.unbind("SUPER + SHIFT + code:13")'   # Omarchy: move window to workspace 4
+hyprctl eval 'SNIPSPIKE_FULL = hl.bind("SUPER + SHIFT + code:12", hl.dsp.global("snipspike:fullscreen"), { description = "Snip: capture fullscreen" })'
+hyprctl eval 'SNIPSPIKE_AREA = hl.bind("SUPER + SHIFT + code:13", hl.dsp.global("snipspike:area"), { description = "Snip: capture area" })'
+# undo everything: hyprctl reload
 
-./build/snip-spike              # interactive: SUPER+ALT+PRINT, drag, release = copy; Esc cancels
+./build/snip-spike              # SUPER+SHIFT+4: drag, release = copy (Esc cancels); SUPER+SHIFT+3: fullscreen -> clipboard
 ./build/snip-spike --selftest   # capture, show, recapture, pixel diff, copy test
 ./bench.sh 30                   # warm hotkey latency via the real global-shortcut path
 ./build/snip-spike --soak       # idle-gated soak (used by the snip-soak user unit)

@@ -116,7 +116,10 @@ impl qobject::SnipCore {
         let register = self.mode().to_string() != "soak";
         std::thread::Builder::new()
             .name("snip-wayland".into())
-            .spawn(move || wl::run(rx, visible, ui, register))
+            .spawn({
+                let self_tx = tx.clone();
+                move || wl::run(rx, self_tx, visible, ui, register)
+            })
             .expect("spawn wayland thread");
         if self.mode().to_string() == "soak" {
             let _ = tx.send(Cmd::StartSoak { idle_ms: 120_000, interval_ms: 30_000 });
@@ -161,41 +164,15 @@ impl qobject::SnipCore {
                 mark("copy_error", "\"msg\":\"no frame\"");
                 return;
             };
-            let b = &slot.buf;
-            let x = x.clamp(0, b.width as i32) as usize;
-            let y = y.clamp(0, b.height as i32) as usize;
-            let w = (w.max(1) as usize).min(b.width as usize - x);
-            let h = (h.max(1) as usize).min(b.height as usize - y);
-            let src = b.bytes();
-            let stride = b.stride as usize;
-            // XRGB8888 little-endian = B,G,R,X in memory -> RGB
-            let mut rgb = Vec::with_capacity(w * h * 3);
-            for row in y..y + h {
-                let line = &src[row * stride + x * 4..row * stride + (x + w) * 4];
-                for px in line.chunks_exact(4) {
-                    rgb.extend_from_slice(&[px[2], px[1], px[0]]);
-                }
-            }
-            let t_crop = now_ns();
-            let mut png_bytes = Vec::with_capacity(w * h);
-            {
-                let mut enc = png::Encoder::new(&mut png_bytes, w as u32, h as u32);
-                enc.set_color(png::ColorType::Rgb);
-                enc.set_depth(png::BitDepth::Eight);
-                enc.set_compression(png::Compression::Fast);
-                let mut wr = enc.write_header().expect("png header");
-                wr.write_image_data(&rgb).expect("png data");
-            }
-            let t_enc = now_ns();
+            let e = crate::encode::crop_png(&slot.buf, x, y, w, h);
             mark(
                 "copy_encoded",
                 &format!(
-                    "\"w\":{w},\"h\":{h},\"crop_ms\":{:.2},\"encode_ms\":{:.2},\"png_bytes\":{}",
-                    (t_crop - t0) as f64 / 1e6,
-                    (t_enc - t_crop) as f64 / 1e6,
-                    png_bytes.len()
+                    "\"w\":{},\"h\":{},\"crop_ms\":{:.2},\"encode_ms\":{:.2},\"png_bytes\":{}",
+                    e.w, e.h, e.crop_ms, e.encode_ms, e.png.len()
                 ),
             );
+            let png_bytes = e.png;
             let _ = tx.send(Cmd::SetClipboard { png: Arc::new(png_bytes), t0 });
         });
     }

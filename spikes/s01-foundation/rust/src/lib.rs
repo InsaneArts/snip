@@ -3,5 +3,7 @@
 
 mod bridge;
 mod clock;
+mod encode;
 mod frames;
+mod hypr;
 mod wl;

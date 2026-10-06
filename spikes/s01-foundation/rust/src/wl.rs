@@ -52,6 +52,14 @@ const CAPTURE_TIMEOUT: Duration = Duration::from_millis(150);
 pub enum Purpose {
     Freeze,
     Verify,
+    /// SUPER+SHIFT+3: focused monitor, no overlay.
+    Fullscreen,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum ShortcutKind {
+    Area,
+    Fullscreen,
 }
 
 pub enum Cmd {
@@ -111,7 +119,8 @@ struct State {
     icc: ExtImageCopyCaptureManagerV1,
     dc_mgr: Option<ExtDataControlManagerV1>,
     dc_device: Option<ExtDataControlDeviceV1>,
-    _shortcut: Option<HyprlandGlobalShortcutV1>,
+    _shortcuts: Vec<HyprlandGlobalShortcutV1>,
+    self_tx: channel::Sender<Cmd>,
     capture: Option<Capture>,
     slots: HashMap<(usize, Purpose), Slot>,
     epoch: u32,
@@ -131,14 +140,21 @@ struct Soak {
     trials: u64,
 }
 
-pub fn run(cmds: Channel<Cmd>, overlay_visible: Arc<AtomicBool>, ui: UiSink, register_shortcut: bool) {
-    if let Err(e) = run_inner(cmds, overlay_visible, ui, register_shortcut) {
+pub fn run(
+    cmds: Channel<Cmd>,
+    self_tx: channel::Sender<Cmd>,
+    overlay_visible: Arc<AtomicBool>,
+    ui: UiSink,
+    register_shortcut: bool,
+) {
+    if let Err(e) = run_inner(cmds, self_tx, overlay_visible, ui, register_shortcut) {
         mark("wl_error", &format!("\"msg\":\"{e}\""));
     }
 }
 
 fn run_inner(
     cmds: Channel<Cmd>,
+    self_tx: channel::Sender<Cmd>,
     overlay_visible: Arc<AtomicBool>,
     ui: UiSink,
     register_shortcut: bool,
@@ -169,16 +185,15 @@ fn run_inner(
         (Some(m), Some(s)) => Some(m.get_data_device(s, &qh, ())),
         _ => None,
     };
-    let shortcut = gs_mgr.as_ref().filter(|_| register_shortcut).map(|m| {
-        m.register_shortcut(
-            "area".into(),
-            APP_ID.into(),
-            "Snip spike: capture area".into(),
-            "".into(),
-            &qh,
-            (),
-        )
-    });
+    let mut shortcuts = Vec::new();
+    if let (Some(m), true) = (&gs_mgr, register_shortcut) {
+        for (id, desc, kind) in [
+            ("area", "Snip spike: capture area", ShortcutKind::Area),
+            ("fullscreen", "Snip spike: capture fullscreen", ShortcutKind::Fullscreen),
+        ] {
+            shortcuts.push(m.register_shortcut(id.into(), APP_ID.into(), desc.into(), "".into(), &qh, kind));
+        }
+    }
 
     let mut state = State {
         qh: qh.clone(),
@@ -190,7 +205,8 @@ fn run_inner(
         icc,
         dc_mgr,
         dc_device,
-        _shortcut: shortcut,
+        _shortcuts: shortcuts,
+        self_tx,
         capture: None,
         slots: HashMap::new(),
         epoch: 0,
@@ -223,7 +239,7 @@ fn run_inner(
             "\"outputs\":{:?},\"data_control\":{},\"global_shortcuts\":{}",
             names,
             state.dc_device.is_some(),
-            state._shortcut.is_some()
+            state._shortcuts.len()
         ),
     );
 
@@ -235,7 +251,7 @@ fn run_inner(
 impl State {
     fn handle_cmd(&mut self, cmd: Cmd) {
         match cmd {
-            Cmd::Capture(p) => self.start_capture(p, None),
+            Cmd::Capture(p) => self.start_capture(p, None, None),
             Cmd::SetClipboard { png, t0 } => self.set_clipboard(png, t0),
             Cmd::StartSoak { idle_ms, interval_ms } => {
                 let (Some(mgr), Some(seat)) = (&self.idle_mgr, &self.seat) else {
@@ -249,7 +265,7 @@ impl State {
         }
     }
 
-    fn start_capture(&mut self, purpose: Purpose, t_hotkey: Option<u64>) {
+    fn start_capture(&mut self, purpose: Purpose, t_hotkey: Option<u64>, only: Option<&str>) {
         if self.capture.is_some() {
             mark("capture_busy", "");
             return;
@@ -257,6 +273,9 @@ impl State {
         let t_start = now_ns();
         let mut caps = Vec::new();
         for (i, o) in self.outputs.iter().enumerate() {
+            if only.is_some_and(|n| n != o.name) {
+                continue;
+            }
             let source = self.src_mgr.create_source(&o.wl, &self.qh, ());
             // Fresh session per screenshot (a reused session can stall on a static screen).
             let session = self.icc.create_session(&source, Options::empty(), &self.qh, i);
@@ -391,6 +410,22 @@ impl State {
                     );
                 }
                 (self.ui)(UiEvent::FramesReady { epoch: self.epoch });
+            }
+            Purpose::Fullscreen => {
+                // Spike stand-in for "capture -> history + QAO": encode and copy.
+                if let Some(cap) = c.caps.iter().find(|c| c.ok) {
+                    let buf = self.slots[&(cap.out, Purpose::Fullscreen)].buf.clone();
+                    let tx = self.self_tx.clone();
+                    let t0 = c.t_hotkey.unwrap_or(c.t_start);
+                    std::thread::spawn(move || {
+                        let e = crate::encode::crop_png(&buf, 0, 0, buf.width as i32, buf.height as i32);
+                        mark(
+                            "fullscreen_encoded",
+                            &format!("\"w\":{},\"h\":{},\"encode_ms\":{:.2},\"png_bytes\":{}", e.w, e.h, e.encode_ms, e.png.len()),
+                        );
+                        let _ = tx.send(Cmd::SetClipboard { png: Arc::new(e.png), t0 });
+                    });
+                }
             }
             Purpose::Verify => {
                 let mut parts = Vec::new();
@@ -569,18 +604,27 @@ impl Dispatch<ExtImageCopyCaptureFrameV1, usize> for State {
     }
 }
 
-impl Dispatch<HyprlandGlobalShortcutV1, ()> for State {
-    fn event(st: &mut Self, _: &HyprlandGlobalShortcutV1, ev: hyprland_global_shortcut_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+impl Dispatch<HyprlandGlobalShortcutV1, ShortcutKind> for State {
+    fn event(st: &mut Self, _: &HyprlandGlobalShortcutV1, ev: hyprland_global_shortcut_v1::Event, kind: &ShortcutKind, _: &Connection, _: &QueueHandle<Self>) {
         if let hyprland_global_shortcut_v1::Event::Pressed { tv_sec_hi, tv_sec_lo, tv_nsec } = ev {
             let t_hotkey = ((tv_sec_hi as u64) << 32 | tv_sec_lo as u64) * 1_000_000_000 + tv_nsec as u64;
             mark(
                 "hotkey_pressed",
-                &format!("\"t_hotkey_ns\":{t_hotkey},\"delivery_ms\":{:.3}", (now_ns().saturating_sub(t_hotkey)) as f64 / 1e6),
+                &format!(
+                    "\"kind\":\"{kind:?}\",\"t_hotkey_ns\":{t_hotkey},\"delivery_ms\":{:.3}",
+                    (now_ns().saturating_sub(t_hotkey)) as f64 / 1e6
+                ),
             );
             if st.overlay_visible.load(Ordering::Relaxed) {
                 (st.ui)(UiEvent::CancelRequested);
-            } else {
-                st.start_capture(Purpose::Freeze, Some(t_hotkey));
+                return;
+            }
+            match kind {
+                ShortcutKind::Area => st.start_capture(Purpose::Freeze, Some(t_hotkey), None),
+                ShortcutKind::Fullscreen => {
+                    let focused = crate::hypr::focused_monitor();
+                    st.start_capture(Purpose::Fullscreen, Some(t_hotkey), focused.as_deref());
+                }
             }
         }
     }
@@ -639,7 +683,7 @@ impl Dispatch<ExtIdleNotificationV1, ()> for State {
                             if let Some(s) = st.soak.as_mut() {
                                 s.trials += 1;
                             }
-                            st.start_capture(Purpose::Freeze, None);
+                            st.start_capture(Purpose::Freeze, None, None);
                         }
                         TimeoutAction::ToDuration(interval)
                     })
