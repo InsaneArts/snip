@@ -113,6 +113,10 @@ pub struct History {
 pub struct Clipboard {
     /// What Copy offers (SET-07).
     pub mode: ClipboardMode,
+    /// Also offer the file's path as text, so pasting where only text is
+    /// accepted (terminals, plain text fields) gives the path instead of
+    /// nothing. Claude Code turns a pasted image path into an attachment.
+    pub text_path: bool,
     /// Offer copies with x-kde-passwordManagerHint so Omarchy's clipboard
     /// history skips them (SET-07b).
     pub sensitive: bool,
@@ -212,7 +216,7 @@ impl Default for History {
 
 impl Default for Clipboard {
     fn default() -> Self {
-        Self { mode: ClipboardMode::Image, sensitive: false }
+        Self { mode: ClipboardMode::Image, text_path: true, sensitive: false }
     }
 }
 

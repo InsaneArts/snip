@@ -151,11 +151,11 @@ What follows from this:
 
 | ID | Feature | Pri | Behaviour on Snip |
 |---|---|---|---|
-| CAP-01 | Capture Area | P0 | Freeze, select, and capture on release (no adjust step, like CleanShot). A **click without dragging captures the window or monitor under the cursor**. This is Omarchy's "smart" habit and an addition to CleanShot. |
+| CAP-01 | Capture Area | P0 | Freeze, select, and capture on release (no adjust step, like CleanShot). **The whole display is free space**: no window highlight and no dimming until a drag starts, and a click without dragging does nothing (decided 2026-10-07, D23). |
 | CAP-02 | Capture Area & {Copy, Save, Annotate, Pin, OCR} | P0 | Separate bindable actions that follow §5.0: *& Copy* → clipboard only; *& Save* → export folder plus clipboard. They skip the After Capture rules when "ignore After Capture for variants" is on (CleanShot setting). |
 | CAP-03 | Capture Previous Area | P0 | Re-captures the last rectangle with no UI. It is stored in physical pixels and remembers which monitor it was on. If that monitor is gone, it falls back to the focused one with a toast. |
 | CAP-04 | Capture Fullscreen | P0 | Captures the monitor under the cursor. A separate "all monitors" variant composites every monitor at the largest scale. |
-| CAP-05 | Capture Window | P0 | Space in the area overlay toggles window mode, with a hover highlight. The capture comes from the window's own buffer through the ext toplevel source, so it is never occluded and works for windows on other workspaces when they are picked from the window list. Options: **With wallpaper** (padding) or **Transparent** (alpha). Shift inverts the choice. Corner mask and shadow are drawn by us (platform doc §11). |
+| CAP-05 | Capture Window | P0 | **Holding Space** in the area overlay picks windows, with a hover highlight; click captures, releasing Space returns to area (D23). Space held *while dragging* moves the selection (SEL-07). `snip window` opens directly in window mode. The capture comes from the window's own buffer through the ext toplevel source, so it is never occluded and works for windows on other workspaces when they are picked from the window list. Options: **With wallpaper** (padding) or **Transparent** (alpha). Shift inverts the choice. Corner mask and shadow are drawn by us (platform doc §11). |
 | CAP-06 | Self-Timer | P0 | Area or fullscreen after N seconds, with a countdown overlay drawn on a no-input layer that is **not** in the frame. Interval 2–15 s, default 5. Includes the cursor if "show cursor" is on. |
 | CAP-07 | All-In-One | P1 | One hotkey opens a floating mode bar: Area (A), Fullscreen (F), Window (Space/W), Scrolling (S), Timer (T), Text (O), Record (R). The selection stays adjustable, with a W×H field, an aspect-ratio menu, and Ctrl+C to copy at once. It remembers the last selection. |
 | CAP-08 | Scrolling Capture | P0 | See §5.8. |
@@ -173,7 +173,7 @@ What follows from this:
 | SEL-03 | Dimensions pill (W × H in **physical** px; logical px on hover or in settings) | P0 | Shows ratio when a ratio is locked. |
 | SEL-04 | Crosshair mode: Off / Always / While Ctrl is held | P0 | Coordinate readout next to the cursor. |
 | SEL-05 | Magnifier loupe with pixel grid and hex colour of the centre pixel | P0 | Needs crosshair (CleanShot rule). Pressing **C** copies the hex value (our addition, which covers part of hyprpicker's job). |
-| SEL-06 | Window and monitor hover highlight | P0 | Smallest rectangle wins (Omarchy semantics). Tab and Shift+Tab, and arrow keys, cycle through windows (Omarchy parity). |
+| SEL-06 | Window hover highlight (while Space is held, or in `snip window`) | P0 | Smallest rectangle wins. Tab and Shift+Tab, and arrow keys, pick windows explicitly in any mode; Enter captures the picked window (or the monitor when none is picked). |
 | SEL-07 | Modifiers while dragging: Shift = square or locked axis, Alt = resize from centre, Space (held) = move the selection | P0 | macOS conventions. CleanShot does not document them, but users expect them. |
 | SEL-08 | Adjustable selection (All-In-One and recording) | P1 | 8 handles, arrow-key nudge (1 px; Shift = 10 px; Ctrl = resize), snap to window and monitor edges, typed W×H, ratio presets (Free, 1:1, 4:3, 3:2, 16:9, 5:4, 9:16, custom). |
 | SEL-09 | Esc cancels; Enter confirms (or records the full screen in the recording overlay) | P0 | Pressing the capture hotkey again while the overlay is up cancels it, or cycles mode (decision Q6). |
@@ -316,7 +316,7 @@ A normal floating window (Hyprland rule: float, centred, with optional pin / alw
 | SET-04 | File name template with tokens (`%y %m %n %d %w %H %M %S %p %t %a %r %i`), illegal-character stripping, UTC option, `@2x` suffix option | P0 | `%t` is the window title and `%a` the app class, both from Hyprland. |
 | SET-05 | Export folder (default `$XDG_PICTURES_DIR/Screenshots`, `$XDG_VIDEOS_DIR/Screencasts`) | P0 | |
 | SET-06 | Formats: PNG (default), JPG, WebP; optional lossless JPEG XL | P0 | |
-| SET-07 | Clipboard mode: Image (default) / File / Image + File | P0 | The clipboard compatibility matrix (platform doc §5) decides the default. |
+| SET-07 | Clipboard mode: Image (default) / File / Image + File; plus **the file path as text** (default on) | P0 | Copy offers `image/png` and the file's path as `text/plain`: image-aware apps paste the image, text-only targets (terminals, plain fields) paste the path instead of nothing (D24). |
 | SET-07b | "Keep captures out of clipboard history" | P1 | Mostly not needed, because nothing is copied automatically (§5.0). Kept as an opt-in for users who turn on auto-copy: copies are then offered with `x-kde-passwordManagerHint`, which Omarchy's clipboard history skips. Default **off**. |
 | SET-08 | Shortcuts: a recorder that writes Hyprland Lua binds, detects conflicts with Omarchy's binds, and restores defaults | P1 | Wayland apps cannot grab keys, so shortcuts are written to Hyprland config (architecture doc). |
 | SET-09 | Sounds: shutter and recording start, stop, pause (bundled, themable, can be turned off) | P0 | |

@@ -68,10 +68,11 @@ Window {
     function winPhys(w) { return toPhys(Qt.rect(w.x, w.y, w.w, w.h)) }
     function fullPhys() { return Qt.rect(0, 0, fw, fh) }
 
-    // The window a click would capture: the smallest one under the cursor.
+    // The window a click would capture (window mode only): the smallest one
+    // under the cursor. Tab picks one explicitly in any mode.
     readonly property int hoverIndex: {
         if (pick >= 0 && pick < wins.length) return pick
-        if (!hovered || dragging) return -1
+        if (!hovered || dragging || !c.windowMode) return -1
         let best = -1, area = Infinity
         for (let i = 0; i < wins.length; i++) {
             const w = wins[i]
@@ -83,12 +84,12 @@ Window {
         return best
     }
     readonly property var hoverWin: hoverIndex >= 0 ? wins[hoverIndex] : null
-    // What a click (or Enter) captures right now: the window, else the
-    // monitor (area mode only).
-    readonly property rect targetPhys: hoverWin ? winPhys(hoverWin) : (c.windowMode || !hovered ? Qt.rect(0, 0, 0, 0) : fullPhys())
+    readonly property rect targetPhys: hoverWin ? winPhys(hoverWin) : Qt.rect(0, 0, 0, 0)
     readonly property bool selecting: dragging && raw.width > 0
     readonly property rect hole: selecting ? shown : toShown(targetPhys)
     readonly property bool hasHole: hole.width > 0 && hole.height > 0
+    // Area mode leaves the display undimmed until a drag starts.
+    readonly property bool dimmed: selecting || c.windowMode || hoverWin !== null
 
     function resetSession() {
         pressed = false; dragging = false; moving = false; pick = -1
@@ -149,8 +150,13 @@ Window {
         pick = (cur + step + wins.length) % wins.length
     }
 
-    // Click or Enter: the window under the cursor (clean toplevel buffer in
-    // window mode), else the whole monitor.
+    // A click without a drag: only meaningful on a window in window mode.
+    function clicked() {
+        if (c.windowMode && hoverWin) confirm()
+    }
+
+    // Enter: the picked window (clean toplevel buffer in window mode), else
+    // the whole monitor.
     function confirm() {
         if (hoverWin) {
             if (c.windowMode && c.session.mode !== "text" && c.session.toplevel)
@@ -174,6 +180,7 @@ Window {
     // ---------------------------------------------------------------- scrim (four quads around the hole)
     Item {
         anchors.fill: parent
+        visible: win.dimmed
         readonly property rect h: win.hasHole ? win.hole : Qt.rect(0, 0, 0, 0)
         Rectangle { color: Theme.scrim; x: 0; y: 0; width: parent.width; height: parent.h.y }
         Rectangle { color: Theme.scrim; x: 0; y: parent.h.y + parent.h.height; width: parent.width; height: parent.height - y }
@@ -192,7 +199,7 @@ Window {
         color: "transparent"
         border.width: b
         border.color: Theme.accent
-        opacity: win.selecting || win.c.windowMode ? 1 : 0.7
+        opacity: 1
     }
 
     // ---------------------------------------------------------------- window label (window mode)
@@ -325,7 +332,7 @@ Window {
                 anchors.verticalCenter: parent.verticalCenter
             }
             Text {
-                text: win.c.windowMode ? "Space for area · Esc to cancel" : "Esc to cancel"
+                text: win.c.spaceHeld ? "Release Space for area" : "Esc to cancel"
                 color: Theme.textSecondary
                 font.family: Theme.fontUi
                 font.pixelSize: 12
@@ -371,7 +378,7 @@ Window {
             if (wasDragging && win.phys.width >= 2 && win.phys.height >= 2)
                 win.c.finishArea(win, win.phys, "area")
             else if (!wasDragging)
-                win.confirm()
+                win.clicked()
             win.raw = Qt.rect(0, 0, 0, 0)
         }
     }

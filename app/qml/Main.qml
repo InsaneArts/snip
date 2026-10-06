@@ -18,7 +18,11 @@ QtObject {
     property bool overlayOpen: false     // overlay surfaces mapped
     property bool overlayShown: false    // overlay content drawn (cleared first on close, see closeOverlay)
     property var session: ({})
-    property bool windowMode: false
+    // Window picking happens only while Space is held (or for `snip window`);
+    // otherwise the whole display is free space for dragging an area.
+    property bool stickyWindow: false
+    property bool spaceHeld: false
+    readonly property bool windowMode: stickyWindow || spaceHeld
     property bool ctrlHeld: false
     property bool shiftHeld: false
     property bool altHeld: false
@@ -27,7 +31,8 @@ QtObject {
 
     function openSession() {
         try { session = JSON.parse(Engine.session || "{}") } catch (e) { session = {} }
-        windowMode = session.mode === "window"
+        stickyWindow = session.mode === "window"
+        spaceHeld = false
         ctrlHeld = shiftHeld = altHeld = false
         if (session.cursor) lastOutput = session.cursor.output
         unmapOverlay.stop()
@@ -39,7 +44,8 @@ QtObject {
     // layers out, which would leave a dimmed frozen frame on screen.
     function closeOverlay() {
         overlayShown = false
-        windowMode = false
+        stickyWindow = false
+        spaceHeld = false
         quickAccess.capturing = false
         unmapOverlay.restart()
     }
@@ -83,8 +89,9 @@ QtObject {
         case Qt.Key_Alt: altHeld = true; if (w.dragging) w.recompute(); break
         case Qt.Key_Escape: cancel(); break
         case Qt.Key_Space:
+            // held while dragging: move the selection; otherwise: pick a window
             if (e.isAutoRepeat) break
-            if (!w.startMove() && session.mode !== "text") windowMode = !windowMode
+            if (!w.startMove()) spaceHeld = true
             break
         case Qt.Key_Tab: case Qt.Key_Right: case Qt.Key_Down: w.cycle(1); break
         case Qt.Key_Backtab: case Qt.Key_Left: case Qt.Key_Up: w.cycle(-1); break
@@ -106,7 +113,7 @@ QtObject {
         if (e.key === Qt.Key_Control) ctrlHeld = false
         else if (e.key === Qt.Key_Shift) { shiftHeld = false; if (w.dragging) w.recompute() }
         else if (e.key === Qt.Key_Alt) { altHeld = false; if (w.dragging) w.recompute() }
-        else if (e.key === Qt.Key_Space && !e.isAutoRepeat) w.moving = false
+        else if (e.key === Qt.Key_Space && !e.isAutoRepeat) { w.moving = false; spaceHeld = false }
     }
 
     // ---------------------------------------------------------------- engine events

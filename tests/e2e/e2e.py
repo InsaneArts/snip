@@ -55,6 +55,8 @@ class Snip:
             XDG_DATA_HOME=str(self.tmp / "data"),
             XDG_CACHE_HOME=str(self.tmp / "cache"),
             SNIP_RUNTIME_DIR=str(self.run_dir),
+            SNIP_APP_ID="snip-e2e",   # never trigger (or be triggered by) the user's daemon
+            SNIP_OUTPUTS=OUT,         # overlays only on the test output
             SNIP_TRACE="1",
             QT_FORCE_STDERR_LOGGING="1",
         )
@@ -98,6 +100,9 @@ class Snip:
 
     def bg(self, *args):
         """Start a blocking CLI call (a capture waiting for the selection)."""
+        # overlays only on the test output: the user's monitors stay untouched
+        if args and args[0] in ("area", "window", "text") and "--monitor" not in args:
+            args = (*args, "--monitor", OUT)
         return subprocess.Popen(
             [str(self.build / "snip"), "--json", *args], env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )
@@ -254,20 +259,39 @@ def modifiers(s, env):
 
 
 @case
-def click_window_and_desktop(s, env):
-    """Click = the window under the cursor, else the monitor (CAP-01)."""
+def area_is_free_space(s, env):
+    """Area mode: no window highlight, a click without a drag does nothing."""
     w = env.win
     lx, ly = w["at"][0] - env.monitor()["x"], w["at"][1]
     p = s.bg("area"); time.sleep(0.5)
     s.move(lx + w["size"][0] / 2, ly + w["size"][1] / 2); s.click()
-    r, _ = finish(p)
-    assert r["result"]["kind"] == "window", r
-    exp = (round((lx + w["size"][0]) * 1.25) - round(lx * 1.25), round((ly + w["size"][1]) * 1.25) - round(ly * 1.25))
-    assert (r["result"]["width"], r["result"]["height"]) == exp, (r["result"], exp)
+    time.sleep(0.4)
+    still_open = p.poll() is None
+    overlay = s.status()["overlay"]
+    s.key("Escape")
+    assert still_open and overlay == "area", f"a plain click must not capture (cli running: {still_open}, overlay: {overlay})"
+    r, code = finish(p)
+    assert code == 1, r
+
+
+@case
+def space_held_picks_window(s, env):
+    """Hold Space + click = the clean window (CAP-05); release Space = area again."""
+    w = env.win
+    lx, ly = w["at"][0] - env.monitor()["x"], w["at"][1]
     p = s.bg("area"); time.sleep(0.5)
-    s.move(3, env.monitor()["height"] / 1.25 - 4); s.click()
-    r, _ = finish(p)
-    assert (r["result"]["kind"], r["result"]["width"], r["result"]["height"]) == ("fullscreen", 1920, 1080), r
+    s.move(lx + 60, ly + 60)
+    s.key("space", "keydown"); s.click(); s.key("space", "keyup")
+    r, code = finish(p)
+    assert code == 0 and r["result"]["kind"] == "window", r
+    W, H = png_size(r["result"]["source"])
+    assert W > w["size"][0] * 1.25 and H > w["size"][1] * 1.25, (W, H)  # clean buffer + shadow padding
+    # Space pressed and released before dragging: still an area drag
+    p = s.bg("area"); time.sleep(0.5)
+    s.move(lx + 60, ly + 60); s.key("space", "keydown"); s.key("space", "keyup")
+    s.drag(lx + 60, ly + 60, lx + 260, ly + 160)
+    r, code = finish(p)
+    assert r["result"]["kind"] == "area" and (r["result"]["width"], r["result"]["height"]) == (250, 125), r
 
 
 @case
@@ -281,7 +305,7 @@ def keyboard_flow(s, env):
     r, code = finish(p)
     assert code == 1 and r["error"] == "cancelled", r
     p = s.bg("area"); time.sleep(0.5)
-    hypr_eval('hl.dispatch(hl.dsp.global("snip:area"))')
+    hypr_eval('hl.dispatch(hl.dsp.global("snip-e2e:area"))')
     r, code = finish(p)
     assert code == 1, r
 
@@ -326,7 +350,9 @@ def lifecycle(s, env):
     s.cli("copy", rec["id"])
     time.sleep(0.2)
     types = sh("wl-paste", "-l", check=False).stdout.split()
-    assert "image/png" in types, types
+    assert "image/png" in types and "text/plain;charset=utf-8" in types, types
+    path = sh("wl-paste", "-n", "-t", "text/plain;charset=utf-8", check=False).stdout
+    assert path.endswith(".png") and png_size(path) == (1920, 1080), path   # text targets get the file
     saved = s.json("save", rec["id"])["result"]
     assert Path(saved).exists() and Path(saved).parent == s.export, saved
     assert Path(saved).name.startswith("Snip ") and saved.endswith(".png"), saved
@@ -357,7 +383,7 @@ def latency(s, env):
     """Hotkey -> every overlay presented: p95 < 35 ms warm (SEL-01)."""
     times = []
     for i in range(12):
-        hypr_eval('hl.dispatch(hl.dsp.global("snip:area"))')
+        hypr_eval('hl.dispatch(hl.dsp.global("snip-e2e:area"))')
         time.sleep(0.35)
         s.key("Escape")
         time.sleep(0.25)
@@ -394,12 +420,27 @@ def scales_and_transforms(s, env):
 
 # ------------------------------------------------------------------ main
 
+def pointer_idle(seconds=1.5):
+    """The suite drives the seat's one pointer and grabs the keyboard: only
+    run it while nobody is using the machine."""
+    pos = hypr_json("cursorpos")
+    for _ in range(int(seconds / 0.25)):
+        time.sleep(0.25)
+        if hypr_json("cursorpos") != pos:
+            return False
+    return True
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--build", default=str(ROOT / "build"))
     ap.add_argument("--only", nargs="*")
     ap.add_argument("--keep", action="store_true", help="keep the temp dir")
+    ap.add_argument("--force", action="store_true", help="run even if the pointer is moving")
     a = ap.parse_args()
+    if not a.force and not pointer_idle():
+        print("the pointer is in use: run the e2e suite while the machine is idle (or --force)")
+        return 3
 
     env = Env()
     s = Snip(a.build)

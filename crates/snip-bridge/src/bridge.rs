@@ -185,7 +185,10 @@ impl qobject::Engine {
         self.as_mut().rust_mut().inner = Some(inner.clone());
 
         let sink_inner = inner.clone();
-        let wl = snip_wayland::spawn("snip", Box::new(move |ev| sink_inner.on_wayland(ev)));
+        // Test instances use their own namespace (SNIP_APP_ID=snip-e2e) so
+        // their shortcuts never reach the user's daemon, and vice versa.
+        let app_id = std::env::var("SNIP_APP_ID").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "snip".into());
+        let wl = snip_wayland::spawn(&app_id, Box::new(move |ev| sink_inner.on_wayland(ev)));
         if interactive {
             // Only the user's daemon owns the shortcuts (a test instance must
             // not react to their key presses). Bound in hypr/snip.lua as

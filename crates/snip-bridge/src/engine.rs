@@ -248,9 +248,14 @@ impl Inner {
                 let mode = if mode == "all-in-one" { "area" } else { mode }.to_string();
                 let req = self.next();
                 let snap = std::thread::spawn(snapshot);
+                // --monitor: the overlay on that output only. SNIP_OUTPUTS does the
+                // same for a whole (test) instance, so it never covers the
+                // user's monitors.
+                let monitor = monitor.or_else(|| std::env::var("SNIP_OUTPUTS").ok().filter(|s| !s.is_empty()));
+                let outputs = monitor.filter(|m| self.output_names().contains(m)).map(|m| vec![m]);
                 if self.cfg().capture.freeze {
                     self.pending.lock().unwrap().insert(req, Pending::Overlay { mode, waiter, snap });
-                    self.capture_clean(req, Source::Outputs(None));
+                    self.capture_clean(req, Source::Outputs(outputs));
                 } else {
                     let snap = snap.join().unwrap_or_default();
                     self.open_session(mode, req, waiter, snap, vec![]);
@@ -372,6 +377,9 @@ impl Inner {
         let mut out_json = serde_json::Map::new();
         for o in &outputs {
             let f = frames_.iter().find(|f| f.output == o.name);
+            if !frames_.is_empty() && f.is_none() {
+                continue; // not part of this capture (snip area --monitor)
+            }
             let wins: Vec<Value> = snap
                 .clients
                 .iter()
@@ -635,11 +643,20 @@ impl Inner {
         if cfg.clipboard.mode != ClipboardMode::File {
             offers.push(("image/png".into(), png));
         }
-        if cfg.clipboard.mode != ClipboardMode::Image {
-            let p = self.drag_file(id)?;
-            let uri = format!("file://{}", percent_encode(&p));
+        // A named file (the saved one, else a copy in the drag cache) for the
+        // file and text-path offers.
+        let file = if cfg.clipboard.mode != ClipboardMode::Image || cfg.clipboard.text_path { Some(self.drag_file(id)?) } else { None };
+        if let (Some(p), true) = (&file, cfg.clipboard.mode != ClipboardMode::Image) {
+            let uri = format!("file://{}", percent_encode(p));
             offers.push(("text/uri-list".into(), Arc::new(format!("{uri}\r\n").into_bytes())));
             offers.push(("x-special/gnome-copied-files".into(), Arc::new(format!("copy\n{uri}").into_bytes())));
+        }
+        if let (Some(p), true) = (&file, cfg.clipboard.text_path) {
+            // Image-aware apps take image/png; text-only targets get the path.
+            let text = Arc::new(p.to_string_lossy().into_owned().into_bytes());
+            for t in ["text/plain;charset=utf-8", "text/plain", "UTF8_STRING"] {
+                offers.push((t.into(), text.clone()));
+            }
         }
         if cfg.clipboard.sensitive {
             offers.push(("x-kde-passwordManagerHint".into(), Arc::new(b"secret".to_vec())));
