@@ -32,6 +32,8 @@ async function report(kind, dt) {
   log.textContent = JSON.stringify(out, null, 1);
   fetch('/result', { method: 'POST', body: JSON.stringify(out) });
 }
+for (const t of ['pointerdown', 'pointerup']) addEventListener(t, e => fetch('/result', { method: 'POST', body: JSON.stringify({ target, kind: t, x: e.clientX, y: e.clientY }) }));
+addEventListener('click', e => fetch('/result', { method: 'POST', body: JSON.stringify({ target, kind: 'click', x: e.clientX, y: e.clientY }) }));
 addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
 addEventListener('drop', e => { e.preventDefault(); report('drop', e.dataTransfer); });
 addEventListener('paste', e => { e.preventDefault(); report('paste', e.clipboardData); });

@@ -265,7 +265,7 @@ OpLog        append-only [{seq, op, args, inverse}]  → undo/redo, crash recove
 ### 6.7 Pins
 - An xdg toplevel per pin, tagged `snip-pin`. Rule: float, pin, border 0, no shadow, no anim, no dim, opacity override, keep aspect, suppress maximize/fullscreen.
 - Position is set after mapping through `hl.dsp.window.move` by address; the first frame is transparent to hide the jump.
-- Lock mode: empty input region (spike S6). Opacity from scroll; Ctrl+scroll resizes.
+- **Lock mode:** swap the toplevel for a **layer surface** at the same position (margins), with an empty `wl_region` input region set on the native `wl_surface` after creation, plus a commit. Hyprland ignores empty input regions on toplevels (spike S04). Opacity from scroll; Ctrl+scroll resizes.
 
 ### 6.8 History
 - SQLite index plus per-capture folders. Retention is enforced by a daily sweep and at start-up.

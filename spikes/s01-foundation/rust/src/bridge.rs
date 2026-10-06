@@ -84,6 +84,9 @@ pub mod qobject {
 
         #[qsignal]
         fn card_variant(self: Pin<&mut SnipCore>, variant: QString);
+
+        #[qsignal]
+        fn pin_command(self: Pin<&mut SnipCore>, cmd: QString, arg: QString);
     }
 
     impl cxx_qt::Threading for SnipCore {}
@@ -325,6 +328,21 @@ fn spawn_control_socket(
                         ["variant", v] => {
                             let v = v.to_string();
                             let _ = thread.queue(move |mut o| o.as_mut().card_variant(QString::from(v.as_str())));
+                            "ok".into()
+                        }
+                        ["pin", path] => {
+                            let path = path.to_string();
+                            let _ = thread.queue(move |mut o| o.as_mut().pin_command(QString::from("show"), QString::from(path.as_str())));
+                            "ok".into()
+                        }
+                        ["pinlock", "on", x, y] => {
+                            let arg = format!("{x} {y}");
+                            let _ = thread.queue(move |mut o| o.as_mut().pin_command(QString::from("pinlock-layer"), QString::from(arg.as_str())));
+                            "ok".into()
+                        }
+                        ["pinlock", v] | ["unpin", v] => {
+                            let (c, v) = (p[0].to_string(), v.to_string());
+                            let _ = thread.queue(move |mut o| o.as_mut().pin_command(QString::from(c.as_str()), QString::from(v.as_str())));
                             "ok".into()
                         }
                         ["copyfile", path] | ["copyfile-sensitive", path] => match std::fs::read(path) {

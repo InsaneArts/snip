@@ -7,6 +7,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QmlImportScanner)
 find_package(KF6CoreAddons REQUIRED)
+find_package(LayerShellQt REQUIRED)
+find_package(Qt6 REQUIRED COMPONENTS GuiPrivate)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(WAYLAND_CLIENT REQUIRED IMPORTED_TARGET wayland-client)
 
 find_package(CxxQt QUIET)
 if(NOT CxxQt_FOUND)
@@ -35,7 +39,8 @@ add_executable(snip-spike
   cpp/frozenframe.h
   cpp/screens.h
   cpp/draghelper.cpp
-  cpp/draghelper.h)
+  cpp/draghelper.h
+  cpp/pinhelper.h)
 
-target_link_libraries(snip-spike PRIVATE snip_spike_qml Qt::Quick KF6::CoreAddons)
+target_link_libraries(snip-spike PRIVATE snip_spike_qml Qt::Quick Qt::GuiPrivate KF6::CoreAddons LayerShellQt::Interface PkgConfig::WAYLAND_CLIENT)
 qt_import_qml_plugins(snip-spike)

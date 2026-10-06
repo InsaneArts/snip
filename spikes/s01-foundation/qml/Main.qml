@@ -14,6 +14,9 @@ QtObject {
     property string cardPath: ""
     property string dragVariant: "uri"
     property string lastDragResult: ""
+    property string pinPath: ""
+    property bool pinLocked: false
+    property string pinLayerPos: ""   // "x y" logical: locked pin rendered as a click-through layer surface
     property int presentedCount: 0
     readonly property bool plain: mode === "selftest"
 
@@ -45,6 +48,13 @@ QtObject {
         function onCancelRequested() { root.close() }
         function onCardShow(path) { root.cardPath = ""; root.cardPath = path; SnipCore.log("card_shown", "") }
         function onCardVariant(v) { root.dragVariant = v }
+        function onPinCommand(cmd, arg) {
+            if (cmd === "show") { root.pinPath = arg; root.pinLocked = false }
+            else if (cmd === "pinlock") { root.pinLocked = (arg === "on"); root.pinLayerPos = "" }
+            else if (cmd === "pinlock-layer") { root.pinLayerPos = arg; root.pinLocked = true }
+            else if (cmd === "unpin") root.pinPath = ""
+            SnipCore.log("pin_cmd", "\"cmd\":\"" + cmd + "\",\"arg\":\"" + arg + "\"")
+        }
         function onVerifyDone(report) {
             SnipCore.log("verify_report", "\"report\":" + report)
             root.close()
@@ -446,5 +456,62 @@ QtObject {
                 smooth: Qt.application.arguments.indexOf("--cover-nosmooth") < 0
             }
         }
+    }
+
+    // ---------------------------------------------------------------- S6 pin (xdg toplevel)
+    property Window pin: Window {
+        id: pinWin
+        title: "snip-pin"
+        visible: root.pinPath !== "" && root.pinLayerPos === ""
+        width: 480; height: 270
+        color: "transparent"
+        flags: Qt.FramelessWindowHint
+        // (no input-region call at show: start with Qt's default full input)
+        Connections {
+            target: root
+            function onPinLockedChanged() { PinHelper.setClickThrough(pinWin, root.pinLocked); SnipCore.log("pin_lock", "\"locked\":" + root.pinLocked) }
+        }
+        Rectangle {
+            anchors.fill: parent; radius: 8; color: "#1d1d22"; clip: true
+            opacity: root.pinLocked ? 0.75 : 1.0
+            Image { anchors.fill: parent; source: root.pinPath ? "file://" + root.pinPath : ""; fillMode: Image.PreserveAspectFit }
+        }
+        MouseArea {
+            anchors.fill: parent
+            hoverEnabled: true
+            onEntered: SnipCore.log("pin_entered", "")
+            onPressed: SnipCore.log("pin_pressed", "")
+            onReleased: SnipCore.log("pin_released", "")
+            onClicked: (m) => SnipCore.log("pin_clicked", "\"x\":" + Math.round(m.x) + ",\"y\":" + Math.round(m.y))
+        }
+    }
+
+    // Locked pin as a layer surface: Hyprland honours empty input regions on
+    // layer surfaces (not on xdg toplevels, S6), so clicks pass through.
+    property Window pinLayer: Window {
+        id: pinLay
+        visible: root.pinPath !== "" && root.pinLayerPos !== ""
+        width: 480; height: 270
+        color: "transparent"
+        flags: Qt.FramelessWindowHint
+        LayerShell.Window.screen: ScreenLookup.byName(Qt.application.screens[0].name)
+        LayerShell.Window.scope: "snip-pin-locked"
+        LayerShell.Window.layer: LayerShell.Window.LayerOverlay
+        LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorLeft
+        LayerShell.Window.exclusionZone: -1
+        LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityNone
+        onVisibleChanged: {
+            if (!visible) return
+            const p = root.pinLayerPos.split(" ")
+            PinHelper.placeLayer(pinLay, Number(p[0]), Number(p[1]))
+            applyClickThrough.start()   // the wl_surface exists only after the show completes
+            SnipCore.log("pin_layer_shown", "\"at\":\"" + root.pinLayerPos + "\"")
+        }
+        Timer { id: applyClickThrough; interval: 30; onTriggered: PinHelper.setClickThrough(pinLay, true) }
+        Rectangle {
+            anchors.fill: parent; radius: 8; color: "#1d1d22"; clip: true; opacity: 0.75
+            Image { anchors.fill: parent; source: root.pinPath ? "file://" + root.pinPath : ""; fillMode: Image.PreserveAspectFit }
+        }
+        MouseArea { anchors.fill: parent; onClicked: SnipCore.log("pin_clicked", "\"layer\":true") }
     }
 }

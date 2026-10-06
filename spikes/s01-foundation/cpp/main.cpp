@@ -10,6 +10,7 @@
 #include "frozenframe.h"
 #include "screens.h"
 #include "draghelper.h"
+#include "pinhelper.h"
 #include <QQmlContext>
 #include "snip_spike/src/bridge.cxxqt.h"
 
@@ -55,9 +56,11 @@ main(int argc, char* argv[])
 
   ScreenLookup screenLookup; // must outlive the engine (bindings re-evaluate on teardown)
   DragHelper dragHelper;
+  PinHelper pinHelper;
   QQmlApplicationEngine engine;
   engine.rootContext()->setContextProperty(QStringLiteral("ScreenLookup"), &screenLookup);
   engine.rootContext()->setContextProperty(QStringLiteral("DragHelper"), &dragHelper);
+  engine.rootContext()->setContextProperty(QStringLiteral("PinHelper"), &pinHelper);
   engine.setInitialProperties({ { QStringLiteral("mode"), mode } });
   engine.load(QUrl(QStringLiteral("qrc:/qt/qml/com/snip/spike/qml/Main.qml")));
   if (engine.rootObjects().isEmpty())

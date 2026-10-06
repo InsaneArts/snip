@@ -241,7 +241,7 @@ A normal floating window (Hyprland rule: float, centred, with optional pin / alw
 | PIN-02 | Always on top, on every workspace of its monitor, drawn **above fullscreen windows** | P0 | Floating, pinned toplevel with an xdg tag rule (platform doc §7). |
 | PIN-03 | Hover chrome: close, lock, drag-out handle | P0 | |
 | PIN-04 | Move by dragging and with arrow keys; resize with Ctrl+scroll and from the corners; opacity with scroll; middle-click closes | P0 | |
-| PIN-05 | Lock: click-through and hide on hover | P0 | Click-through needs an empty input region; still to be checked on Hyprland (spike S6). |
+| PIN-05 | Lock: click-through and hide on hover | P0 | **Spike S04:** Hyprland 0.56 ignores empty input regions on xdg toplevels, but honours them on layer surfaces. So a locked pin becomes a layer surface at the same position with an empty input region, and Chromium underneath was verified to receive the clicks. Unlock through a hotkey, the bar widget or the CLI, since a locked pin gets no input (as in CleanShot). |
 | PIN-06 | Context menu: Copy, Save, OCR, Annotate, Close, Close All | P0 | |
 | PIN-07 | Global hotkeys: Toggle all pins, Close all pins | P0 | |
 | PIN-08 | Look: rounded corners, shadow, border (settings) | P0 | |
