@@ -1,6 +1,6 @@
 [Unit]
 Description=Snip screenshot daemon
-Documentation=https://github.com/tgomareli/snip
+Documentation=https://github.com/tornikegomareli/snip
 PartOf=graphical-session.target
 After=graphical-session.target
 Requisite=graphical-session.target
