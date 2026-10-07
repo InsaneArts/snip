@@ -3,6 +3,8 @@
 //! JSON is parsed tolerantly (`serde_json::Value`): hyprctl output changes
 //! between versions and must never crash Snip.
 
+pub mod keys;
+
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
