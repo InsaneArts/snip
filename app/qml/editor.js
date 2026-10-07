@@ -271,10 +271,42 @@ function whole(r) {
     return n
 }
 
-function clampRect(r, w, h) {
-    var x1 = Math.max(0, Math.min(w, r.x)), y1 = Math.max(0, Math.min(h, r.y))
-    var x2 = Math.max(0, Math.min(w, r.x + r.w)), y2 = Math.max(0, Math.min(h, r.y + r.h))
-    return whole({ x: x1, y: y1, w: x2 - x1, h: y2 - y1 })
+function clampRect(r, w, h) { return clampTo(r, 0, 0, w, h) }
+function clampTo(r, x0, y0, x1, y1) {
+    var a = Math.max(x0, Math.min(x1, r.x)), b = Math.max(y0, Math.min(y1, r.y))
+    var c = Math.max(x0, Math.min(x1, r.x + r.w)), d = Math.max(y0, Math.min(y1, r.y + r.h))
+    return whole({ x: a, y: b, w: c - a, h: d - b })
+}
+
+// Crop & Resize (ANN-11). Ratios are width / height; 0 is free, -1 the image's own.
+var cropRatios = [{ label: "Freeform", r: 0 }, { label: "Original Ratio", r: -1 }, { label: "1:1 (Square)", r: 1 },
+                  { label: "4:3", r: 4 / 3 }, { label: "3:2", r: 3 / 2 }, { label: "16:9", r: 16 / 9 },
+                  { label: "5:4", r: 5 / 4 }, { label: "9:16", r: 9 / 16 }]
+
+// A crop kept at `ratio` while handle `h` moves (the opposite side stays put).
+function withRatio(r, ratio, h) {
+    if (!ratio || r.w <= 0 || r.h <= 0) return r
+    var n = copy(r)
+    if (h === "t" || h === "b") { var cx = r.x + r.w / 2; n.w = r.h * ratio; n.x = cx - n.w / 2 }
+    else if (h === "l" || h === "r") { var cy = r.y + r.h / 2; n.h = r.w / ratio; n.y = cy - n.h / 2 }
+    else { n.h = r.w / ratio; if (h === "tl" || h === "tr") n.y = r.y + r.h - n.h }
+    return n
+}
+
+// The largest crop at `ratio` inside r, centred.
+function fitRatio(r, ratio) {
+    if (!ratio) return r
+    var w = r.w, h = r.h
+    if (w / h > ratio) w = h * ratio; else h = w / ratio
+    return { x: r.x + (r.w - w) / 2, y: r.y + (r.h - h) / 2, w: w, h: h }
+}
+
+// Edges within `d` of the image's edges snap onto them.
+function snapEdges(r, iw, ih, d) {
+    var x1 = r.x, y1 = r.y, x2 = r.x + r.w, y2 = r.y + r.h
+    var snap = function (v, t) { return Math.abs(v - t) <= d ? t : v }
+    x1 = snap(snap(x1, 0), iw); x2 = snap(snap(x2, 0), iw); y1 = snap(snap(y1, 0), ih); y2 = snap(snap(y2, 0), ih)
+    return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 }
 }
 
 // Does a click at (x, y) (image px) land on o? `tol` widens thin strokes;

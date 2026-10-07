@@ -99,7 +99,10 @@ Window {
     // OCR word boxes for the highlighter, fetched once it is first used
     property var words: null
     readonly property var textLines: words ? Ed.textLines(words) : []
-    onToolChanged: if (tool === "highlight" && words === null) { words = []; Engine.requestWords(capture.image || "") }
+    onToolChanged: {
+        if (tool === "highlight" && words === null) { words = []; Engine.requestWords(capture.image || "") }
+        if (tool === "crop" && !edgeFill) edgeFill = Engine.edgeColor(capture.image || "")
+    }
     Connections {
         target: Engine
         function onEditorWords(path, json) { if (path === (ed.capture.image || "")) ed.words = JSON.parse(json) }
@@ -184,14 +187,33 @@ Window {
     readonly property var full: ({ x: 0, y: 0, w: imgW, h: imgH })
     // what is exported (the crop) and what is on screen (all of it while cropping)
     readonly property var exportRect: doc.crop || full
-    readonly property var shown: tool === "crop" ? full : exportRect
+    // cropping shows room around the image, to crop outward into
+    readonly property var cropView: {
+        const c = doc.crop || full, m = Math.max(imgW, imgH) * 0.12
+        const x0 = Math.min(0, c.x) - m, y0 = Math.min(0, c.y) - m
+        return { x: x0, y: y0, w: Math.max(imgW, c.x + c.w) + m - x0, h: Math.max(imgH, c.y + c.h) + m - y0 }
+    }
+    readonly property var shown: tool === "crop" ? cropView : exportRect
     property var cropDraft: null
     readonly property var cropShown: cropDraft || doc.crop || full
+    // an outward crop grows the canvas, up to three times the image (ANN-11)
+    function clampCrop(r) { return Ed.clampTo(r, -imgW, -imgH, 2 * imgW, 2 * imgH) }
+    property real cropRatio: 0                       // 0 free, -1 the image's own, else width / height
+    readonly property real ratioValue: cropRatio === -1 ? imgW / imgH : cropRatio
+    function setCropRatio(v) {
+        cropRatio = v
+        if (ratioValue) setCrop(Ed.fitRatio(cropShown, ratioValue))
+    }
+    // the canvas beyond the image takes the colour around its edge
+    property string edgeFill: ""
     function setCrop(r) {
-        r = Ed.clampRect(r, imgW, imgH)
+        r = clampCrop(r)
         if (r.w < 4 || r.h < 4) return
         const c = r.x === 0 && r.y === 0 && r.w === imgW && r.h === imgH ? null : r
-        if (JSON.stringify(c) !== JSON.stringify(doc.crop)) commit(Object.assign({}, doc, { crop: c }))
+        const outward = c && (c.x < 0 || c.y < 0 || c.x + c.w > imgW || c.y + c.h > imgH)
+        const next = Object.assign({}, doc, { crop: c })
+        if (outward && !doc.fill) next.fill = edgeFill || Engine.edgeColor(capture.image || "")
+        if (JSON.stringify(next) !== JSON.stringify(doc)) commit(next)
     }
     function cropDone() { setTool(toolBeforeCrop === "crop" ? "arrow" : toolBeforeCrop) }
     property real zoom: 1               // 1 = 100 %: one image px per device px
@@ -504,6 +526,12 @@ Window {
                 Item {
                     id: content
                     x: -ed.exportRect.x; y: -ed.exportRect.y
+                    Rectangle {
+                        // the grown canvas (outward crop)
+                        visible: !!(ed.doc.fill || (ed.tool === "crop" && ed.edgeFill))
+                        x: -ed.imgW; y: -ed.imgH; width: 3 * ed.imgW; height: 3 * ed.imgH
+                        color: ed.doc.fill || ed.edgeFill || "white"
+                    }
                     Image {
                         id: base
                         width: ed.imgW; height: ed.imgH
@@ -623,8 +651,8 @@ Window {
             visible: ed.tool === "crop"
             readonly property var a: ed.toView(ed.cropShown.x, ed.cropShown.y)
             readonly property var b: ed.toView(ed.cropShown.x + ed.cropShown.w, ed.cropShown.y + ed.cropShown.h)
-            readonly property var i0: ed.toView(0, 0)
-            readonly property var i1: ed.toView(ed.imgW, ed.imgH)
+            readonly property var i0: ed.toView(ed.shown.x, ed.shown.y)
+            readonly property var i1: ed.toView(ed.shown.x + ed.shown.w, ed.shown.y + ed.shown.h)
             readonly property color dim: Qt.rgba(0, 0, 0, 0.55)
             Rectangle { x: cropUi.i0.x; y: cropUi.i0.y; width: cropUi.i1.x - cropUi.i0.x; height: cropUi.a.y - cropUi.i0.y; color: cropUi.dim }
             Rectangle { x: cropUi.i0.x; y: cropUi.b.y; width: cropUi.i1.x - cropUi.i0.x; height: cropUi.i1.y - cropUi.b.y; color: cropUi.dim }
@@ -678,7 +706,13 @@ Window {
                         color: Theme.textSecondary
                         font.family: Theme.fontUi; font.pixelSize: 13; font.features: { "tnum": 1 }
                     }
-                    ToolButton { label: "Reset"; onClicked: { ed.setCrop(ed.full) } }
+                    ToolButton {
+                        id: ratioButton
+                        label: (Ed.cropRatios.find(r => r.r === ed.cropRatio) || Ed.cropRatios[0]).label
+                        chevron: true
+                        onClicked: ed.openMenuNamed("ratio", ratioButton)
+                    }
+                    ToolButton { label: "Reset"; onClicked: { ed.cropRatio = 0; ed.setCrop(ed.full) } }
                     ToolButton { label: "Done"; selected: true; onClicked: ed.cropDone() }
                 }
             }
@@ -831,14 +865,25 @@ Window {
                 const p = ed.toImage(m.x, m.y)
                 const shift = (m.modifiers & Qt.ShiftModifier) !== 0
                 if (gesture.startsWith("crop")) {
+                    const snap = !(m.modifiers & Qt.ControlModifier), near = 10 / ed.k   // Ctrl: no snapping
                     let r
-                    if (gesture === "crop-handle") r = Ed.withHandle(pressObj, handle, p.x, p.y)
-                    else if (gesture === "crop-move") {
-                        const dx = Math.max(-pressObj.x, Math.min(ed.imgW - pressObj.x - pressObj.w, p.x - pressAt.x))
-                        const dy = Math.max(-pressObj.y, Math.min(ed.imgH - pressObj.y - pressObj.h, p.y - pressAt.y))
-                        r = Ed.moved(pressObj, dx, dy)
-                    } else r = Ed.normRect(pressAt.x, pressAt.y, p.x, p.y)
-                    ed.cropDraft = Ed.clampRect(r, ed.imgW, ed.imgH)
+                    if (gesture === "crop-handle") {
+                        r = Ed.withHandle(pressObj, handle, p.x, p.y)
+                        if (snap) r = Ed.snapEdges(r, ed.imgW, ed.imgH, near)
+                        r = Ed.withRatio(r, ed.ratioValue, handle)
+                    } else if (gesture === "crop-move") {
+                        r = Ed.moved(pressObj, p.x - pressAt.x, p.y - pressAt.y)
+                        if (snap) {   // the whole frame snaps by its nearest edges
+                            const s2 = Ed.snapEdges(r, ed.imgW, ed.imgH, near)
+                            r.x += (s2.x !== r.x ? s2.x - r.x : (s2.x + s2.w) - (r.x + r.w))
+                            r.y += (s2.y !== r.y ? s2.y - r.y : (s2.y + s2.h) - (r.y + r.h))
+                        }
+                    } else {
+                        r = Ed.normRect(pressAt.x, pressAt.y, p.x, p.y)
+                        if (ed.ratioValue) { r.h = r.w / ed.ratioValue; if (p.y < pressAt.y) r.y = pressAt.y - r.h }
+                        else if (snap) r = Ed.snapEdges(r, ed.imgW, ed.imgH, near)
+                    }
+                    ed.cropDraft = ed.clampCrop(r)
                     return
                 }
                 if (gesture === "move" || gesture === "copy" || gesture === "place") {
@@ -987,7 +1032,7 @@ Window {
     // ---------------------------------------------------------------- dropdowns
     function openMenuNamed(name, anchorItem) {
         openMenu({ color: colorMenu, size: sizeMenu, style: styleMenu, zoom: zoomMenu, arrow: arrowMenu, text: textMenu, dim: dimMenu,
-                   counter: counterMenu, opacity: opacityMenu }[name], anchorItem)
+                   counter: counterMenu, opacity: opacityMenu, ratio: ratioMenu }[name], anchorItem)
     }
     property Item openedMenu: null
     function openMenu(menu, anchorItem) {
@@ -1151,6 +1196,23 @@ Window {
     }
 
     Menu {
+        id: ratioMenu
+        z: 11      // above the crop bar
+        Repeater {
+            model: Ed.cropRatios
+            delegate: Rectangle {
+                required property var modelData
+                width: 140; height: 30; radius: 8
+                color: ed.cropRatio === modelData.r ? Theme.controlPressed : raMa.containsMouse ? Theme.controlHover : "transparent"
+                Text { x: 14; anchors.verticalCenter: parent.verticalCenter; text: parent.modelData.label; color: Theme.text
+                       font.family: Theme.fontUi; font.pixelSize: 13 }
+                MouseArea { id: raMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                            onClicked: { ed.setCropRatio(parent.modelData.r); ed.openedMenu = null } }
+            }
+        }
+    }
+
+    Menu {
         id: opacityMenu
         Repeater {
             model: Ed.highlightOpacities
@@ -1301,6 +1363,7 @@ Window {
         case "text-width": { const o = Ed.copy(selectedObj); o.w = n(1); replaceItem(selected, o); break }
         case "redact": addItem({ kind: "redact", x: n(1), y: n(2), w: n(3), h: n(4), style: a[5] || redactStyle, seed: a[6] ? n(6) : 1 }); break
         case "crop": a[1] === "reset" ? setCrop(full) : setCrop({ x: n(1), y: n(2), w: n(3), h: n(4) }); break
+        case "crop-ratio": setCropRatio(n(1)); break
         case "color": setColor(a[1]); break
         case "tool": setTool(a[1]); break
         case "undo": undo(); break
@@ -1320,7 +1383,7 @@ Window {
                 originX: originX, originY: originY + view.y, k: k, winW: width, winH: height,
                 ready: base.status === Image.Ready, editingText: editingText, typed: textEdit.text, active: ed.active,
                 selectionBox: { x: selectionBox.x, y: selectionBox.y, w: selectionBox.width, h: selectionBox.height },
-                words: words ? words.length : -1, ink: ink, savedColors: savedColors, picking: picking,
+                words: words ? words.length : -1, fill: doc.fill || "", shownX: shown.x, shownY: shown.y, ink: ink, savedColors: savedColors, picking: picking,
                 counterLabels: doc.items.map((o, i) => o.kind === "counter" ? Ed.counterLabel(doc, Ed.counterNumber(doc.items, i), o.style) : null).filter(l => l !== null)
             }).slice(1, -1))
             break
