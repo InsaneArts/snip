@@ -43,6 +43,13 @@ public:
   // Snip's own UI off screen before a capture.
   Q_INVOKABLE void notifyNextFrame(QQuickWindow* w);
 
+  // The editor's export (ANN-15): render `item` in its own coordinates
+  // (its transform ignored) at exactly width x height pixels, one item unit
+  // per pixel, and hand the pixels to the engine under `token`. Resizes
+  // `item` to make that exact at a fractional scale. Emits grabbed().
+  Q_INVOKABLE void grabExact(QQuickItem* item, int width, int height, int token);
+
 Q_SIGNALS:
   void framePresented(QQuickWindow* window);
+  void grabbed(int token, bool ok);
 };

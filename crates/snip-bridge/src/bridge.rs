@@ -164,6 +164,9 @@ pub mod qobject {
         fn frame_acquire(output: &QString) -> FrameInfo;
         unsafe fn frame_release(handle: usize);
         fn mark_time(ev: &QString, extra_json: &QString);
+        /// An editor render, straight RGBA8888 rows `stride` bytes apart,
+        /// kept under `token` for editor_commit.
+        fn edit_put(token: u32, data: &[u8], width: u32, height: u32, stride: u32);
         /// Another snipd already answers on ctl.sock.
         fn already_running() -> bool;
     }
@@ -421,6 +424,10 @@ fn frame_acquire(output: &QString) -> qobject::FrameInfo {
 
 unsafe fn frame_release(handle: usize) {
     frames::release(handle);
+}
+
+fn edit_put(token: u32, data: &[u8], width: u32, height: u32, stride: u32) {
+    crate::edits::put(token, data, width, height, stride);
 }
 
 fn mark_time(ev: &QString, extra_json: &QString) {
