@@ -880,6 +880,24 @@ def editor_from_clipboard(s, env):
 
 
 @case
+def save_as(s, env):
+    """QAO-09 / ANN-15 Save As: the format follows the extension, the file becomes the
+    capture's saved file and is copied. (The portal dialog itself is checked by hand: it
+    opens on the user's monitor and takes the keyboard.)"""
+    s.cli("close-all"); time.sleep(0.3)
+    png = s.tmp / "saveas.png"
+    make_text_png(png, ["save me as"])
+    rec = open_card(s, png); time.sleep(0.3)
+    n = len(s.traces("copied"))
+    out = s.json("debug", "save-as", rec["id"], str(s.tmp / "picked.webp"))
+    assert out["ok"] and out["result"].endswith("picked.webp"), out
+    assert (s.tmp / "picked.webp").read_bytes()[8:12] == b"WEBP"
+    saved = next(r for r in s.json("list", "-n", "20")["result"] if r["id"] == rec["id"])["saved"]
+    assert saved == str(s.tmp / "picked.webp"), saved
+    assert wait_for(lambda: len(s.traces("copied")) > n, 2), "Save As also copies"
+
+
+@case
 def self_timer(s, env):
     """CAP-06: --delay counts down on screen, then captures live; the countdown is
     never in the capture; the capture hotkey cancels a running countdown."""
