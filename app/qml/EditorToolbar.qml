@@ -105,6 +105,15 @@ Rectangle {
                 onClicked: bar.ed.openMenuNamed("style", styleButton)
             }
             ToolButton {
+                id: levelButton
+                readonly property var r: bar.ed.selectedObj && bar.ed.selectedObj.kind === "redact" ? bar.ed.selectedObj : null
+                visible: bar.ed.sizeKind === "redact" && (r ? r.style : bar.ed.redactStyle) !== "black"
+                tip: "Intensity"
+                label: Ed.redactLevels.find(l => Math.abs(l.v - (r ? (r.level || 1) : bar.ed.redactLevel)) < 0.01).label
+                chevron: true
+                onClicked: bar.ed.openMenuNamed("level", levelButton)
+            }
+            ToolButton {
                 id: sizeButton
                 visible: !!Ed.sizes[bar.ed.sizeKind]
                 tip: "Size"

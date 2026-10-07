@@ -105,6 +105,7 @@ Window {
                                      : !selectedObj ? "arrow" : selectedObj.filled ? "frect" : selectedObj.kind
     function sizeFor(kind) { return Math.round(Ed.sizes[kind][sizeIndex[kind]] * unit) }
     property string redactStyle: "pixelate"   // CleanShot's default (D26)
+    property real redactLevel: 1
     property string arrowStyle: "standard"
     property string textStyle: "standard"
     property string counterStyle: "num"
@@ -170,6 +171,11 @@ Window {
         if (selectedObj && selectedObj.kind === "redact" && selectedObj.style !== st) {
             const o = Ed.copy(selectedObj); o.style = st; replaceItem(selected, o)
         }
+    }
+    function setRedactLevel(v) {
+        redactLevel = v
+        if (selectedObj && selectedObj.kind === "redact" && (selectedObj.level || 1) !== v)
+            replaceItem(selected, Object.assign(Ed.copy(selectedObj), { level: v }))
     }
     // colour and size apply to the selection too, as in CleanShot
     function setColor(c) {
@@ -1007,7 +1013,7 @@ Window {
                     gesture = "draw"; break
                 case "redact":
                     ed.draft = { kind: "redact", x: Math.round(p.x), y: Math.round(p.y), w: 0, h: 0, style: ed.redactStyle,
-                                 seed: Math.floor(Math.random() * 1e9) }
+                                 seed: Math.floor(Math.random() * 1e9), level: ed.redactLevel }
                     gesture = "draw"; break
                 case "counter":
                     ed.draft = { kind: "counter", x: p.x, y: p.y, color: c, size: ed.sizeFor("counter"), style: ed.counterStyle }
@@ -1206,7 +1212,7 @@ Window {
 
     // ---------------------------------------------------------------- dropdowns
     function openMenuNamed(name, anchorItem) {
-        openMenu({ color: colorMenu, size: sizeMenu, style: styleMenu, zoom: zoomMenu, arrow: arrowMenu, text: textMenu, dim: dimMenu,
+        openMenu({ color: colorMenu, size: sizeMenu, style: styleMenu, level: levelMenu, zoom: zoomMenu, arrow: arrowMenu, text: textMenu, dim: dimMenu,
                    counter: counterMenu, opacity: opacityMenu, ratio: ratioMenu, resize: resizeMenu, addImage: addImageMenu }[name], anchorItem)
     }
     property Item openedMenu: null
@@ -1361,11 +1367,32 @@ Window {
             delegate: Rectangle {
                 required property var modelData
                 readonly property bool current: (ed.selectedObj && ed.selectedObj.kind === "redact" ? ed.selectedObj.style : ed.redactStyle) === modelData.id
-                width: 112; height: 30; radius: 15
+                width: 168; height: 30; radius: 8
                 color: current ? Theme.controlPressed : stMa.containsMouse ? Theme.controlHover : "transparent"
-                Text { anchors.centerIn: parent; text: parent.modelData.label; color: Theme.text; font.family: Theme.fontUi; font.pixelSize: 13 }
+                Text { x: 14; anchors.verticalCenter: parent.verticalCenter; text: parent.modelData.label; color: Theme.text
+                       font.family: Theme.fontUi; font.pixelSize: 13 }
+                // Natural blur reads what it hides: say so
+                Text { anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
+                       text: parent.modelData.note || ""; color: Theme.textSecondary; font.family: Theme.fontUi; font.pixelSize: 11 }
                 MouseArea { id: stMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
                             onClicked: { ed.setRedactStyle(parent.modelData.id); ed.openedMenu = null } }
+            }
+        }
+    }
+
+    Menu {
+        id: levelMenu
+        Repeater {
+            model: Ed.redactLevels
+            delegate: Rectangle {
+                required property var modelData
+                readonly property real current: ed.selectedObj && ed.selectedObj.kind === "redact" ? (ed.selectedObj.level || 1) : ed.redactLevel
+                width: 112; height: 30; radius: 8
+                color: Math.abs(current - modelData.v) < 0.01 ? Theme.controlPressed : lvMa.containsMouse ? Theme.controlHover : "transparent"
+                Text { x: 14; anchors.verticalCenter: parent.verticalCenter; text: parent.modelData.label; color: Theme.text
+                       font.family: Theme.fontUi; font.pixelSize: 13 }
+                MouseArea { id: lvMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                            onClicked: { ed.setRedactLevel(parent.modelData.v); ed.openedMenu = null } }
             }
         }
     }
@@ -1611,7 +1638,8 @@ Window {
         case "text-style": setTextStyle(a[1]); break
         case "spotlight": addItem({ kind: "spotlight", x: n(1), y: n(2), w: n(3), h: n(4), shape: a[5] || spotShape, dim: a[6] ? n(6) : spotDim }); break
         case "text-width": { const o = Ed.copy(selectedObj); o.w = n(1); replaceItem(selected, o); break }
-        case "redact": addItem({ kind: "redact", x: n(1), y: n(2), w: n(3), h: n(4), style: a[5] || redactStyle, seed: a[6] ? n(6) : 1 }); break
+        case "redact": addItem({ kind: "redact", x: n(1), y: n(2), w: n(3), h: n(4), style: a[5] || redactStyle, seed: a[6] ? n(6) : 1,
+                                 level: a[7] ? n(7) : redactLevel }); break
         case "crop": a[1] === "reset" ? setCrop(full) : setCrop({ x: n(1), y: n(2), w: n(3), h: n(4) }); break
         case "crop-ratio": setCropRatio(n(1)); break
         case "transform": transformImage(a[1], n(2), n(3)); break

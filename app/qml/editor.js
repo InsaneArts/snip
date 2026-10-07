@@ -10,7 +10,7 @@
 //   line    {kind, x1, y1, x2, y2, color, size}
 //   text    {kind, x, y, text, color, size, style, w}     size = font px; w wraps it (0: one line)
 //   counter {kind, x, y, color, size, style}              centre; size = diameter; num | alpha | roman
-//   redact  {kind, x, y, w, h, style, seed}               pixelate | text | blur | black
+//   redact  {kind, x, y, w, h, style, seed, level}        pixelate | text | blur | black | natural
 //   pencil  {kind, pts: [[x, y], …], color, size}         free hand, smoothed
 //   highlight {kind, x, y, w, h, color, opacity}          a translucent band
 //   image   {kind, x, y, w, h, src}                       src: a file beside the base image
@@ -455,9 +455,12 @@ function counterNumber(items, index, style) {
 }
 
 var redactStyles = [{ id: "pixelate", label: "Pixelate" }, { id: "text", label: "Text shape" },
-                    { id: "blur", label: "Blur" }, { id: "black", label: "Black out" }]
+                    { id: "blur", label: "Blur" }, { id: "black", label: "Black out" },
+                    { id: "natural", label: "Natural blur", note: "Not secure" }]
 // the tiles' style number for image://snip-redact
-function redactIndex(style) { return style === "blur" ? 1 : style === "text" ? 2 : 0 }
+function redactIndex(style) { return style === "blur" ? 1 : style === "text" ? 2 : style === "natural" ? 3 : 0 }
+// intensity: how much bigger the blocks (or the blur) are than usual
+var redactLevels = [{ v: 0.6, label: "Low" }, { v: 1, label: "Medium" }, { v: 1.6, label: "High" }, { v: 2.4, label: "Maximum" }]
 
 // Crop handles: corners and edge middles.
 function cropHandles(r) {
