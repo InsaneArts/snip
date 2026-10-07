@@ -970,6 +970,7 @@ Window {
         // crop: the rest dimmed, a frame with handles, size and Done
         Item {
             id: cropUi
+            z: 1                    // the crop bar's buttons sit above the canvas's pointer area
             anchors.fill: parent
             visible: ed.tool === "crop"
             readonly property var a: ed.toView(ed.cropShown.x, ed.cropShown.y)
