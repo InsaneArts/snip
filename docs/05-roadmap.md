@@ -151,7 +151,7 @@ Built: `snipd` (Rust core + Qt Quick UI in one process), `snip` CLI, `hypr/snip.
 
 | Area | Status | Notes |
 |---|---|---|
-| History window (HIS-01, 05) | ✅ first slice | `snip history`, `snip:history`: a band across the top of the screen with large thumbnails, newest first; ←/→ or the wheel, Enter or a click restores to Quick Access (the band stays), double-click or Ctrl+E annotates, Space previews, Ctrl+C copies, drag out; typing searches the text in captures; Esc clears the search, then closes. Still to add: delete with confirmation, Clear History, a menu (pin, Open With, Show in Files). |
+| History window (HIS-01, 03, 05) | ✅ | `snip history`, `snip:history`: a band across the top of the screen with large thumbnails, newest first; ←/→ or the wheel, Enter or a click restores to Quick Access (the band stays), double-click or Ctrl+E annotates, Space previews, Ctrl+C copies, drag out; typing searches the text in captures; Esc clears the search, then closes. Backspace deletes after asking ("Don't ask again"), Clear History…, and a right-click menu (Restore, Annotate, Pin, Copy, Open With…, Show in Files, Delete). Retention (HIS-02) is `history.retention` in the config for now. |
 
 **Exit:**
 - **Every P0 item in the product spec is done.**
