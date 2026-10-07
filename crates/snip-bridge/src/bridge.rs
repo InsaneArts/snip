@@ -184,6 +184,12 @@ pub mod qobject {
 
         #[qinvokable]
         fn trash(self: Pin<&mut Engine>, id: QString);
+        /// Delete from history (HIS-03); a saved copy stays
+        #[qinvokable]
+        fn delete_capture(self: Pin<&mut Engine>, id: QString);
+        /// Clear History: how many captures left
+        #[qinvokable]
+        fn clear_history(self: Pin<&mut Engine>) -> i32;
 
         #[qinvokable]
         fn annotate(self: Pin<&mut Engine>, id: QString);
@@ -715,6 +721,16 @@ impl qobject::Engine {
     fn drag_file(self: Pin<&mut Self>, id: QString) -> QString {
         let p = self.inner().and_then(|i| i.drag_file(&id.to_string()).ok()).map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
         QString::from(p.as_str())
+    }
+
+    fn delete_capture(self: Pin<&mut Self>, id: QString) {
+        if let Some(i) = self.inner() {
+            i.delete_capture(&id.to_string());
+        }
+    }
+
+    fn clear_history(self: Pin<&mut Self>) -> i32 {
+        self.inner().map(|i| i.clear_history() as i32).unwrap_or(0)
     }
 
     fn show_in_files(self: Pin<&mut Self>, id: QString) {

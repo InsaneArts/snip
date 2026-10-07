@@ -1115,6 +1115,24 @@ impl Inner {
         );
     }
 
+    /// Delete from history (HIS-03): the capture leaves history; a copy saved
+    /// in your folders stays.
+    pub fn delete_capture(&self, id: &str) {
+        let _ = std::fs::remove_dir_all(paths::drag_dir().join(id));
+        let _ = self.store.delete(id);
+        self.cards.lock().unwrap().retain(|(i, _)| i != id);
+        self.closed.lock().unwrap().retain(|i| i != id);
+    }
+
+    /// Clear History: every capture leaves history (saved copies stay).
+    pub fn clear_history(&self) -> usize {
+        let all = self.store.recent(u32::MAX).unwrap_or_default();
+        for r in &all {
+            self.delete_capture(&r.id);
+        }
+        all.len()
+    }
+
     /// Move to Trash: the saved file goes to the trash; the capture leaves history.
     pub fn trash(&self, id: &str) {
         if let Ok(rec) = self.store.get(id) {
