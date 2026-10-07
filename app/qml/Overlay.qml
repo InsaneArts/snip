@@ -330,9 +330,10 @@ Window {
         y: win.mouse.y + gap + height < win.height ? win.mouse.y + gap : win.mouse.y - gap - height
     }
 
-    // ---------------------------------------------------------------- mode hint (window / text modes)
+    // ---------------------------------------------------------------- mode hint (window / text / scroll modes)
     Rectangle {
-        visible: win.hovered && (win.c.windowMode || (win.c.session && win.c.session.mode === "text"))
+        readonly property string mode: win.c.session ? win.c.session.mode : ""
+        visible: win.hovered && (win.c.windowMode || mode === "text" || mode === "scroll")
         anchors.horizontalCenter: parent.horizontalCenter
         y: 24
         height: 32
@@ -346,12 +347,12 @@ Window {
             anchors.centerIn: parent
             spacing: 8
             Icon {
-                name: win.c.windowMode ? "window" : "scan-text"
+                name: win.c.windowMode ? "window" : parent.parent.mode === "scroll" ? "layers" : "scan-text"
                 size: 15; stroke: 2; color: Theme.accent
                 anchors.verticalCenter: parent.verticalCenter
             }
             Text {
-                text: win.c.windowMode ? "Click a window" : "Select text to copy"
+                text: win.c.windowMode ? "Click a window" : parent.parent.mode === "scroll" ? "Select the area to scroll" : "Select text to copy"
                 color: Theme.text
                 font.family: Theme.fontUi
                 font.pixelSize: 13
