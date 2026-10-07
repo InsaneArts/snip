@@ -100,3 +100,6 @@ What cost us hours before:
 - **Render loop**: force `QSG_RENDER_LOOP=threaded`, because Qt picks the basic loop on NVIDIA (125 fps cap). Unset `QT_QPA_PLATFORMTHEME` (gtk3 costs ~90 ms at start).
 - **cxx-qt**: the bridge crate name must be snake_case (`snip_bridge`) or its headers are not exported. A Rust staticlib carries no native link deps, so link them in CMake (sqlite3).
 - **Tracing**: `trace::js()` returns a quoted JSON string, so format it with `{}`.
+- **Hyprland 0.56 window rules**: a rule matching `class` and `title` together never matches, nor does a `title` pattern with non-ASCII characters; and when one rule moves a window (`workspace`, `monitor`), `float` from another matching rule is dropped. Use one ASCII field per rule, and put everything a window needs in one rule.
+- **Grabbing an item** (`grabToImage`) renders `round(size × dpr)` texels: ask `Platform.grabExact` for exact pixels at a fractional scale.
+- **`color` is taken** on a QML `Window`: a custom property with that name fails to compile ("Property value set multiple times").
