@@ -83,6 +83,11 @@ pub mod qobject {
         #[qinvokable]
         fn save(self: Pin<&mut Engine>, id: QString);
 
+        /// The words in the image at `path`, for the highlighter (ANN-10);
+        /// answers with editor_words, off the GUI thread.
+        #[qinvokable]
+        fn request_words(self: &Engine, path: QString);
+
         /// Save As to `path` (from the portal's save dialog)
         #[qinvokable]
         fn save_as(self: Pin<&mut Engine>, id: QString, path: QString);
@@ -178,6 +183,10 @@ pub mod qobject {
         /// Open an editor window: {id, image, doc, width, height, title}
         #[qsignal]
         fn editor_open(self: Pin<&mut Engine>, editor: &QString);
+
+        /// Word boxes for `path`: [{line, x, y, w, h}] in image px
+        #[qsignal]
+        fn editor_words(self: Pin<&mut Engine>, path: &QString, words: &QString);
 
         /// An editor_commit finished (ok) or failed (detail says why).
         #[qsignal]
@@ -383,6 +392,12 @@ impl qobject::Engine {
                     i.toast(format!("Couldn't save: {e}"));
                 }
             });
+        }
+    }
+
+    fn request_words(&self, path: QString) {
+        if let Some(i) = self.inner() {
+            i.text_words(path.to_string());
         }
     }
 
