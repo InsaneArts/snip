@@ -95,9 +95,33 @@ Window {
 
     // Engine.cardStatus: show a result on that card
     function cardStatus(id, status, detail) {
-        for (let i = 0; i < stack.children.length; i++) {
-            const ch = stack.children[i]
-            if (ch.cardId === id) { ch.showResult(status, detail); return }
+        const card = cardById(id)
+        if (card) card.showResult(status, detail)
+    }
+    function cardById(id) {
+        for (let i = 0; i < stack.children.length; i++)
+            if (stack.children[i].cardId === id) return stack.children[i]
+        return null
+    }
+
+    // Save As (QAO-09): the desktop's save dialog; the card says Saved once written.
+    property var saveAsIds: ({})
+    function saveAs(card) {
+        const sug = JSON.parse(Engine.saveAsSuggestion(card.cardId) || "{}")
+        const token = c.nextToken()
+        saveAsIds[token] = card.cardId
+        Platform.saveFileDialog(token, "Save As", sug.name || "", sug.folder || "")
+    }
+    Connections {
+        target: Platform
+        function onFileChosen(token, path) {
+            const id = qa.saveAsIds[token]
+            if (id === undefined) return
+            delete qa.saveAsIds[token]
+            if (path === "") return
+            Engine.saveAs(id, path)
+            const card = qa.cardById(id)
+            if (card) card.flash("saved", 900)
         }
     }
 
@@ -168,6 +192,7 @@ Window {
             }
             break
         case "save": Engine.save(id); card.flash("saved", 900); break
+        case "save-as": saveAs(card); break
         case "show": Engine.showInFiles(id); break
         case "annotate": Engine.annotate(id); break
         case "text": card.flash("text", 0); Engine.extractText(id); break   // the result arrives as cardStatus
@@ -496,7 +521,7 @@ Window {
             if (!card) return
             const ctrl = e.modifiers & Qt.ControlModifier
             if (ctrl && e.key === Qt.Key_C) qa.act("copy", card)
-            else if (ctrl && e.key === Qt.Key_S) qa.act("save", card)
+            else if (ctrl && e.key === Qt.Key_S) qa.act((e.modifiers & Qt.ShiftModifier) ? "save-as" : "save", card)
             else if (ctrl && e.key === Qt.Key_W) qa.act("close", card)
             else if (ctrl && e.key === Qt.Key_E) qa.act("annotate", card)
             else if (e.key === Qt.Key_Space) qa.act("preview", card)
