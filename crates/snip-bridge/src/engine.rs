@@ -80,6 +80,9 @@ pub struct Inner {
     pending: Mutex<HashMap<u64, Pending>>,
     session: Mutex<Option<Session>>,
     last_area: Mutex<Option<(String, Rect)>>,
+    /// Captures waiting for their auto-applied background (BG-03) before
+    /// their card: id → output
+    pending_bg: Mutex<HashMap<String, String>>,
     /// open cards (id, output), oldest first
     cards: Mutex<Vec<(String, String)>>,
     closed: Mutex<Vec<String>>,
@@ -156,6 +159,7 @@ impl Inner {
             pending: Mutex::new(HashMap::new()),
             session: Mutex::new(None),
             last_area: Mutex::new(load_last_area()),
+            pending_bg: Mutex::new(HashMap::new()),
             cards: Mutex::new(vec![]),
             closed: Mutex::new(vec![]),
             ocr_langs: OnceLock::new(),
@@ -811,7 +815,9 @@ impl Inner {
             Ok(rec) => {
                 trace::trace("ingested", &format!("\"id\":\"{}\",\"ms\":{:.2}", rec.id, trace::ms_since(t0)));
                 self.wake_indexer();
-                self.after_capture(&rec, output);
+                if !self.apply_auto_background(&rec, output) {
+                    self.after_capture(&rec, output);
+                }
                 reply(waiter, Response::ok(serde_json::to_value(&rec).unwrap_or(Value::Null)));
             }
             Err(e) => {
@@ -819,6 +825,33 @@ impl Inner {
                 reply(waiter, Response::err(e.to_string()));
             }
         }
+    }
+
+    /// BG-03 "Automatically apply preset to all screenshots": the preset set
+    /// to auto-apply (backgrounds.json), its sizes in points.
+    fn auto_background(&self) -> Option<Value> {
+        let j: Value = serde_json::from_str(&std::fs::read_to_string(paths::data_dir().join("backgrounds.json")).ok()?).ok()?;
+        let name = j["auto"].as_str()?;
+        j["presets"].as_array()?.iter().find(|p| p["name"] == name).map(|p| p["bg"].clone())
+    }
+
+    /// A new screenshot gets the auto-applied background before its card:
+    /// QML renders it and commits it like an edit (action "auto-bg"), then
+    /// the After Capture rules run. False when there is none to apply.
+    fn apply_auto_background(&self, rec: &Record, output: &str) -> bool {
+        if !matches!(rec.kind.as_str(), "area" | "fullscreen" | "window") {
+            return false;
+        }
+        let Some(bg) = self.auto_background() else { return false };
+        let scale = snip_hypr::monitors().into_iter().find(|m| m.name == output).map(|m| m.scale).unwrap_or(1.0);
+        self.pending_bg.lock().unwrap().insert(rec.id.clone(), output.to_string());
+        let mut j = card_json(rec, output);
+        j["bg"] = bg;
+        j["scale"] = json!(scale);
+        let s = j.to_string();
+        trace::trace("auto_background", &format!("\"id\":\"{}\"", rec.id));
+        self.ui(move |e| e.background_auto(&QString::from(s.as_str())));
+        true
     }
 
     /// SET-03 After Capture rules (default: only the Quick Access card).
@@ -1120,6 +1153,14 @@ impl Inner {
         std::thread::spawn(move || {
             let t0 = trace::now_ns();
             let done = |ok: bool, detail: String| {
+                // an auto-applied background (BG-03): now the card, rendered or not
+                if action == "auto-bg" {
+                    let out = me.pending_bg.lock().unwrap().remove(&id);
+                    if let (Some(out), Ok(rec)) = (out, me.store.get(&id)) {
+                        me.after_capture(&rec, &out);
+                    }
+                    return;
+                }
                 let (id, action) = (id.clone(), action.clone());
                 me.ui(move |e| e.editor_done(&QString::from(id.as_str()), &QString::from(action.as_str()), ok, &QString::from(detail.as_str())));
             };
