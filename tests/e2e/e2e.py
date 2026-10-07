@@ -958,6 +958,36 @@ def editor_counters(s, env):
 
 
 @case
+def editor_pencil(s, env):
+    """ANN-09: the Pencil (D) draws a smoothed free-hand line with the pointer."""
+    import math
+    from PIL import Image
+    png = s.tmp / "pencil.png"
+    Image.new("RGB", (600, 300), "white").save(png)
+    rec = s.json("edit", str(png))["result"]
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    time.sleep(0.3)
+    w, mon, st = editor_window(), env.monitor(), editor_state(s)
+    at = lambda ix, iy: (w["at"][0] - mon["x"] + st["originX"] + ix * st["k"], w["at"][1] - mon["y"] + st["originY"] + iy * st["k"])
+    s.move(*at(300, 280)); s.click(); time.sleep(0.2)
+    s.debug("ui", "editor", "keys", "d")
+    wave = [(50 + i * 10, 150 + 60 * math.sin(i / 6)) for i in range(51)]
+    s.move(*at(*wave[0])); s.debug("down")
+    for p in wave[1:]:
+        s.move(*at(*p))
+    s.debug("up"); time.sleep(0.2)
+    items = editor_state(s)["items"]
+    assert len(items) == 1 and items[0]["kind"] == "pencil", items
+    assert 4 <= len(items[0]["pts"]) < 50, ("simplified, still a curve", len(items[0]["pts"]))
+    editor_flush(s)
+    out = Image.open(rec["source"]).convert("RGB")
+    red = lambda p: p[0] > 200 and p[1] < 100
+    hits = sum(red(out.getpixel((round(x), round(y)))) for x, y in wave[2:-2])
+    assert hits >= len(wave) * 0.8, ("the line follows the hand", hits)
+    close_editor(s)
+
+
+@case
 def editor_keyboard(s, env):
     """ANN-05/14: the Text tool types where you click and Enter commits; tool keys, undo,
     redo and Escape work. Keys are delivered inside snipd (never through the seat)."""
