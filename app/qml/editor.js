@@ -271,7 +271,10 @@ function counterNumber(items, index) {
     return n
 }
 
-var redactStyles = [{ id: "pixelate", label: "Pixelate" }, { id: "blur", label: "Blur" }, { id: "black", label: "Black out" }]
+var redactStyles = [{ id: "pixelate", label: "Pixelate" }, { id: "text", label: "Text shape" },
+                    { id: "blur", label: "Blur" }, { id: "black", label: "Black out" }]
+// the tiles' style number for image://snip-redact
+function redactIndex(style) { return style === "blur" ? 1 : style === "text" ? 2 : 0 }
 
 // Crop handles: corners and edge middles.
 function cropHandles(r) {
