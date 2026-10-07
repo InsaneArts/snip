@@ -8,8 +8,9 @@ import Snip.Core
 // screen with large thumbnails, newest first. ←/→ or the wheel move, Enter or
 // a click restores a capture to Quick Access (still editable; the band stays
 // for more), a double-click annotates it, Space previews, Ctrl+C copies, a
-// drag takes the file out, typing searches the text in captures, Esc or a
-// click below the band closes it.
+// drag takes the file out, typing searches the text in captures, Backspace
+// deletes (HIS-03; asked first, unless you said not to), right-click opens a
+// menu, Esc or a click below the band closes it.
 Window {
     id: hist
     property var controller: null
@@ -34,6 +35,7 @@ Window {
         output = out
         query = ""
         restored = {}
+        asking = ""
         current = 0
         reload()
         visible = true
@@ -68,6 +70,43 @@ Window {
         Engine.copy(items[i].id)
         controller.toast.show("Copied", output)
     }
+    // HIS-03: delete from history (a copy saved in your folders stays), asked first
+    property string asking: ""               // the id to delete, "all" for Clear History, or ""
+    property bool dontAsk: false
+    function askDelete(i) {
+        if (!items[i]) return
+        if (JSON.parse(Engine.editorPrefs() || "{}").historyAskDelete === false) deleteNow(items[i].id)
+        else { asking = items[i].id; dontAsk = false }
+    }
+    function confirm() {
+        if (dontAsk) Engine.setEditorPrefs(JSON.stringify(Object.assign(JSON.parse(Engine.editorPrefs() || "{}"), { historyAskDelete: false })))
+        if (asking === "all") {
+            for (const it of items) controller.quickAccess.remove(it.id, false)
+            const n = Engine.clearHistory()
+            controller.toast.show("Cleared " + n + (n === 1 ? " capture" : " captures"), output)
+            reload()
+        } else if (asking !== "") deleteNow(asking)
+        asking = ""
+    }
+    function deleteNow(id) {
+        Engine.deleteCapture(id)
+        controller.quickAccess.remove(id, false)
+        reload()
+    }
+    function act(action, i) {
+        menu.visible = false
+        const it = items[i]
+        if (!it) return
+        switch (action) {
+        case "restore": restore(i); break
+        case "annotate": annotate(i); break
+        case "pin": Engine.pin(it.id); break
+        case "copy": copy(i); break
+        case "open-with": { const path = Engine.dragFile(it.id); if (path) Platform.openWith(path); break }
+        case "show": Engine.showInFiles(it.id); break
+        case "delete": askDelete(i); break
+        }
+    }
     function preview(i) {
         if (!items[i]) return
         if (controller.preview.card) controller.preview.close()
@@ -83,8 +122,8 @@ Window {
         return Qt.formatDateTime(t, d < 2 * 86400 ? "'Yesterday' hh:mm" : "d MMM, hh:mm")
     }
 
-    // below the band: a click closes
-    MouseArea { anchors.fill: parent; onClicked: hist.close() }
+    // below the band: a click closes (or closes the menu first)
+    MouseArea { anchors.fill: parent; onClicked: menu.visible ? menu.visible = false : hist.close() }
 
     Rectangle {
         id: band
@@ -128,10 +167,43 @@ Window {
                 color: Theme.textSecondary; font.family: Theme.fontUi; font.pixelSize: 12
             }
         }
-        Text {
+        Row {
+            visible: hist.asking === ""
             anchors { right: parent.right; rightMargin: 24; verticalCenter: header.verticalCenter }
-            text: "←→ Move   ⏎ Restore   Space Preview   Esc Close"
-            color: Theme.textSecondary; font.family: Theme.fontUi; font.pixelSize: 11
+            spacing: 16
+            Text { anchors.verticalCenter: parent.verticalCenter
+                   text: "←→ Move   ⏎ Restore   Space Preview   ⌫ Delete   Esc Close"
+                   color: Theme.textSecondary; font.family: Theme.fontUi; font.pixelSize: 11 }
+            ToolButton { label: "Clear History…"; enabled: hist.items.length > 0
+                         onClicked: { hist.asking = "all"; hist.dontAsk = false } }
+        }
+        // the question before deleting
+        Row {
+            visible: hist.asking !== ""
+            anchors { right: parent.right; rightMargin: 24; verticalCenter: header.verticalCenter }
+            spacing: 12
+            Text { anchors.verticalCenter: parent.verticalCenter
+                   text: hist.asking === "all" ? "Delete all " + hist.items.length + " captures from history?"
+                                               : "Delete this capture from history?"
+                   color: Theme.text; font.family: Theme.fontUi; font.pixelSize: 13; font.weight: Font.DemiBold }
+            Text { anchors.verticalCenter: parent.verticalCenter
+                   text: "Copies saved in your folders stay."
+                   color: Theme.textSecondary; font.family: Theme.fontUi; font.pixelSize: 12 }
+            Row {
+                visible: hist.asking !== "all"
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 6
+                Rectangle {
+                    width: 16; height: 16; radius: 4
+                    color: hist.dontAsk ? Theme.accent : "transparent"
+                    border.width: hist.dontAsk ? 0 : 1.5; border.color: Theme.textSecondary
+                    Icon { visible: hist.dontAsk; anchors.centerIn: parent; name: "check"; size: 12; stroke: 2.5; color: Theme.background }
+                    MouseArea { anchors.fill: parent; anchors.margins: -4; cursorShape: Qt.PointingHandCursor; onClicked: hist.dontAsk = !hist.dontAsk }
+                }
+                Text { text: "Don't ask again"; color: Theme.textSecondary; font.family: Theme.fontUi; font.pixelSize: 12 }
+            }
+            ToolButton { label: "Cancel"; onClicked: hist.asking = "" }
+            ToolButton { label: hist.asking === "all" ? "Delete All" : "Delete"; selected: true; onClicked: hist.confirm() }
         }
 
         ListView {
@@ -208,20 +280,45 @@ Window {
                 MouseArea {
                     anchors.fill: thumb
                     cursorShape: Qt.PointingHandCursor
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
                     property point at
                     property bool dragged: false
-                    onPressed: (m) => { at = Qt.point(m.x, m.y); dragged = false; hist.current = entry.index }
+                    onPressed: (m) => {
+                        at = Qt.point(m.x, m.y); dragged = false; hist.current = entry.index
+                        if (m.button === Qt.RightButton) {
+                            const p = mapToItem(null, m.x, m.y)
+                            menu.x = Math.min(hist.width - menu.width - 8, p.x); menu.y = p.y
+                            menu.visible = true
+                        }
+                    }
                     onPositionChanged: (m) => {
                         if (!pressed || dragged || Math.hypot(m.x - at.x, m.y - at.y) < 6) return
                         dragged = true
                         const path = Engine.dragFile(entry.modelData.id)
                         if (path) Platform.startDrag(thumb, path, entry.modelData.path)
                     }
-                    onClicked: if (!dragged) hist.restore(entry.index)
+                    onClicked: (m) => { if (!dragged && m.button === Qt.LeftButton) hist.restore(entry.index) }
                     onDoubleClicked: hist.annotate(entry.index)
                 }
             }
         }
+    }
+
+    CardMenu {
+        id: menu
+        z: 10
+        visible: false
+        items: [
+            { label: "Restore", key: "⏎", action: "restore", icon: "layers" },
+            { label: "Annotate", key: "Ctrl+E", action: "annotate", icon: "pencil" },
+            { label: "Pin to Screen", key: "", action: "pin", icon: "pin" },
+            { label: "Copy", key: "Ctrl+C", action: "copy", icon: "copy" },
+            { label: "Open With…", key: "", action: "open-with", icon: "share" },
+            { label: "Show in Files", key: "", action: "show", icon: "folder" },
+            { sep: true },
+            { label: "Delete", key: "⌫", action: "delete", icon: "trash", danger: true }
+        ]
+        onTriggered: (action) => hist.act(action, hist.current)
     }
 
     Item {
@@ -229,6 +326,13 @@ Window {
         focus: true
         Keys.onPressed: (e) => {
             const ctrl = e.modifiers & Qt.ControlModifier
+            if (hist.asking !== "") {                          // the question takes the keys
+                if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) hist.confirm()
+                else if (e.key === Qt.Key_Escape) hist.asking = ""
+                e.accepted = true
+                return
+            }
+            if (menu.visible && e.key === Qt.Key_Escape) { menu.visible = false; e.accepted = true; return }
             if (e.key === Qt.Key_Escape) {
                 if (hist.query !== "") hist.query = ""
                 else hist.close()
@@ -241,6 +345,7 @@ Window {
             else if (ctrl && e.key === Qt.Key_C) hist.copy(hist.current)
             else if (ctrl && e.key === Qt.Key_E) hist.annotate(hist.current)
             else if (e.key === Qt.Key_Backspace && hist.query !== "") hist.query = hist.query.slice(0, -1)
+            else if (e.key === Qt.Key_Backspace || e.key === Qt.Key_Delete) hist.askDelete(hist.current)
             else if (!ctrl && e.text.length === 1 && e.text >= " ") hist.query += e.text   // typing searches
             else return
             e.accepted = true
@@ -259,9 +364,11 @@ Window {
         switch (a[0]) {
         case "keys": Platform.sendKeys(hist, a.slice(1).join(" ")); break
         case "annotate": annotate(current); break
+        case "act": act(a[1], current); break
+        case "clear": asking = "all"; break
         case "state":
             Engine.log("history_state", JSON.stringify({ open: visible, items: items.map(i => i.id), current: current, query: query,
-                                                        restored: Object.keys(restored) }).slice(1, -1))
+                                                        restored: Object.keys(restored), asking: asking, menu: menu.visible }).slice(1, -1))
             break
         }
     }
