@@ -1876,7 +1876,7 @@ Window {
                 emojiButton: emojiButton.visible ? emojiButton.mapToItem(null, 11, 11) : null,
                 selectionBox: { x: selectionBox.x, y: selectionBox.y, w: selectionBox.width, h: selectionBox.height },
                 words: words ? words.length : -1, fill: doc.fill || "", shownX: shown.x, shownY: shown.y,
-                imgW: imgW, imgH: imgH, base: doc.base || "", bg: doc.bg || null, exportRect: exportRect, balance: balance,
+                imgW: imgW, imgH: imgH, base: doc.base || "", bg: doc.bg || null, exportRect: exportRect, balance: balance, paddingValue: bgPanel.visible ? bgPanel.paddingSlider.valueBox.mapToItem(null, 14, 9) : null,
                 bgPresets: bgPresets.map(p => p.name), bgPreset: bgPreset, bgPresetChanged: bgPresetChanged, ownWalls: bgPanel.ownWalls,
                 shadows: annotateCfg.object_shadows !== false, ink: ink, savedColors: savedColors, picking: picking,
                 counterLabels: doc.items.map((o, i) => o.kind === "counter" ? Ed.counterLabel(doc, Ed.counterNumber(doc.items, i), o.style) : null).filter(l => l !== null)

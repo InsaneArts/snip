@@ -30,6 +30,13 @@ Rectangle {
         function onFileChosen(token, path) { if (token === panel.wallToken && path !== "") panel.addWallpaper(path) }
     }
     property bool allGradients: true
+    // a slider let go (or a typed value committed): one undo step, and the
+    // editor's keys work again
+    function release(patch) {
+        ed.setBg(patch)
+        ed.focusKeys()
+    }
+    readonly property alias paddingSlider: paddingSlider
     property bool naming: false
     onNamingChanged: if (naming) { presetName.text = ""; presetName.forceActiveFocus() }
     function finishNaming(save) {
@@ -241,17 +248,17 @@ Rectangle {
                 }
             }
 
-            Slider { width: parent.width; label: "Padding"; from: 0; to: 240; unit: " px"
+            Slider { id: paddingSlider; width: parent.width; label: "Padding"; from: 0; to: 240; unit: " px"
                      value: panel.bg ? panel.bg.padding / panel.ed.unit : 0
                      onMoved: (v) => panel.ed.previewBg({ padding: Math.round(v * panel.ed.unit) })
-                     onReleased: (v) => panel.ed.setBg({ padding: Math.round(v * panel.ed.unit) }) }
+                     onReleased: (v) => panel.release({ padding: Math.round(v * panel.ed.unit) }) }
             // CleanShot's pairs: Inset with Auto-balance, Shadow with Corners
             Row {
                 width: parent.width; spacing: 16
                 Slider { width: (parent.width - 16) / 2; label: "Inset"; from: 0; to: 60; unit: " px"
                          value: panel.bg ? panel.bg.inset / panel.ed.unit : 0
                          onMoved: (v) => panel.ed.previewBg({ inset: Math.round(v * panel.ed.unit) })
-                         onReleased: (v) => panel.ed.setBg({ inset: Math.round(v * panel.ed.unit) }) }
+                         onReleased: (v) => panel.release({ inset: Math.round(v * panel.ed.unit) }) }
                 // Auto-balance (BG-02): even margins around the content
                 Item {
                     width: (parent.width - 16) / 2; height: 40
@@ -275,11 +282,11 @@ Rectangle {
                 Slider { width: (parent.width - 16) / 2; label: "Shadow"; from: 0; to: 100; unit: "%"
                          value: panel.bg ? panel.bg.shadow * 100 : 0
                          onMoved: (v) => panel.ed.previewBg({ shadow: v / 100 })
-                         onReleased: (v) => panel.ed.setBg({ shadow: v / 100 }) }
+                         onReleased: (v) => panel.release({ shadow: v / 100 }) }
                 Slider { width: (parent.width - 16) / 2; label: "Corners"; from: 0; to: 60; unit: " px"
                          value: panel.bg ? panel.bg.radius / panel.ed.unit : 0
                          onMoved: (v) => panel.ed.previewBg({ radius: Math.round(v * panel.ed.unit) })
-                         onReleased: (v) => panel.ed.setBg({ radius: Math.round(v * panel.ed.unit) }) }
+                         onReleased: (v) => panel.release({ radius: Math.round(v * panel.ed.unit) }) }
             }
 
             Heading { text: "Aspect ratio" }
