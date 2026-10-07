@@ -376,6 +376,12 @@ Full detail and measurements: [research/processing-pipelines.md](research/proces
   
   Every step is reversible with `snip uninstall-integration`.
 - **Rules are also injected at runtime** with `hyprctl eval` when the daemon starts, and re-injected on `configreloaded`, so the app works even before the user adds the require.
+- **Shortcuts (SET-08):**
+  - **Defaults:** `snip.lua` binds the default keys in `snip_bind_defaults()`.
+  - **Custom keys** live in config.toml `[shortcuts]` (`area = "SUPER + SHIFT + code:13"`; `""` for none). `snipd` binds them over the defaults with `hyprctl eval`: at start, after `configreloaded`, and whenever the table changes.
+  - **Restore Defaults** removes the table and calls `snip_bind_defaults()` again.
+  - **Finding binds:** in a Lua config every bind dispatches through `__lua`, so `hyprctl binds` can't say where a bind goes. Snip's binds carry the description `Snip: <action's name>` (`snip_hypr::keys::ACTIONS`), and that is how they are found.
+  - **Recording:** Settings records a key as a keycode (`code:N`, so it works in every layout). Meanwhile Hyprland is in an empty submap, `snip-record`, so bound keys reach the window: Hyprland's documented passthrough pattern. Escape (non-consuming) and a 20 s timer leave the submap if Snip doesn't.
 - **Optional omarchy-shell plugin** (separate git repo, QML only): a recording-timer bar widget and capture buttons that talk to `ctl.sock` through Quickshell's `Socket`.
 
 ---

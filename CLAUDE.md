@@ -103,6 +103,12 @@ What cost us hours before:
 - **Tracing**: `trace::js()` returns a quoted JSON string, so format it with `{}`.
 - **e2e pointer input** goes through Hyprland, so a click's release can arrive after a later `snip debug` state request: after a click or drag, `wait_for` its effect instead of reading the state once.
 - **Hyprland window rules** match the *whole* title: `^Snip Pin` misses "Snip Pin 1" (use `^Snip Pin .*`). A floating window can't resize itself either: ask Hyprland (`snip_hypr::resize_window`). The nested e2e Hyprland floats our windows even with no rule, so a test proves a rule matched through a `tag` it sets (`hyprctl` lists it as `name*`).
+- **Hyprland 0.56 binds and eval**:
+  - With a Lua config, every bind's dispatcher is `__lua`.
+  - `hyprctl binds -j` leaves `key` empty for `code:` binds; read the text output, and find Snip's binds by their description.
+  - `hyprctl eval` answers only `ok` or an error, never a value.
+  - A submap with no binds isn't registered.
+  - In the nested Hyprland, keys from a virtual keyboard (wtype) never run binds.
 - **Hyprland 0.56 window rules**: a rule matching `class` and `title` together never matches, nor does a `title` pattern with non-ASCII characters; and when one rule moves a window (`workspace`, `monitor`), `float` from another matching rule is dropped. Use one ASCII field per rule, and put everything a window needs in one rule.
 - **Grabbing an item** (`grabToImage`) renders `round(size × dpr)` texels: ask `Platform.grabExact` for exact pixels at a fractional scale.
 - **Nested Hyprland on NVIDIA** can't use headless outputs (aquamarine asks for linear buffers); the harness uses the nested window's own output, kept drawing by `render_unfocused` (15 fps).
