@@ -5,8 +5,9 @@ import Snip.Core
 
 // A pinned screenshot (PIN-01…08), CleanShot's: the image floats above every
 // window, on every workspace of its monitor (Hyprland's pin rule, matched by
-// the title). Drag to move, scroll to fade, Ctrl+scroll to zoom, middle-click
-// to close; hovering shows close and the zoom; right-click opens the menu.
+// the title). Drag (or arrow keys) to move, scroll to fade, Ctrl+scroll to
+// zoom, middle-click to close; hovering shows close, the zoom and a grip to
+// drag the image out; right-click opens the menu.
 Window {
     id: pin
     required property var capture           // a card's JSON plus its output's scale
@@ -43,6 +44,27 @@ Window {
         }
     }
     function zoomBy(f) { zoom = Math.max(0.1, Math.min(4, zoom * f)) }
+    // PIN-07: hidden pins come back where they were (Hyprland would centre them)
+    property var hiddenAt: null
+    function hide() {
+        hiddenAt = JSON.parse(Engine.windowPosition(title))
+        visible = false
+    }
+    function show() {
+        frame.visible = false           // until it is back in place
+        visible = true
+        restoreTimer.start()
+    }
+    Timer {
+        id: restoreTimer
+        interval: 60
+        onTriggered: {
+            if (pin.hiddenAt) Engine.moveWindow(pin.title, pin.hiddenAt[0], pin.hiddenAt[1], false)
+            pin.hiddenAt = null
+            showTimer.start()
+        }
+    }
+    Timer { id: showTimer; interval: 60; onTriggered: frame.visible = true }
 
     Component.onCompleted: {
         // never larger than most of the screen
@@ -127,11 +149,29 @@ Window {
     // hover chrome, as CleanShot's: close at the top left, the zoom at the top
     Item {
         anchors.fill: frame
-        visible: area.containsMouse || closeHover.hovered
+        visible: area.containsMouse || closeHover.hovered || gripHover.hovered
         FrostButton {
             x: 8; y: 8; icon: "x"
             HoverHandler { id: closeHover }
             onClicked: pin.close_()
+        }
+        // PIN-03: drag the image out into another app
+        FrostButton {
+            id: dragOut
+            x: parent.width - width - 8; y: parent.height - height - 8
+            icon: "grip"
+            HoverHandler { id: gripHover }
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.OpenHandCursor
+                property point at
+                onPressed: (m) => at = Qt.point(m.x, m.y)
+                onPositionChanged: (m) => {
+                    if (!pressed || Math.hypot(m.x - at.x, m.y - at.y) < 6) return
+                    const path = Engine.dragFile(pin.capture.id)
+                    if (path) Platform.startDrag(dragOut, path, path)
+                }
+            }
         }
         Rectangle {
             anchors.horizontalCenter: parent.horizontalCenter
@@ -155,6 +195,12 @@ Window {
             else if (ctrl && (e.key === Qt.Key_Plus || e.key === Qt.Key_Equal)) pin.zoomBy(1.1)
             else if (ctrl && e.key === Qt.Key_Minus) pin.zoomBy(1 / 1.1)
             else if (ctrl && e.key === Qt.Key_0) pin.zoom = 1
+            // PIN-04: arrows nudge it (Shift: 10 px)
+            else if (e.key === Qt.Key_Left || e.key === Qt.Key_Right || e.key === Qt.Key_Up || e.key === Qt.Key_Down) {
+                const d = (e.modifiers & Qt.ShiftModifier) ? 10 : 1
+                Engine.moveWindow(pin.title, e.key === Qt.Key_Left ? -d : e.key === Qt.Key_Right ? d : 0,
+                                  e.key === Qt.Key_Up ? -d : e.key === Qt.Key_Down ? d : 0, true)
+            }
             else return
             e.accepted = true
         }
