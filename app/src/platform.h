@@ -75,6 +75,10 @@ public:
   // xdg-desktop-portal FileChooser. Answers with fileChosen(token, path);
   // the path is empty when cancelled or when there is no portal.
   Q_INVOKABLE void saveFileDialog(int token, const QString& title, const QString& name, const QString& folder);
+  // "Open With…" (CleanShot's share): the desktop's app chooser for a file,
+  // through the OpenURI portal. Nothing happens with SNIP_NO_PORTALS set
+  // (tests: no dialog on the user's screen).
+  Q_INVOKABLE void openWith(const QString& path);
   // Add image (ANN-12): the desktop's open dialog for images. Answers with
   // fileChosen(token, path) like saveFileDialog.
   Q_INVOKABLE void openImageDialog(int token, const QString& title);
