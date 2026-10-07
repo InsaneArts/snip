@@ -47,6 +47,9 @@ Source: cleanshot.com's `markup.mp4` demo (1700×1200, 60 fps, 27.6 s), studied 
 - Zoom animates (about 200 ms) when changed from the menu or keys; it is direct under the pointer with Ctrl+scroll.
 
 ## Snip's take (first slice)
+
+![The editor](editor/editor.jpg)
+
 - Same layout and object look, themed. Chrome comes from Omarchy theme tokens: surface, text, accent for the selected tool and the primary button. The annotation palette is CleanShot's ten colours, with pink as the default.
 - Hyprland draws the window frame, so Snip has no traffic lights.
 - Tools: Select (V), Arrow (A), Rectangle (R), Text (T), Counter (N), Pixelate/Blur/Black out (P, D26), Crop (C).
