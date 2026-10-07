@@ -38,6 +38,8 @@ pub enum Request {
     /// Add an image file as a capture and open it in Snip's editor (ANN-19;
     /// OMA-06: Snip as OMARCHY_SCREENSHOT_EDITOR)
     Edit { path: String },
+    /// Open the image on the clipboard in Snip's editor, as a new capture (ANN-19)
+    EditClipboard,
     /// Search history by the text in captures, window titles and apps
     Search {
         query: String,

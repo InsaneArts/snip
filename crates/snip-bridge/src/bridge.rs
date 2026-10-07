@@ -262,6 +262,7 @@ impl qobject::Engine {
                 ("timer-area", "Self-timer: area"),
                 ("timer-fullscreen", "Self-timer: fullscreen"),
                 ("close-all", "Close all Quick Access cards"),
+                ("edit-clipboard", "Edit the image on the clipboard"),
             ] {
                 wl.send(snip_wayland::Request::RegisterShortcut { id: id.into(), description: d.into() });
             }

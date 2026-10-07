@@ -265,6 +265,14 @@ impl Inner {
             }
             "restore" => self.ui(|e| e.cards_command(&QString::from("restore"))),
             "close-all" => self.ui(|e| e.cards_command(&QString::from("close-all"))),
+            "edit-clipboard" => {
+                let me = self.clone();
+                std::thread::spawn(move || {
+                    if let Err(e) = me.edit_clipboard() {
+                        me.toast(e);
+                    }
+                });
+            }
             _ => {}
         }
     }
@@ -1108,6 +1116,32 @@ impl Inner {
         Ok(card_json(&rec, &out))
     }
 
+    /// `snip edit --clipboard` (ANN-19): the clipboard's image (or a copied
+    /// PNG file) becomes a capture, opened in the editor without a card.
+    pub fn edit_clipboard(self: &Arc<Self>) -> Result<Value, String> {
+        let (tx, rx) = mpsc::channel();
+        self.wl(Wl::ReadClipboard { mimes: vec!["image/png".into(), "text/uri-list".into()], reply: tx });
+        let (mime, bytes) = rx
+            .recv_timeout(Duration::from_secs(3))
+            .map_err(|_| "the clipboard did not answer".to_string())?
+            .ok_or("no image on the clipboard")?;
+        let rec = if mime == "image/png" {
+            let (w, h) = png_size(&bytes).ok_or("the clipboard image is not a valid PNG")?;
+            let out = self.cursor_output().unwrap_or_default();
+            let meta = CaptureMeta { kind: "clipboard".into(), output: out, app: None, title: Some("Clipboard".into()) };
+            let rec = self.store.ingest(bytes, w, h, meta, now_secs()).map_err(|e| e.to_string())?;
+            self.wake_indexer();
+            rec
+        } else {
+            // a file copied in a file manager
+            let text = String::from_utf8_lossy(&bytes);
+            let uri = text.lines().map(str::trim).find(|l| l.starts_with("file://")).ok_or("no image on the clipboard")?;
+            self.import(&percent_decode(&uri["file://".len()..]))?
+        };
+        self.edit(&rec.id);
+        Ok(serde_json::to_value(&rec).unwrap_or(Value::Null))
+    }
+
     /// An image file as a new capture in history.
     fn import(&self, path: &str) -> Result<Record, String> {
         let bytes = std::fs::read(path).map_err(|e| format!("{path}: {e}"))?;
@@ -1219,6 +1253,7 @@ impl Inner {
             }
             Ctl::Open { path } => ok_or(self.open_file(&path)),
             Ctl::Edit { path } => ok_or(self.edit_file(&path)),
+            Ctl::EditClipboard => ok_or(self.edit_clipboard()),
             Ctl::Copy { id } => ok_or(self.resolve_id(id).and_then(|id| self.copy(&id).map(|_| json!(id)))),
             Ctl::Save { id } => ok_or(self.resolve_id(id).and_then(|id| self.save(&id).map(|p| json!(p)))),
             Ctl::Search { query, n } => ok_or(
@@ -1365,6 +1400,26 @@ fn percent_encode(p: &Path) -> String {
     s
 }
 
+/// Reverses `percent_encode` (and any %XX); a stray % stays as it is.
+fn percent_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let hex = |c: u8| (c as char).to_digit(16).map(|d| d as u8);
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() {
+            if let (Some(h), Some(l)) = (hex(b[i + 1]), hex(b[i + 2])) {
+                out.push(h << 4 | l);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 /// Fire and forget, reaped on a helper thread (no zombies in a long-lived daemon).
 fn spawn_detached(cmd: &str, args: &[&str]) {
     use std::process::{Command, Stdio};
@@ -1381,6 +1436,13 @@ fn spawn_detached(cmd: &str, args: &[&str]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn percent_decoding_reverses_encoding() {
+        let p = Path::new("/home/me/Pictures/Snip 2026 #1 ქ.png");
+        assert_eq!(super::percent_decode(&super::percent_encode(p)), p.to_string_lossy());
+        assert_eq!(super::percent_decode("a%2"), "a%2");
+    }
 
     #[test]
     fn percent_encoding_keeps_paths_readable() {
