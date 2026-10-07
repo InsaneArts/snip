@@ -106,6 +106,10 @@ pub mod qobject {
         #[qinvokable]
         fn editor_transform(self: &Engine, path: QString, op: QString, w: i32, h: i32) -> QString;
 
+        /// Wallpapers for the Background tool (JSON array of paths)
+        #[qinvokable]
+        fn wallpapers(self: &Engine) -> QString;
+
         /// The colour of pixel (x, y) of the image at `path`: "#rrggbb"
         #[qinvokable]
         fn pixel_color(self: &Engine, path: QString, x: i32, y: i32) -> QString;
@@ -448,6 +452,10 @@ impl qobject::Engine {
         }
         trace::trace("editor_transformed", &format!("\"op\":{},\"w\":{nw},\"h\":{nh}", trace::js(&op.to_string())));
         QString::from(serde_json::json!({ "file": file, "width": nw, "height": nh }).to_string().as_str())
+    }
+
+    fn wallpapers(&self) -> QString {
+        QString::from(serde_json::to_string(&snip_core::theme::wallpapers(24)).unwrap_or_else(|_| "[]".into()).as_str())
     }
 
     fn edge_color(&self, path: QString) -> QString {
