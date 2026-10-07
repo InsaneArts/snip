@@ -66,6 +66,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - **Simplicity** is the mindset for every change: the smallest diff that meets the goal, deep modules behind small interfaces.
 - **Commit** every fix and every feature as its own small, atomic commit (one logical change; it builds and its tests pass).
 - **Pull requests**: write every PR with the `/pr` skill. Split big tasks into several PRs, each reviewable and shippable on its own; one milestone is many PRs.
+- **Releases**: every merge to `main` publishes a GitHub release (`.github/workflows/release.yml` runs `scripts/release.sh`): PR titles become the release notes, so write them for users.
 - **Bugs**: use `/diagnosing-bugs` and get a red test or reproduction first. **New behaviour with tests**: `/tdd`.
 - **Product decisions** belong to the user: ask, then record the answer as the next D-number in `docs/00-README.md` and update the spec. The roadmap's status tables track what is built.
 
