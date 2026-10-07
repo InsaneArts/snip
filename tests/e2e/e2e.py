@@ -1058,6 +1058,31 @@ def editor_select_commands(s, env):
 
 
 @case
+def editor_colors(s, env):
+    """ANN-13: the eyedropper picks a colour from the image; My Colors are kept across editors."""
+    from PIL import Image
+    im = Image.new("RGB", (400, 260), "white")
+    im.paste((18, 160, 90), (100, 80, 220, 180))
+    png = s.tmp / "colors.png"
+    im.save(png)
+    s.json("edit", str(png))
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    w, mon, st = editor_window(), env.monitor(), editor_state(s)
+    at = lambda ix, iy: (w["at"][0] - mon["x"] + st["originX"] + ix * st["k"], w["at"][1] - mon["y"] + st["originY"] + iy * st["k"])
+    s.debug("ui", "editor", "eyedropper")
+    s.move(*at(160, 130)); time.sleep(0.2); s.click(); time.sleep(0.2)
+    st = editor_state(s)
+    assert st["ink"].lower() == "#12a05a" and not st["picking"], st["ink"]
+    assert st["items"] == [], "picking a colour draws nothing"
+    s.debug("ui", "editor", "save-color", "#12a05a")
+    close_editor(s)
+    s.json("edit", str(png))
+    assert wait_for(lambda: editor_window(), 5)
+    assert "#12a05a" in editor_state(s)["savedColors"], "My Colors survive into the next editor"
+    close_editor(s)
+
+
+@case
 def editor_keyboard(s, env):
     """ANN-05/14: the Text tool types where you click and Enter commits; tool keys, undo,
     redo and Escape work. Keys are delivered inside snipd (never through the seat)."""
