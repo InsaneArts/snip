@@ -155,6 +155,7 @@ QtObject {
         function onEditorOpen(json) { root.openEditor(JSON.parse(json)) }
         function onPinOpen(json) { root.openPin(JSON.parse(json)) }
         function onHistoryOpen(output) { root.history.open(output) }
+        function onSettingsOpen(tab) { root.openSettings(tab) }
         function onBackgroundAuto(json) {
             const r = root.renderComponent.createObject(null, { capture: JSON.parse(json), token: root.nextToken() })
             r.done.connect(() => r.destroy())
@@ -177,6 +178,7 @@ QtObject {
         if (a[0] === "close-editors") { for (const e of Object.values(editors)) e.closeEditor(); return }
         if (a[0] === "close-pins") { closePins(); return }
         if (a[0] === "history") { history.debug(a.slice(1)); return }
+        if (a[0] === "settings") { if (settingsWindow) settingsWindow.debug(a.slice(1)); return }
         if (a[0] === "pin") {
             const p = pins[pins.length - 1]
             if (p) p.debug(a.slice(1))
@@ -266,6 +268,14 @@ QtObject {
     // Tokens for editor renders, unique across editors.
     property int lastToken: 0
     function nextToken() { return ++lastToken }
+
+    // Settings (SET-02): one window, hidden when closed, shown again on open
+    property Component settingsComponent: Component { Settings {} }
+    property var settingsWindow: null
+    function openSettings(tab) {
+        if (!settingsWindow) settingsWindow = settingsComponent.createObject(null, { controller: root })
+        settingsWindow.open(tab)
+    }
 
     // (a Loader-created Window never maps: spike S8; create it directly)
     property Component galleryComponent: Component { Gallery { controller: root } }
