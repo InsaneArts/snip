@@ -535,6 +535,30 @@ def qr_on_card(s, env):
 
 
 @case
+def rotate_and_flip(s, env):
+    """QAO-09 Rotate Left / Flip Horizontal rewrite the capture and its saved file."""
+    from PIL import Image
+    s.cli("close-all"); time.sleep(0.3)
+    png = s.tmp / "marker.png"
+    im = Image.new("RGB", (300, 150), "white")
+    im.paste((255, 0, 0), (0, 0, 30, 30))           # red marker, top-left
+    im.save(png)
+    rec = open_card(s, png); time.sleep(0.4)
+    saved = Path(s.json("save", rec["id"])["result"])
+    def get():
+        return next(r for r in s.json("list", "-n", "20")["result"] if r["id"] == rec["id"])
+    s.debug("transform", rec["id"], "rotate-left")
+    assert wait_for(lambda: (get()["width"], get()["height"]) == (150, 300), 5), get()
+    a = Image.open(get()["source"]).convert("RGB")
+    assert a.getpixel((5, 295))[0] > 200 and a.getpixel((5, 5))[1] > 200, "marker should move to the bottom-left"
+    assert Image.open(saved).size == (150, 300), "saved file not rewritten"
+    s.debug("transform", rec["id"], "flip-horizontal")
+    assert wait_for(lambda: len(s.traces("transformed")) >= 2, 5)
+    b = Image.open(get()["source"]).convert("RGB")
+    assert b.getpixel((145, 295))[0] > 200 and b.getpixel((5, 295))[1] > 200, "marker should move to the bottom-right"
+
+
+@case
 def self_timer(s, env):
     """CAP-06: --delay counts down on screen, then captures live; the countdown is
     never in the capture; the capture hotkey cancels a running countdown."""
