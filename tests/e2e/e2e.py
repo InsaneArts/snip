@@ -872,6 +872,42 @@ def editor_arrow_styles(s, env):
 
 
 @case
+def editor_text_styles(s, env):
+    """ANN-05: the box styles draw a tint of the text colour behind it; the right handle sets
+    a wrap width and the corner square scales the text (pointer)."""
+    from PIL import Image
+    png = s.tmp / "texts.png"
+    Image.new("RGB", (640, 360), "white").save(png)
+    rec = s.json("edit", str(png))["result"]
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    for st, y in (("standard", 40), ("box", 120)):
+        s.debug("ui", "editor", "tool", "text"); s.debug("ui", "editor", "text-style", st)
+        s.debug("ui", "editor", "text", 60, y, "Hello styles")
+    st = editor_state(s)
+    assert [i["style"] for i in st["items"]] == ["standard", "box"], st["items"]
+    editor_flush(s)
+    out = Image.open(rec["source"]).convert("RGB")
+    size = st["items"][0]["size"]
+    tint = lambda p: p != (255, 255, 255) and p[0] > 200       # light pink, not white
+    assert out.getpixel((60 - 3, 40 + size // 2)) == (255, 255, 255), "Standard has no box"
+    assert tint(out.getpixel((60 - 3, 120 + size // 2))), "Box draws the tint around the text"
+
+    w, mon = editor_window(), env.monitor()
+    at = lambda ix, iy: (w["at"][0] - mon["x"] + st["originX"] + ix * st["k"], w["at"][1] - mon["y"] + st["originY"] + iy * st["k"])
+    b = st["selectionBox"]                                      # the box text, still selected
+    s.drag(*at(b["x"] + b["w"], b["y"] + b["h"] / 2), *at(b["x"] + b["w"] * 0.55, b["y"] + b["h"] / 2), steps=5)
+    time.sleep(0.2)                                             # the release reaches the editor after the drag call returns
+    t = editor_state(s)["items"][1]
+    assert 0 < t["w"] < b["w"] * 0.6, ("the right handle sets a wrap width", t)
+    b = editor_state(s)["selectionBox"]
+    assert b["h"] > st["selectionBox"]["h"] * 1.5, "wrapped onto two lines"
+    s.drag(*at(b["x"] + b["w"], b["y"] + b["h"]), *at(b["x"] + b["w"], b["y"] + b["h"] * 1.5), steps=5)
+    time.sleep(0.2)
+    assert editor_state(s)["items"][1]["size"] >= size * 1.3, "the corner square scales the text"
+    close_editor(s)
+
+
+@case
 def editor_keyboard(s, env):
     """ANN-05/14: the Text tool types where you click and Enter commits; tool keys, undo,
     redo and Escape work. Keys are delivered inside snipd (never through the seat)."""
@@ -1144,6 +1180,7 @@ def main():
                 failed.append(fn.__name__)
                 print(f"  FAIL {fn.__name__}: {e}")
             s.cli("close-all", check=False)
+            s.cli("debug", "ui", "close-editors", check=False)   # a failed case must not leave its editor to the next
             time.sleep(0.2)
     finally:
         pid = s.proc.pid if s.proc else None
