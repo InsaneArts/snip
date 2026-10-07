@@ -908,6 +908,30 @@ def editor_text_styles(s, env):
 
 
 @case
+def editor_spotlight(s, env):
+    """ANN-07: Spotlight dims everything outside its shapes; overlapping spotlights merge;
+    an ellipse dims its corners; arrows drawn after it stay bright."""
+    from PIL import Image
+    png = s.tmp / "spot.png"
+    Image.new("RGB", (600, 360), (240, 240, 240)).save(png)
+    rec = s.json("edit", str(png))["result"]
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    s.debug("ui", "editor", "spotlight", 40, 40, 200, 140, "rect", 0.5)
+    s.debug("ui", "editor", "spotlight", 180, 100, 160, 120, "rect", 0.5)       # overlaps the first
+    s.debug("ui", "editor", "spotlight", 380, 60, 180, 120, "ellipse", 0.5)
+    s.debug("ui", "editor", "arrow", 100, 300, 300, 300)
+    editor_flush(s)
+    out = Image.open(rec["source"]).convert("RGB")
+    lit = lambda x, y: out.getpixel((x, y))[0] > 225
+    assert lit(100, 100) and lit(210, 150) and lit(300, 200), "inside the spotlights (and their overlap) is not dimmed"
+    assert not lit(20, 20) and not lit(500, 300), "outside is dimmed"
+    assert lit(470, 120) and not lit(384, 64), "an ellipse: its middle is lit, its corner is not"
+    r, g, b = out.getpixel((200, 300))
+    assert r > 200 and g < 90, ("an arrow drawn on top stays bright", (r, g, b))
+    close_editor(s)
+
+
+@case
 def editor_keyboard(s, env):
     """ANN-05/14: the Text tool types where you click and Enter commits; tool keys, undo,
     redo and Escape work. Keys are delivered inside snipd (never through the seat)."""
