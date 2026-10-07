@@ -138,7 +138,9 @@ Window {
         const scr = Platform.screen(capture.output || "")
         const aw = scr ? scr.availableGeometry.width : 1600, ah = scr ? scr.availableGeometry.height : 1000
         zoom = Math.min(1, aw * 0.8 / baseW, ah * 0.8 / baseH)
-        visible = true
+        // Capture Area & Pin: exactly where the area was, at its own size
+        if (capture.at) { zoom = 1; hiddenAt = [capture.at[0] - margin, capture.at[1] - margin]; show() }
+        else visible = true
     }
 
     // the pin's look: the image with rounded corners, a soft shadow, a hairline
