@@ -47,6 +47,8 @@ Rectangle {
             Tool { name: "spotlight"; icon: "spotlight"; tip: "Spotlight (H)" }
             Sep {}
             Tool { name: "counter"; icon: "counter"; tip: "Counter (C)" }
+            Sep {}
+            Tool { name: "pencil"; icon: "pencil"; tip: "Pencil (D)" }
         }
         Capsule {
             // Spotlight: its shape, and how dark the rest gets
