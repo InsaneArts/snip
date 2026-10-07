@@ -219,6 +219,8 @@ QtObject {
         editors[capture.id] = e
         e.finished.connect(() => { delete editors[capture.id]; e.destroy() })
     }
+    // Objects copied in one editor, pasted in any (ANN-02: also between images).
+    property var objectClipboard: []
     // Tokens for editor renders, unique across editors.
     property int lastToken: 0
     function nextToken() { return ++lastToken }
