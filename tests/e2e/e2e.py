@@ -1486,6 +1486,34 @@ def editor_auto_balance(s, env):
 
 
 @case
+def editor_typed_values(s, env):
+    """BG-05: hovering a Background slider shows its value; click it to type one, ↑/↓
+    step it, Enter or Tab commits (one undo step each)."""
+    from PIL import Image
+    png = s.tmp / "typed.png"
+    noise_png(png, 300, 1000, seed=8)                          # a tall window, so the sliders are in view
+    s.json("edit", str(png))
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    s.debug("ui", "editor", "tool", "background")
+    s.debug("ui", "editor", "bg", '{"kind":"color","value":"#10a050","padding":40}')
+    w, mon, st = editor_window(), env.monitor(), editor_state(s)
+    unit, undo = st["dpr"], st["undo"]
+    box = st["paddingValue"]
+    assert box["y"] < st["winH"] - 60, (box, st["winH"])
+    s.move(w["at"][0] - mon["x"] + box["x"], w["at"][1] - mon["y"] + box["y"])
+    time.sleep(0.2); s.click(); time.sleep(0.2)
+    s.debug("ui", "editor", "keys", "48{Tab}")
+    st = editor_state(s)
+    assert st["bg"]["padding"] == round(48 * unit) and st["undo"] == undo + 1, (st["bg"], unit)
+    s.click(); time.sleep(0.2)                                  # the value box again (the pointer is still there)
+    s.debug("ui", "editor", "keys", "{Up}{shift+Up}{Return}")
+    assert editor_state(s)["bg"]["padding"] == round(59 * unit), editor_state(s)["bg"]
+    s.debug("ui", "editor", "keys", "{ctrl+z}")                 # the editor has its keys back
+    assert editor_state(s)["bg"]["padding"] == round(48 * unit)
+    close_editor(s)
+
+
+@case
 def editor_add_image(s, env):
     """ANN-12: add an image from a file and from the clipboard; it keeps its shape when
     resized from a corner, and is drawn into the export."""
