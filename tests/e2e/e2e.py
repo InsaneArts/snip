@@ -1514,6 +1514,36 @@ def editor_typed_values(s, env):
 
 
 @case
+def editor_take_screenshot(s, env):
+    """ANN-12 Add image > Take Screenshot: the editor steps aside, an area is selected,
+    and the shot lands in the canvas as an image; no capture goes to history."""
+    from PIL import Image
+    png = s.tmp / "shot-into.png"
+    Image.new("RGB", (400, 300), "white").save(png)
+    s.json("edit", str(png))
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    ingested, sessions = len(s.traces("ingested")), len(s.traces("session"))
+    s.debug("ui", "editor", "take-screenshot")
+    assert wait_for(lambda: editor_window() is None, 3), "the editor steps aside"
+    assert wait_for(lambda: len(s.traces("session")) > sessions, 3), "an area overlay opens"
+    time.sleep(0.3)
+    s.drag(100, 100, 300, 260)
+    assert wait_for(lambda: editor_window(), 5), "the editor comes back"
+    st = editor_state(s)
+    img = [i for i in st["items"] if i["kind"] == "image"]
+    assert len(img) == 1 and abs(img[0]["w"] / img[0]["h"] - 250 / 200) < 0.02, st["items"]   # 200x160 at 1.25
+    time.sleep(0.5)
+    assert len(s.traces("ingested")) == ingested, "not a capture in history"
+    s.debug("ui", "editor", "take-screenshot")                 # Escape cancels: nothing added
+    assert wait_for(lambda: len(s.traces("session")) > sessions + 1, 3)
+    time.sleep(0.3)
+    s.key("Escape")
+    assert wait_for(lambda: editor_window(), 5)
+    assert len([i for i in editor_state(s)["items"] if i["kind"] == "image"]) == 1
+    close_editor(s)
+
+
+@case
 def editor_add_image(s, env):
     """ANN-12: add an image from a file and from the clipboard; it keeps its shape when
     resized from a corner, and is drawn into the export."""
