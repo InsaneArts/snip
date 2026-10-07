@@ -3,7 +3,7 @@
 //! ctl.sock API, and live config/theme. It runs on whichever thread an event
 //! arrives on (Wayland, ctl, Qt) and talks to QML only through `ui()`.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex, OnceLock, RwLock};
@@ -1468,12 +1468,77 @@ impl Inner {
 
     pub fn reload_config(&self) {
         let (cfg, err) = Config::load();
-        *self.cfg.write().unwrap() = cfg;
+        let before = std::mem::replace(&mut *self.cfg.write().unwrap(), cfg).shortcuts;
+        if before != self.cfg().shortcuts {
+            self.apply_shortcuts(&before);
+        }
         *self.cfg_error.lock().unwrap() = err.clone();
         if let Some(e) = err {
             self.toast(format!("config.toml: {e}"));
         }
         self.push_settings();
+    }
+
+    /// Settings › Shortcuts (SET-08): bind [shortcuts] over snip.lua's
+    /// defaults. `before` is what was applied last (empty after a start or
+    /// Hyprland's reload, which dropped them); an action that left the table
+    /// gets snip.lua's default back.
+    pub fn apply_shortcuts(&self, before: &BTreeMap<String, String>) {
+        use snip_hypr::keys;
+        let now = self.cfg().shortcuts;
+        let app = crate::bridge::app_id();
+        let current = |binds: &[keys::Bind], action: &str| -> Vec<String> {
+            let d = keys::description(action);
+            binds.iter().filter(|b| b.submap.is_empty() && Some(&b.description) == d.as_ref()).map(|b| b.spec()).collect()
+        };
+        let gone: Vec<&String> = before.keys().filter(|a| !now.contains_key(*a)).collect();
+        if !gone.is_empty() {
+            let binds = keys::binds();
+            let _ = snip_hypr::eval(&keys::set_lua(&app, &gone.iter().map(|a| (a.to_string(), current(&binds, a), String::new())).collect::<Vec<_>>()));
+            let _ = snip_hypr::eval("if snip_bind_defaults then snip_bind_defaults() end");
+        }
+        if now.is_empty() {
+            return;
+        }
+        let binds = keys::binds();
+        let changes: Vec<_> = now.iter().map(|(a, spec)| (a.clone(), current(&binds, a), spec.clone())).collect();
+        let r = snip_hypr::eval(&keys::set_lua(&app, &changes));
+        trace::trace("shortcuts", &format!("\"n\":{},\"reply\":{}", now.len(), js(&format!("{r:?}"))));
+    }
+
+    /// Settings › Shortcuts: every action, with the keys Hyprland has for it.
+    pub fn shortcuts(&self) -> Value {
+        use snip_hypr::keys;
+        let binds = keys::binds();
+        let cfg = self.cfg();
+        let list: Vec<Value> = keys::ACTIONS
+            .iter()
+            .map(|(id, name)| {
+                let d = keys::description(id);
+                let labels: Vec<String> = binds.iter().filter(|b| b.submap.is_empty() && Some(&b.description) == d.as_ref()).map(|b| keys::label(b.modmask, &b.key)).collect();
+                json!({ "id": id, "name": name, "keys": labels, "custom": cfg.shortcuts.contains_key(*id) })
+            })
+            .collect();
+        Value::Array(list)
+    }
+
+    /// A recorded key (SET-08): its label and the bind it would take over.
+    pub fn shortcut_conflict(&self, action: &str, spec: &str) -> Value {
+        use snip_hypr::keys;
+        let (mask, key) = keys::parse_spec(spec);
+        let binds = keys::binds();
+        let takes = keys::conflict(&binds, action, spec).map(|b| if b.description.is_empty() { "another bind".to_string() } else { b.description.clone() });
+        json!({ "label": keys::label(mask, &key), "takes": takes })
+    }
+
+    /// Restore Defaults: [shortcuts] leaves the file; snip.lua's keys return.
+    pub fn restore_shortcuts(&self) -> Result<(), String> {
+        let path = Config::path();
+        let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        let out = snip_core::config::remove_value(&text, "shortcuts")?;
+        std::fs::write(&path, out).map_err(|e| e.to_string())?;
+        self.reload_config();
+        Ok(())
     }
 
     /// The settings window changes one setting (SET-02): written into

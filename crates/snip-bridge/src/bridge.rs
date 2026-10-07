@@ -200,6 +200,19 @@ pub mod qobject {
         /// Settings › History: the space history takes, in bytes (HIS-02)
         #[qinvokable]
         fn history_bytes(self: &Engine) -> f64;
+        /// Settings › Shortcuts (SET-08): every action with its keys (JSON)
+        #[qinvokable]
+        fn shortcuts(self: &Engine) -> QString;
+        /// A recorded key ("SUPER + SHIFT + code:13"): {label, takes}, the
+        /// description of the bind it would take over (or null)
+        #[qinvokable]
+        fn shortcut_conflict(self: &Engine, action: QString, spec: QString) -> QString;
+        /// Let every key through to Snip while one is recorded (a submap)
+        #[qinvokable]
+        fn record_keys(self: &Engine, on: bool);
+        /// Restore Defaults: "" when done, else why not
+        #[qinvokable]
+        fn restore_shortcuts(self: Pin<&mut Engine>) -> QString;
 
         #[qinvokable]
         fn annotate(self: Pin<&mut Engine>, id: QString);
@@ -422,26 +435,8 @@ impl qobject::Engine {
             // Only the user's daemon owns the shortcuts (a test instance must
             // not react to their key presses). Bound in hypr/snip.lua as
             // hl.dsp.global("snip:<id>").
-            for (id, d) in [
-                ("area", "Capture area"),
-                ("fullscreen", "Capture fullscreen"),
-                ("window", "Capture window"),
-                ("previous", "Capture previous area"),
-                ("text", "Capture text (OCR)"),
-                ("all-in-one", "All-In-One"),
-                ("restore", "Restore the last closed capture"),
-                ("timer-area", "Self-timer: area"),
-                ("timer-fullscreen", "Self-timer: fullscreen"),
-                ("close-all", "Close all Quick Access cards"),
-                ("edit-clipboard", "Edit the image on the clipboard"),
-                ("area-pin", "Capture area and pin it"),
-                ("history", "Open capture history"),
-                ("settings", "Open Snip's settings"),
-                ("pins-toggle", "Hide or show all pins"),
-                ("pins-close", "Close all pins"),
-                ("pins-unlock", "Unlock all pins"),
-            ] {
-                wl.send(snip_wayland::Request::RegisterShortcut { id: id.into(), description: d.into() });
+            for (id, d) in snip_hypr::keys::ACTIONS {
+                wl.send(snip_wayland::Request::RegisterShortcut { id: id.to_string(), description: d.to_string() });
             }
         }
         inner.set_wayland(wl);
@@ -461,10 +456,12 @@ impl qobject::Engine {
         // Omarchy's theme switch and `hyprctl reload` drop runtime rules and
         // may change rounding: re-apply and re-resolve.
         let _ = snip_hypr::install_runtime_rules();
+        inner.apply_shortcuts(&Default::default());
         let h = inner.clone();
         let _ = snip_hypr::subscribe(move |name, _| {
             if name == "configreloaded" {
                 let _ = snip_hypr::install_runtime_rules();
+                h.apply_shortcuts(&Default::default());
                 h.push_theme();
             }
             true
@@ -762,6 +759,23 @@ impl qobject::Engine {
         self.inner().map(|i| i.history_bytes() as f64).unwrap_or(0.0)
     }
 
+    fn shortcuts(&self) -> QString {
+        QString::from(self.inner().map(|i| i.shortcuts().to_string()).unwrap_or_else(|| "[]".into()).as_str())
+    }
+
+    fn shortcut_conflict(&self, action: QString, spec: QString) -> QString {
+        QString::from(self.inner().map(|i| i.shortcut_conflict(&action.to_string(), &spec.to_string()).to_string()).unwrap_or_default().as_str())
+    }
+
+    fn record_keys(&self, on: bool) {
+        let _ = snip_hypr::eval(snip_hypr::keys::record_lua(on));
+    }
+
+    fn restore_shortcuts(self: Pin<&mut Self>) -> QString {
+        let r = self.inner().map(|i| i.restore_shortcuts());
+        QString::from(r.and_then(|r| r.err()).unwrap_or_default().as_str())
+    }
+
     fn show_in_files(self: Pin<&mut Self>, id: QString) {
         if let Some(i) = self.inner() {
             i.show_in_files(&id.to_string());
@@ -916,7 +930,7 @@ fn edit_put(token: u32, data: &[u8], width: u32, height: u32, stride: u32) {
 }
 
 /// Our Wayland app id, the windows' class: test instances set their own.
-fn app_id() -> String {
+pub(crate) fn app_id() -> String {
     std::env::var("SNIP_APP_ID").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "snip".into())
 }
 
