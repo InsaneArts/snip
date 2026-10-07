@@ -243,7 +243,7 @@ OpLog        append-only [{seq, op, args, inverse}]  → undo/redo, crash recove
 - The region is selected on the frozen overlay. During the capture the overlay **unmaps**, and a no-input HUD plus the live preview are placed outside the region.
 - Frames come from an **output** capture session cropped to the region, or from a **toplevel** session when the region lies inside one window. The toplevel source is preferred: it never contains our UI.
 - Esc and Enter come through temporary `hl.bind` handles added by eval and removed afterwards.
-- Auto-scroll uses `zwlr_virtual_pointer_v1` (`axis_source(wheel)`, `axis_discrete`). It pre-compensates `input:natural_scroll`.
+- Auto-scroll uses `zwlr_virtual_pointer_v1` (`axis_source(wheel)`, `axis_discrete`). A virtual pointer's wheel doesn't pass through libinput, so `input:natural_scroll` never flips it and needs no compensation (measured on Hyprland 0.56).
 - Stitching algorithm: see the processing doc. It runs incrementally on the worker pool, so the live preview updates as you go.
 
 ### 6.6 Editor
