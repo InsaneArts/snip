@@ -34,6 +34,9 @@ QtObject {
 
     readonly property string fontUi: pick("fontUi", "sans-serif")
     readonly property string fontMono: pick("fontMono", "monospace")
+    // the editor's Rounded text styles (CleanShot uses SF Rounded): Nunito, OFL
+    property FontLoader roundedLoader: FontLoader { source: "../fonts/Nunito.ttf" }
+    readonly property string fontRounded: roundedLoader.status === FontLoader.Ready ? roundedLoader.name : fontUi
 
     // Floating chrome
     readonly property color hairline: light ? Qt.rgba(0, 0, 0, 0.10) : Qt.rgba(1, 1, 1, 0.12)

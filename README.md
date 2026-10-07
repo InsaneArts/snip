@@ -55,4 +55,4 @@ The `snip` CLI talks to the running daemon: `snip area`, `snip text`, `snip edit
 
 ## License
 
-GPL-3.0-or-later. See [LICENSE](LICENSE).
+GPL-3.0-or-later. See [LICENSE](LICENSE). The editor's Rounded text styles use [Nunito](https://github.com/googlefonts/nunito) (SIL Open Font License, `app/fonts/OFL-Nunito.txt`).
