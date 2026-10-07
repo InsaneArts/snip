@@ -760,6 +760,39 @@ def pins(s, env):
 
 
 @case
+def pin_lock(s, env):
+    """PIN-05: a locked pin lets clicks through to what is under it (an editor draws through
+    it), fades under the pointer, and `snip pins unlock` brings it back where it was."""
+    from PIL import Image
+    under, pinned = s.tmp / "under.png", s.tmp / "pinned.png"
+    Image.new("RGB", (600, 400), "white").save(under)
+    noise_png(pinned, 300, 200, seed=6)
+    s.json("edit", str(under))
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    s.debug("ui", "editor", "tool", "rect")
+    rec = s.json("open", str(pinned))["result"]
+    s.cli("close-all")
+    s.json("pin", rec["id"])
+    assert wait_for(lambda: pin_windows(), 3)
+    at = pin_windows()[0]["at"]
+    s.debug("ui", "pin", "act", "lock")
+    assert wait_for(lambda: not pin_windows(), 3), "locked: the window gives way to a layer"
+    layers = [l for m in hypr_json("layers").values() for lv in m["levels"].values() for l in lv if l["namespace"] == "snip-pin"]
+    assert len(layers) == 1 and [layers[0]["x"], layers[0]["y"]] == at, (layers, at)
+    w, mon, st = editor_window(), env.monitor(), editor_state(s)
+    cx, cy = at[0] - mon["x"] + layers[0]["w"] / 2, at[1] - mon["y"] + layers[0]["h"] / 2
+    s.drag(cx - 40, cy - 30, cx + 40, cy + 30, steps=5)          # through the pin, onto the editor
+    assert wait_for(lambda: [i for i in editor_state(s)["items"] if i["kind"] == "rect"], 2), "the editor under it got the drag"
+    assert wait_for(lambda: pin_state(s)["lockHover"], 2), "it fades under the pointer"
+    s.move(5, 5)
+    assert wait_for(lambda: not pin_state(s)["lockHover"], 2)
+    assert s.json("pins", "unlock")["ok"]
+    assert wait_for(lambda: pin_windows() and pin_windows()[0]["at"] == at, 3), (at, pin_windows())
+    assert not [l for m in hypr_json("layers").values() for lv in m["levels"].values() for l in lv if l["namespace"] == "snip-pin"]
+    close_editor(s)
+
+
+@case
 def editor_pins(s, env):
     """The editor's pin button: the edits are written back, then the result is pinned."""
     from PIL import Image
