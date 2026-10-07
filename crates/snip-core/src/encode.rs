@@ -165,9 +165,84 @@ pub fn flip_horizontal(data: &[u8], w: u32, h: u32, bpp: usize) -> Vec<u8> {
     out
 }
 
+/// Mirror tightly packed pixels top-bottom ("Flip Vertical").
+pub fn flip_vertical(data: &[u8], w: u32, h: u32, bpp: usize) -> Vec<u8> {
+    let row = w as usize * bpp;
+    data.chunks_exact(row).rev().flatten().copied().collect()
+}
+
+/// Rotate tightly packed pixels 90° clockwise. Returns the new width and height.
+pub fn rotate_right(data: &[u8], w: u32, h: u32, bpp: usize) -> (Vec<u8>, u32, u32) {
+    let (l, w2, h2) = rotate_left(data, w, h, bpp);
+    let (flipped, fw, fh) = (flip_horizontal(&flip_vertical(&l, w2, h2, bpp), w2, h2, bpp), w2, h2);
+    (flipped, fw, fh)
+}
+
+/// Resize tightly packed pixels: an area average when shrinking, bilinear
+/// when growing (the editor's Resize, ANN-11).
+pub fn resize(data: &[u8], w: u32, h: u32, bpp: usize, nw: u32, nh: u32) -> Vec<u8> {
+    let (w, h, nw, nh) = (w as usize, h as usize, nw.max(1) as usize, nh.max(1) as usize);
+    let px = |x: usize, y: usize, c: usize| data[(y.min(h - 1) * w + x.min(w - 1)) * bpp + c] as f32;
+    let (fx, fy) = (w as f32 / nw as f32, h as f32 / nh as f32);
+    let mut out = vec![0u8; nw * nh * bpp];
+    for y in 0..nh {
+        for x in 0..nw {
+            for c in 0..bpp {
+                let v = if fx >= 1.0 && fy >= 1.0 {
+                    // every source pixel the output pixel covers
+                    let (x0, x1) = ((x as f32 * fx) as usize, (((x + 1) as f32 * fx).ceil() as usize).min(w));
+                    let (y0, y1) = ((y as f32 * fy) as usize, (((y + 1) as f32 * fy).ceil() as usize).min(h));
+                    let mut sum = 0.0;
+                    for sy in y0..y1.max(y0 + 1) {
+                        for sx in x0..x1.max(x0 + 1) {
+                            sum += px(sx, sy, c);
+                        }
+                    }
+                    sum / ((y1.max(y0 + 1) - y0) * (x1.max(x0 + 1) - x0)) as f32
+                } else {
+                    let (sx, sy) = (((x as f32 + 0.5) * fx - 0.5).max(0.0), ((y as f32 + 0.5) * fy - 0.5).max(0.0));
+                    let (x0, y0) = (sx as usize, sy as usize);
+                    let (tx, ty) = (sx - x0 as f32, sy - y0 as f32);
+                    let top = px(x0, y0, c) * (1.0 - tx) + px(x0 + 1, y0, c) * tx;
+                    let bot = px(x0, y0 + 1, c) * (1.0 - tx) + px(x0 + 1, y0 + 1, c) * tx;
+                    top * (1.0 - ty) + bot * ty
+                };
+                out[(y * nw + x) * bpp + c] = v.round().clamp(0.0, 255.0) as u8;
+            }
+        }
+    }
+    out
+}
+
 /// Ignore the X byte of XRGB when it isn't meaningful; used by tests.
 pub fn is_opaque_format(f: PixelFormat) -> bool {
     !f.has_alpha()
+}
+
+#[cfg(test)]
+mod editor_transform_tests {
+    use super::*;
+
+    #[test]
+    fn rotate_right_is_three_lefts_and_flips_mirror() {
+        let (w, h) = (3u32, 2u32);
+        let px: Vec<u8> = (0..6).collect(); // one byte per pixel
+        let (r, rw, rh) = rotate_right(&px, w, h, 1);
+        let (l1, a, b) = rotate_left(&px, w, h, 1);
+        let (l2, c, d) = rotate_left(&l1, a, b, 1);
+        let (l3, e, f) = rotate_left(&l2, c, d, 1);
+        assert_eq!((r, rw, rh), (l3, e, f));
+        assert_eq!(flip_vertical(&px, w, h, 1), vec![3, 4, 5, 0, 1, 2]);
+    }
+
+    #[test]
+    fn resize_averages_down_and_keeps_size_up() {
+        // 4 x 2 RGB: left half black, right half white -> 2 x 1
+        let px: Vec<u8> = [0u8, 0, 255, 255, 0, 0, 255, 255].iter().flat_map(|&v| [v, v, v]).collect();
+        assert_eq!(resize(&px, 4, 2, 3, 2, 1), vec![0, 0, 0, 255, 255, 255]);
+        assert_eq!(resize(&px, 4, 2, 3, 8, 4).len(), 8 * 4 * 3);
+        assert_eq!(resize(&px, 4, 2, 3, 4, 2), px, "same size, same pixels");
+    }
 }
 
 #[cfg(test)]
