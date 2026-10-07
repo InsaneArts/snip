@@ -213,6 +213,16 @@ pub mod qobject {
         /// Restore Defaults: "" when done, else why not
         #[qinvokable]
         fn restore_shortcuts(self: Pin<&mut Engine>) -> QString;
+        /// Snip in the bar (OMA-08): the folder holding its icon
+        /// (snip-tray-symbolic.svg), where its menu opens ({output, x, y, top,
+        /// bottom}: the click on that output and the bar's band, logical px),
+        /// and a menu entry run as its key would ("area", "settings"…)
+        #[qinvokable]
+        fn tray_icon_dir(self: &Engine) -> QString;
+        #[qinvokable]
+        fn tray_anchor(self: &Engine) -> QString;
+        #[qinvokable]
+        fn run_action(self: &Engine, id: QString);
         /// Scrolling capture: Start Capture, Done, Cancel
         #[qinvokable]
         fn scroll_start(self: Pin<&mut Engine>);
@@ -788,6 +798,33 @@ impl qobject::Engine {
 
     fn record_keys(&self, on: bool) {
         let _ = snip_hypr::eval(snip_hypr::keys::record_lua(on));
+    }
+
+    fn tray_icon_dir(&self) -> QString {
+        const ICON: &[u8] = include_bytes!("../../../app/icons/snip-tray-symbolic.svg");
+        let dir = snip_core::paths::runtime_dir().join("icons");
+        let _ = std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(dir.join("snip-tray-symbolic.svg"), ICON));
+        QString::from(dir.to_string_lossy().as_ref())
+    }
+
+    fn tray_anchor(&self) -> QString {
+        let (cx, cy) = snip_hypr::cursor_pos().unwrap_or((0, 0));
+        let mons = snip_hypr::monitors();
+        let holds = |m: &&snip_hypr::Monitor| {
+            let (w, h) = (m.width as f64 / m.scale, m.height as f64 / m.scale);
+            cx >= m.x && cy >= m.y && ((cx - m.x) as f64) < w && ((cy - m.y) as f64) < h
+        };
+        let j = match mons.iter().find(holds).or_else(|| mons.iter().find(|m| m.focused)) {
+            Some(m) => serde_json::json!({ "output": m.name, "x": cx - m.x, "y": cy - m.y, "top": m.reserved[1], "bottom": m.reserved[3] }),
+            None => serde_json::Value::Null,
+        };
+        QString::from(j.to_string().as_str())
+    }
+
+    fn run_action(&self, id: QString) {
+        if let Some(i) = self.inner() {
+            i.shortcut(&id.to_string());
+        }
     }
 
     fn scroll_start(self: Pin<&mut Self>) {

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <!-- Snip in the bar: the logo's three corners and its arrow, one light colour that the bar tints to its own -->
+  <g fill="#ffffff">
+    <path d="M1.5 1.5H8.5V3.9H3.9V8.5H1.5Z"/>
+    <path d="M15.5 1.5H22.5V8.5H20.1V3.9H15.5Z"/>
+    <path d="M1.5 15.5H3.9V20.1H8.5V22.5H1.5Z"/>
+    <path d="M14 10V20.2L16.4 18.1L18.8 22.5L21.2 21.4L19 17.6H22.5Z"/>
+  </g>
+</svg>
