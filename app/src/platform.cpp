@@ -5,6 +5,8 @@
 #include <QDrag>
 #include <QGuiApplication>
 #include <QImage>
+#include <QKeyEvent>
+#include <QKeySequence>
 #include <QMimeData>
 #include <QPixmap>
 #include <QQmlEngine>
@@ -170,4 +172,41 @@ Platform::grabExact(QQuickItem* item, int width, int height, int token)
                    uint32_t(img.bytesPerLine()));
     Q_EMIT grabbed(token, true);
   });
+}
+
+void
+Platform::sendKeys(QWindow* w, const QString& keys)
+{
+  if (!w)
+    return;
+  auto send = [w](int key, Qt::KeyboardModifiers mods, const QString& text) {
+    QKeyEvent press(QEvent::KeyPress, key, mods, text);
+    QGuiApplication::sendEvent(w, &press);
+    QKeyEvent release(QEvent::KeyRelease, key, mods, text);
+    QGuiApplication::sendEvent(w, &release);
+  };
+  for (int i = 0; i < keys.size(); ++i) {
+    if (keys[i] == QLatin1Char('{')) {
+      const int end = keys.indexOf(QLatin1Char('}'), i);
+      if (end > i) {
+        // "ctrl+shift+z" -> a key sequence Qt can parse
+        const QKeySequence seq = QKeySequence::fromString(keys.mid(i + 1, end - i - 1), QKeySequence::PortableText);
+        if (!seq.isEmpty()) {
+          const QKeyCombination k = seq[0];
+          const bool plain = k.keyboardModifiers() == Qt::NoModifier;
+          QString text;
+          if (k.key() == Qt::Key_Return)
+            text = QStringLiteral("\r");
+          else if (plain && k.key() >= Qt::Key_Space && k.key() <= Qt::Key_AsciiTilde)
+            text = QString(QChar(char16_t(k.key()))).toLower();
+          send(k.key(), k.keyboardModifiers(), text);
+        }
+        i = end;
+        continue;
+      }
+    }
+    const QChar c = keys[i];
+    const int key = c.isLetter() ? Qt::Key_A + (c.toUpper().unicode() - 'A') : c.unicode();
+    send(key, c.isUpper() ? Qt::ShiftModifier : Qt::NoModifier, QString(c));
+  }
 }

@@ -51,6 +51,12 @@ public:
   // `item` to make that exact at a fractional scale. Emits grabbed().
   Q_INVOKABLE void grabExact(QQuickItem* item, int width, int height, int token);
 
+  // Tests: deliver key events to `w` inside this process (never through the
+  // seat, so nothing can reach another app). Plain characters type
+  // themselves; {Return}, {Escape}, {Backspace}, {Delete}, {ctrl+z},
+  // {ctrl+shift+z}, {ctrl+s} and the like name keys.
+  Q_INVOKABLE void sendKeys(QWindow* w, const QString& keys);
+
 Q_SIGNALS:
   void framePresented(QQuickWindow* window);
   void grabbed(int token, bool ok);
