@@ -98,8 +98,18 @@ Window {
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
         cursorShape: Qt.OpenHandCursor
+        property point pressAt
+        // a drag moves the pin (Hyprland does it); a click only focuses it
+        onPositionChanged: (m) => {
+            if ((m.buttons & Qt.LeftButton) && Math.hypot(m.x - pressAt.x, m.y - pressAt.y) > 3) {
+                pin.startSystemMove()
+                // Hyprland has the pointer now: this press never sees its release
+                enabled = false
+                Qt.callLater(() => enabled = true)
+            }
+        }
         onPressed: (m) => {
-            if (m.button === Qt.LeftButton) pin.startSystemMove()
+            if (m.button === Qt.LeftButton) pressAt = Qt.point(m.x, m.y)
             else if (m.button === Qt.MiddleButton) pin.close_()
             else {
                 const g = area.mapToGlobal(m.x, m.y)
