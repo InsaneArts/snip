@@ -4,6 +4,10 @@
 //! the output; each goes through Snip's stitcher on the session's thread and
 //! the panel shows the image growing. Enter and Esc are bound in Hyprland for
 //! the session's length (the page under the frame keeps the keyboard).
+//! Auto-Scroll (SCR-02) puts the pointer in the frame and turns the wheel a
+//! notch a frame, pauses while the pointer is out of the frame, and ends when
+//! the page stops moving. (A virtual pointer's wheel doesn't go through
+//! libinput, so natural_scroll never flips it.)
 
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{mpsc, Arc};
@@ -38,6 +42,7 @@ pub(super) struct Scroll {
     app: Option<String>,
     title: Option<String>,
     state: Arc<AtomicU8>,
+    auto: bool,
 }
 
 impl Inner {
@@ -58,7 +63,7 @@ impl Inner {
         let (app, title) = self.window_meta_at(&output, rect, s);
         trace::trace("scroll_open", &format!("\"output\":{},\"rect\":[{},{},{},{}],\"window\":{}", js(&output), rect.x, rect.y, rect.w, rect.h, window.is_some()));
         let state = Arc::new(AtomicU8::new(READY));
-        if let Some(old) = self.scroll.lock().unwrap().replace(Scroll { output: output.clone(), source, window, area: rect, logical, waiter, app, title, state }) {
+        if let Some(old) = self.scroll.lock().unwrap().replace(Scroll { output: output.clone(), source, window, area: rect, logical, waiter, app, title, state, auto: false }) {
             old.state.store(CANCEL, Ordering::Relaxed);
             reply(old.waiter, cancelled());
         }
@@ -75,6 +80,14 @@ impl Inner {
         };
         let me = self.clone();
         std::thread::Builder::new().name("snip-scroll".into()).spawn(move || me.scroll_run(state)).ok();
+    }
+
+    /// Auto-Scroll: Snip scrolls the page until it stops moving.
+    pub fn scroll_auto(self: &Arc<Self>) {
+        if let Some(s) = self.scroll.lock().unwrap().as_mut() {
+            s.auto = true;
+        }
+        self.scroll_start();
     }
 
     /// Enter: Start Capture when ready, else Done.
@@ -145,10 +158,20 @@ impl Inner {
     }
 
     fn scroll_run(self: Arc<Self>, state: Arc<AtomicU8>) {
-        let (source, window, area, logical) = match self.scroll.lock().unwrap().as_ref() {
-            Some(s) => (s.source.clone(), s.window.clone(), s.area, s.logical),
+        let (source, window, area, logical, output, auto) = match self.scroll.lock().unwrap().as_ref() {
+            Some(s) => (s.source.clone(), s.window.clone(), s.area, s.logical, s.output.clone(), s.auto),
             None => return,
         };
+        let inside = |(x, y): (i32, i32)| {
+            let (x, y) = (x as f64, y as f64);
+            x >= logical.0 && y >= logical.1 && x < logical.0 + logical.2 && y < logical.1 + logical.3
+        };
+        if auto {
+            let o = self.outputs.lock().unwrap().iter().find(|o| o.name == output).map(|o| o.logical).unwrap_or_default();
+            let (x, y) = (logical.0 + logical.2 / 2.0 - o.x as f64, logical.1 + logical.3 / 2.0 - o.y as f64);
+            self.wl(Wl::PointerMove { output: output.clone(), x: x as u32, y: y as u32, w: o.w as u32, h: o.h as u32 });
+        }
+        let mut stills = 0u32;
         let mut stitcher: Option<Stitcher> = None;
         let mut size = (0, 0);
         let mut last_preview = Instant::now() - Duration::from_secs(1);
@@ -179,7 +202,18 @@ impl Inner {
                 Step::Unsure => "unsure",
                 Step::Lost => "lost",
             };
-            let mut j = json!({ "phase": "capturing", "height": st.height(), "step": name });
+            // Auto-Scroll: a notch a frame while the pointer is in the frame;
+            // a lost frame goes a notch back; still for a while is the end
+            let paused = auto && !snip_hypr::cursor_pos().is_none_or(inside);
+            if auto && !paused {
+                stills = if step == Step::Still { stills + 1 } else { 0 };
+                if stills >= 5 {
+                    let _ = state.compare_exchange(RUNNING, DONE, Ordering::Relaxed, Ordering::Relaxed);
+                } else {
+                    self.wl(Wl::PointerWheel { notches: if step == Step::Lost { -1 } else { 1 } });
+                }
+            }
+            let mut j = json!({ "phase": "capturing", "height": st.height(), "step": name, "auto": auto, "paused": paused });
             if last_preview.elapsed() > Duration::from_millis(300) && !matches!(step, Step::Still) {
                 last_preview = Instant::now();
                 preview_n += 1;

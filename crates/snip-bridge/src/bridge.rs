@@ -218,6 +218,9 @@ pub mod qobject {
         fn scroll_start(self: Pin<&mut Engine>);
         #[qinvokable]
         fn scroll_done(self: Pin<&mut Engine>);
+        /// Auto-Scroll (SCR-02)
+        #[qinvokable]
+        fn scroll_auto(self: Pin<&mut Engine>);
         #[qinvokable]
         fn scroll_cancel(self: Pin<&mut Engine>);
 
@@ -790,6 +793,12 @@ impl qobject::Engine {
     fn scroll_start(self: Pin<&mut Self>) {
         if let Some(i) = self.inner() {
             i.scroll_start();
+        }
+    }
+
+    fn scroll_auto(self: Pin<&mut Self>) {
+        if let Some(i) = self.inner() {
+            i.scroll_auto();
         }
     }
 
