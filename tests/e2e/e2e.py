@@ -712,6 +712,40 @@ def editor_draws_with_pointer(s, env):
 
 
 @case
+def editor_keyboard(s, env):
+    """ANN-05/14: the Text tool types where you click and Enter commits; tool keys, undo,
+    redo and Escape work. Keys are delivered inside snipd (never through the seat)."""
+    from PIL import Image
+    png = s.tmp / "keys.png"
+    Image.new("RGB", (500, 260), "white").save(png)
+    rec = s.json("edit", str(png))["result"]
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    time.sleep(0.3)
+    w, mon, st = editor_window(), env.monitor(), editor_state(s)
+    at = lambda ix, iy: (w["at"][0] - mon["x"] + st["originX"] + ix * st["k"], w["at"][1] - mon["y"] + st["originY"] + iy * st["k"])
+    s.move(*at(250, 200)); s.click(); time.sleep(0.2)       # focus the editor
+    s.debug("ui", "editor", "keys", "t")
+    assert wait_for(lambda: editor_state(s)["tool"] == "text", 2), editor_state(s)["tool"]
+    s.move(*at(60, 100)); s.click(); time.sleep(0.2)
+    assert editor_state(s)["editingText"], "clicking with the Text tool should start typing"
+    s.debug("ui", "editor", "keys", "Hello", "snip{Return}")
+    st = editor_state(s)
+    assert [i.get("text") for i in st["items"]] == ["Hello snip"] and not st["editingText"], st
+    s.debug("ui", "editor", "keys", "{ctrl+z}")
+    assert editor_state(s)["items"] == []
+    s.debug("ui", "editor", "keys", "{ctrl+shift+z}")
+    assert len(editor_state(s)["items"]) == 1
+    s.debug("ui", "editor", "keys", "r")
+    assert editor_state(s)["tool"] == "rect"
+    editor_flush(s)
+    px = Image.open(rec["source"]).convert("RGB")
+    assert any(px.getpixel((x, y))[1] < 100 for x in range(60, 200) for y in range(85, 115)), "the text should be drawn"
+    s.debug("ui", "editor", "keys", "{Escape}")     # deselect
+    s.debug("ui", "editor", "keys", "{Escape}")     # close
+    assert wait_for(lambda: editor_window() is None, 5), "Escape with nothing selected closes the editor"
+
+
+@case
 def editor_redaction_is_secure(s, env):
     """ANN-06 / D26: Pixelate, Blur and Black out never carry the hidden content. Two
     images that differ only inside the regions export identically, and the hidden text
