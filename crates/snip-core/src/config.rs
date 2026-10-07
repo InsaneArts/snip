@@ -208,6 +208,10 @@ pub struct Capture {
     pub window_shadow: bool,
     /// Draw Hyprland's corner rounding into window captures.
     pub window_rounding: bool,
+    /// "With the desktop" (product owner, 2026-10-08): a window capture is
+    /// the window as it is on screen with the desktop around it (wallpaper,
+    /// other windows, the bar), not the clean window. Shift inverts it.
+    pub window_desktop: bool,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -299,6 +303,7 @@ impl Default for Capture {
             magnifier: true,
             window_shadow: true,
             window_rounding: true,
+            window_desktop: false,
         }
     }
 }
