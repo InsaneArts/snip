@@ -168,6 +168,7 @@ Window {
         case "show": Engine.showInFiles(id); break
         case "annotate": Engine.annotate(id); break
         case "text": card.flash("text", 0); Engine.extractText(id); break   // the result arrives as cardStatus
+        case "rotate-left": case "flip-horizontal": Engine.transformCapture(id, action); break
         case "preview": c.preview.open(card.data_); break
         case "trash": Engine.trash(id); remove(id, false); break
         case "close": dismiss(card, outward); break

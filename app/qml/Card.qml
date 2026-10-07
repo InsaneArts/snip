@@ -82,7 +82,7 @@ Item {
             Image {
                 id: thumb
                 anchors.fill: parent
-                source: "file://" + (card.data_.thumb || card.data_.path)
+                source: "file://" + (card.data_.thumb || card.data_.path) + "?" + (card.data_.rev || 0)
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: false
                 cache: false

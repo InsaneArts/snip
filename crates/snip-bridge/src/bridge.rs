@@ -92,6 +92,10 @@ pub mod qobject {
         #[qinvokable]
         fn extract_text(self: Pin<&mut Engine>, id: QString);
 
+        /// rotate-left | flip-horizontal
+        #[qinvokable]
+        fn transform_capture(self: Pin<&mut Engine>, id: QString, op: QString);
+
         #[qinvokable]
         fn copy_text(self: Pin<&mut Engine>, text: QString);
 
@@ -360,6 +364,12 @@ impl qobject::Engine {
     fn extract_text(self: Pin<&mut Self>, id: QString) {
         if let Some(i) = self.inner() {
             i.extract_text(&id.to_string());
+        }
+    }
+
+    fn transform_capture(self: Pin<&mut Self>, id: QString, op: QString) {
+        if let Some(i) = self.inner() {
+            i.transform(&id.to_string(), &op.to_string());
         }
     }
 

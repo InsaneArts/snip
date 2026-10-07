@@ -135,6 +135,36 @@ pub fn transcode(png_bytes: &[u8], to: Export) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
+/// Rotate tightly packed pixels 90° counter-clockwise (CleanShot's "Rotate Left").
+pub fn rotate_left(data: &[u8], w: u32, h: u32, bpp: usize) -> (Vec<u8>, u32, u32) {
+    let (w, h) = (w as usize, h as usize);
+    let mut out = vec![0u8; data.len()];
+    for y in 0..h {
+        for x in 0..w {
+            // (x, y) -> (y, w - 1 - x) in a h-wide image
+            let (nx, ny) = (y, w - 1 - x);
+            let s = (y * w + x) * bpp;
+            let d = (ny * h + nx) * bpp;
+            out[d..d + bpp].copy_from_slice(&data[s..s + bpp]);
+        }
+    }
+    (out, h as u32, w as u32)
+}
+
+/// Mirror tightly packed pixels left-right ("Flip Horizontal").
+pub fn flip_horizontal(data: &[u8], w: u32, h: u32, bpp: usize) -> Vec<u8> {
+    let (w, h) = (w as usize, h as usize);
+    let mut out = vec![0u8; data.len()];
+    for y in 0..h {
+        for x in 0..w {
+            let s = (y * w + x) * bpp;
+            let d = (y * w + (w - 1 - x)) * bpp;
+            out[d..d + bpp].copy_from_slice(&data[s..s + bpp]);
+        }
+    }
+    out
+}
+
 /// Ignore the X byte of XRGB when it isn't meaningful; used by tests.
 pub fn is_opaque_format(f: PixelFormat) -> bool {
     !f.has_alpha()
@@ -194,6 +224,24 @@ mod tests {
         assert_eq!(&webp[8..12], b"WEBP");
         let (_, w, h, _) = decode_png(&png).unwrap();
         assert_eq!((w, h), (64, 32));
+    }
+
+    #[test]
+    fn rotate_left_and_flip() {
+        // 3x2 RGB: values identify pixels
+        let px: Vec<u8> = (0..6u8).flat_map(|i| [i, 0, 0]).collect();
+        let (r, w, h) = rotate_left(&px, 3, 2, 3);
+        assert_eq!((w, h), (2, 3));
+        // top-right pixel (index 2) goes to the top-left
+        assert_eq!(r[0], 2);
+        // four rotations are the identity
+        let (r2, w2, h2) = rotate_left(&r, w, h, 3);
+        let (r3, w3, h3) = rotate_left(&r2, w2, h2, 3);
+        let (r4, _, _) = rotate_left(&r3, w3, h3, 3);
+        assert_eq!(r4, px);
+        let f = flip_horizontal(&px, 3, 2, 3);
+        assert_eq!((f[0], f[6]), (2, 0));
+        assert_eq!(flip_horizontal(&f, 3, 2, 3), px);
     }
 
     #[test]

@@ -85,7 +85,7 @@ Built: `snipd` (Rust core + Qt Quick UI in one process), `snip` CLI, `hypr/snip.
 | SEL-01…07, 09…11 | ✅ | p95 17.6 ms hotkey → every overlay presented (warm); first overlay after start ≈ 225 ms (budget 300). Exact crops at scales 1/1.25/1.5/2 and on a rotated output. Logical-px readout on hover not done. |
 | QAO-01…07, 10 | ✅ | Hover keys (Ctrl+C/S/W/E, Space) verified with real key events; focus returns to the app. Copy closes the card (Alt keeps it). |
 | QAO-08 gestures | ⚠️ | Touchpad swipes implemented, untested (no touchpad on the dev machine). |
-| QAO-09 menu | ⚠️ | Copy, Save/Show in Files, Annotate, Extract Text, Preview, Trash, Close, Close All, Save All, Hide. Missing: Rotate, Flip, Scale, Resize, Open With, Print, Save As. |
+| QAO-09 menu | ⚠️ | Copy, Save/Show in Files, Annotate, Extract Text, Rotate Left, Flip Horizontal, Preview, Trash, Close, Close All, Save All, Hide. Missing: Scale, Resize, Open With, Print, Save As. |
 | QAO-11 | ⏭ M2 | Needs Snip's editor. Annotate opens `general.external_editor` (default `tensaku-edit`) until then. |
 | Lifecycle, history retention | ✅ | Capture → history only; Copy → clipboard; Save → folder + clipboard; hourly sweep; "Never" deletes on card close. |
 | SET-03…07, 09 | ✅ / ⚠️ | Rules, template naming, export folder, PNG/JPG/WebP, clipboard modes, shutter sound. SET-04 UTC and `@2x` options missing. |

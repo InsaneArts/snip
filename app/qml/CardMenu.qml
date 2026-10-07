@@ -14,6 +14,8 @@ Rectangle {
         { label: card && card.saved ? "Show in Files" : "Save", key: card && card.saved ? "" : "Ctrl+S", action: card && card.saved ? "show" : "save", icon: card && card.saved ? "folder" : "save" },
         { label: "Annotate", key: "Ctrl+E", action: "annotate", icon: "pencil" },
         { label: "Extract Text", key: "", action: "text", icon: "scan-text" },
+        { label: "Rotate Left", key: "", action: "rotate-left", icon: "rotate-ccw" },
+        { label: "Flip Horizontal", key: "", action: "flip-horizontal", icon: "flip-horizontal" },
         { label: "Preview", key: "Space", action: "preview", icon: "eye" },
         { sep: true },
         { label: "Move to Trash", key: "", action: "trash", icon: "trash", danger: true },
