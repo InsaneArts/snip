@@ -481,7 +481,8 @@ Window {
             }
             switch (e.key) {
             case Qt.Key_Escape:
-                if (ed.selected >= 0) ed.selected = -1
+                if (ed.openedMenu) ed.openedMenu = null
+                else if (ed.selected >= 0) ed.selected = -1
                 else ed.closeEditor()
                 break
             case Qt.Key_Delete: case Qt.Key_Backspace: ed.removeSelected(); break
@@ -1661,7 +1662,7 @@ Window {
                 revision: revision, saved: savedRevision, undo: undoStack.length, redo: redoStack.length,
                 // where image px (0,0) is, in window-logical px, and logical px per image px
                 originX: originX, originY: originY + view.y, k: k, winW: width, winH: height,
-                ready: base.status === Image.Ready, editingText: editingText, typed: textEdit.text, active: ed.active,
+                ready: base.status === Image.Ready, editingText: editingText, typed: textEdit.text, active: ed.active, menuOpen: openedMenu !== null,
                 selectionBox: { x: selectionBox.x, y: selectionBox.y, w: selectionBox.width, h: selectionBox.height },
                 words: words ? words.length : -1, fill: doc.fill || "", shownX: shown.x, shownY: shown.y,
                 imgW: imgW, imgH: imgH, base: doc.base || "", bg: doc.bg || null, exportRect: exportRect,
