@@ -34,3 +34,8 @@ end
 -- Snip's surfaces appear instantly: no layer fade (which would also show up
 -- in the first frames of a recording). snipd re-applies this at runtime too.
 hl.layer_rule({ match = { namespace = "^snip-" }, no_anim = true, animation = "none" })
+
+-- The editor is a floating window, centred, sized to the image.
+-- (Hyprland 0.56: a rule matching class and title together, or a title
+-- pattern with non-ASCII characters, never matches.)
+hl.window_rule({ match = { title = "^Snip Editor" }, float = true, center = true, opacity = "1 1" })
