@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex, OnceLock, RwLock};
 use std::thread::JoinHandle;
 use std::time::Duration;
@@ -83,6 +83,9 @@ pub struct Inner {
     /// Captures waiting for their auto-applied background (BG-03) before
     /// their card: id → output
     pending_bg: Mutex<HashMap<String, String>>,
+    /// Shift held when the selection ended (D32): this capture skips the
+    /// auto-applied preset. Cleared when a capture begins.
+    skip_preset: AtomicBool,
     /// open cards (id, output), oldest first
     cards: Mutex<Vec<(String, String)>>,
     closed: Mutex<Vec<String>>,
@@ -160,6 +163,7 @@ impl Inner {
             session: Mutex::new(None),
             last_area: Mutex::new(load_last_area()),
             pending_bg: Mutex::new(HashMap::new()),
+            skip_preset: AtomicBool::new(false),
             cards: Mutex::new(vec![]),
             closed: Mutex::new(vec![]),
             ocr_langs: OnceLock::new(),
@@ -291,6 +295,7 @@ impl Inner {
     /// right away).
     pub fn begin(self: &Arc<Self>, mode: &str, monitor: Option<String>, cursor: Option<bool>, waiter: Option<Waiter>, delay: u32) {
         let t0 = trace::now_ns();
+        self.skip_preset.store(false, Ordering::Relaxed);
         // CAP-11: the pointer in screen captures (config, or per capture)
         let cursor = cursor.unwrap_or_else(|| self.cfg().capture.show_cursor);
         let delay = delay.min(60);
@@ -618,6 +623,11 @@ impl Inner {
         }
     }
 
+    /// Shift was held as the selection ended: skip the preset (D32).
+    pub fn skip_preset(&self, skip: bool) {
+        self.skip_preset.store(skip, Ordering::Relaxed);
+    }
+
     /// The eyedropper's click: the colour under the pointer (ANN-13).
     pub fn finish_pick(&self, color: String) {
         if let Some(s) = self.session.lock().unwrap().take() {
@@ -839,7 +849,7 @@ impl Inner {
     /// QML renders it and commits it like an edit (action "auto-bg"), then
     /// the After Capture rules run. False when there is none to apply.
     fn apply_auto_background(&self, rec: &Record, output: &str) -> bool {
-        if !matches!(rec.kind.as_str(), "area" | "fullscreen" | "window") {
+        if !matches!(rec.kind.as_str(), "area" | "fullscreen" | "window") || self.skip_preset.swap(false, Ordering::Relaxed) {
             return false;
         }
         let Some(bg) = self.auto_background() else { return false };
