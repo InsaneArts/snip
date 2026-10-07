@@ -1027,6 +1027,37 @@ def editor_highlighter(s, env):
 
 
 @case
+def editor_select_commands(s, env):
+    """ANN-02: Ctrl+D duplicates; Ctrl+C copies the selected object (not the image) and
+    Ctrl+V pastes it, also into another image."""
+    from PIL import Image
+    for name in ("one.png", "two.png"):
+        Image.new("RGB", (400, 260), "white").save(s.tmp / name)
+    s.json("edit", str(s.tmp / "one.png"))
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    w, mon, st = editor_window(), env.monitor(), editor_state(s)
+    at = lambda ix, iy: (w["at"][0] - mon["x"] + st["originX"] + ix * st["k"], w["at"][1] - mon["y"] + st["originY"] + iy * st["k"])
+    s.move(*at(390, 250)); s.click(); time.sleep(0.2)            # focus; nothing under the pointer
+    s.debug("ui", "editor", "rect", 40, 40, 100, 60)
+    n = len(s.traces("copied"))
+    s.debug("ui", "editor", "keys", "{ctrl+d}")
+    items = editor_state(s)["items"]
+    assert len(items) == 2 and items[1]["x"] > items[0]["x"], items
+    s.debug("ui", "editor", "keys", "{ctrl+c}")
+    time.sleep(0.3)
+    assert len(s.traces("copied")) == n and editor_window() is not None, "Ctrl+C with an object selected copies the object, not the image"
+    close_editor(s)
+    s.json("edit", str(s.tmp / "two.png"))
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    w, st = editor_window(), editor_state(s)
+    s.move(*at(390, 250)); s.click(); time.sleep(0.2)
+    s.debug("ui", "editor", "keys", "{ctrl+v}")
+    items = editor_state(s)["items"]
+    assert len(items) == 1 and items[0]["kind"] == "rect" and items[0]["w"] == 100, items
+    close_editor(s)
+
+
+@case
 def editor_keyboard(s, env):
     """ANN-05/14: the Text tool types where you click and Enter commits; tool keys, undo,
     redo and Escape work. Keys are delivered inside snipd (never through the seat)."""
