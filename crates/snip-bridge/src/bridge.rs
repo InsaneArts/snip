@@ -574,7 +574,7 @@ impl qobject::Engine {
             "rotate-left" => encode::rotate_left(d, iw, ih, bpp),
             "rotate-right" => encode::rotate_right(d, iw, ih, bpp),
             "flip-horizontal" => (encode::flip_horizontal(d, iw, ih, bpp), iw, ih),
-            "flip-vertical" => (encode::flip_vertical(d, iw, ih, bpp), iw, ih),
+            "flip-vertical" => (encode::flip_vertical(d, iw, bpp), iw, ih),
             "resize" if w > 0 && h > 0 => (encode::resize(d, iw, ih, bpp, w as u32, h as u32), w as u32, h as u32),
             _ => return QString::default(),
         };
