@@ -177,6 +177,23 @@ impl Store {
     }
 
     /// Captures still waiting for text indexing (HIS-05), newest first.
+    /// Save As (QAO-09, ANN-15): to a path the user picked. The format follows
+    /// its extension (png, jpg/jpeg, webp; none: .png is added). The file
+    /// becomes the capture's saved file, so later edits reach it.
+    pub fn save_as(&self, id: &str, path: &Path, cfg: &Config) -> Result<PathBuf, StoreError> {
+        let ext = path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase());
+        let (fmt, path) = match ext.as_deref() {
+            Some("jpg") | Some("jpeg") => (crate::encode::Export::Jpg(cfg.general.jpg_quality), path.to_path_buf()),
+            Some("webp") => (crate::encode::Export::Webp, path.to_path_buf()),
+            Some("png") => (crate::encode::Export::Png, path.to_path_buf()),
+            _ => (crate::encode::Export::Png, PathBuf::from(format!("{}.png", path.display()))),
+        };
+        let out = crate::encode::transcode(&self.bytes(id)?, fmt).map_err(|e| StoreError::Io(std::io::Error::other(e)))?;
+        atomic_write(&path, &out)?;
+        self.history.lock().unwrap().set_saved(id, &path)?;
+        Ok(path)
+    }
+
     pub fn unindexed(&self, limit: u32) -> Result<Vec<(String, PathBuf)>, StoreError> {
         Ok(self.history.lock().unwrap().unindexed(limit)?)
     }
@@ -300,6 +317,21 @@ mod tests {
         assert_eq!(store.save(&rec.id, &cfg, now).unwrap(), p);
         assert_eq!(store.get(&rec.id).unwrap().saved, Some(p));
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn save_as_follows_the_extension() {
+        let root = tmp();
+        let store = Store::open(&root.join("history"), root.join("counter")).unwrap();
+        let png = crate::encode::encode_png(&[200u8; 4 * 3 * 3], 4, 3, false);
+        let rec = store.ingest(png, 4, 3, CaptureMeta::default(), 0).unwrap();
+        let cfg = Config::default();
+        let jpg = store.save_as(&rec.id, &root.join("shot.JPG"), &cfg).unwrap();
+        assert_eq!(&std::fs::read(&jpg).unwrap()[..2], b"\xff\xd8", "a JPEG");
+        let bare = store.save_as(&rec.id, &root.join("shot"), &cfg).unwrap();
+        assert_eq!(bare, root.join("shot.png"));
+        assert_eq!(&std::fs::read(&bare).unwrap()[1..4], b"PNG");
+        assert_eq!(store.get(&rec.id).unwrap().saved, Some(bare), "the last Save As is the saved file");
     }
 
     #[test]
