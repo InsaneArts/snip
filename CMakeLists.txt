@@ -4,7 +4,7 @@ project(snip VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick QmlImportScanner)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick DBus QmlImportScanner)
 find_package(Qt6 REQUIRED COMPONENTS GuiPrivate)
 find_package(KF6CoreAddons REQUIRED)
 find_package(LayerShellQt REQUIRED)
@@ -69,7 +69,7 @@ qt_add_qml_module(snipd
 
 target_link_libraries(snipd PRIVATE
   snip_core_qml
-  Qt::Quick Qt::GuiPrivate
+  Qt::Quick Qt::GuiPrivate Qt::DBus
   KF6::CoreAddons LayerShellQt::Interface PkgConfig::WAYLAND_CLIENT PkgConfig::SQLITE3)
 target_include_directories(snipd PRIVATE app/src)
 qt_import_qml_plugins(snipd)

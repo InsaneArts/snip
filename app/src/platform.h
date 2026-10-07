@@ -8,6 +8,19 @@
 #include <QWindow>
 #include <QtQml/qqmlregistration.h>
 
+// One pending xdg-desktop-portal request: forwards its Response.
+class PortalRequest : public QObject
+{
+  Q_OBJECT
+public:
+  using QObject::QObject;
+  QString path;
+Q_SIGNALS:
+  void done(uint code, const QVariantMap& results);
+public Q_SLOTS:
+  void response(uint code, const QVariantMap& results) { Q_EMIT done(code, results); }
+};
+
 // Small platform services QML can't do itself.
 class Platform : public QObject
 {
@@ -57,7 +70,15 @@ public:
   // {ctrl+shift+z}, {ctrl+s} and the like name keys.
   Q_INVOKABLE void sendKeys(QWindow* w, const QString& keys);
 
+  // Save As (QAO-09, ANN-15): the desktop's own save dialog, through the
+  // xdg-desktop-portal FileChooser. Answers with fileChosen(token, path);
+  // the path is empty when cancelled or when there is no portal.
+  Q_INVOKABLE void saveFileDialog(int token, const QString& title, const QString& name, const QString& folder);
+  // Tests: cancel every open dialog (portal Request.Close).
+  Q_INVOKABLE void closeFileDialogs();
+
 Q_SIGNALS:
+  void fileChosen(int token, const QString& path);
   void framePresented(QQuickWindow* window);
   void grabbed(int token, bool ok);
 };
