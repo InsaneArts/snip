@@ -17,7 +17,7 @@ captures (default: the most recent)
   copy [ID]        put a capture on the clipboard
   save [ID]        save to the export folder (and copy)
   pin [ID]         float it above every window (drag to move, scroll: opacity, Ctrl+scroll: size)
-  pins toggle|close  hide or show every pin, or close them all
+  pins toggle|close|unlock  hide or show every pin, close them all, or unlock locked ones
   list [-n N]      recent captures from history
   search TEXT [-n N]  find captures by the text in them (and window title/app)
   restore          re-open the last closed Quick Access card

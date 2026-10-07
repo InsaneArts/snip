@@ -38,7 +38,8 @@ pub enum Request {
         #[serde(default)]
         id: Option<String>,
     },
-    /// Every pin at once (PIN-07): "toggle" hides or shows them, "close"
+    /// Every pin at once (PIN-05, 07): "toggle" hides or shows them, "close",
+    /// "unlock" (a locked pin takes no input)
     Pins { action: String },
     /// Add an image file as a capture with a Quick Access card
     Open { path: String },
