@@ -551,7 +551,7 @@ Window {
                 case Qt.Key_C: (!shift && ed.selectedObj) ? ed.copyObjects() : ed.flush("copy"); break
                 // objects copied in an editor first, else the clipboard's image
                 case Qt.Key_V: (controller.objectClipboard || []).length ? ed.pasteObjects() : ed.pasteImage(); break
-                case Qt.Key_I: ed.chooseImage(); break
+                case Qt.Key_I: shift ? ed.takeScreenshot() : ed.chooseImage(); break
                 case Qt.Key_D: ed.duplicateSelected(); break
                 case Qt.Key_0: ed.zoomFit(); break
                 case Qt.Key_1: ed.zoomTo(1); break
@@ -625,6 +625,31 @@ Window {
         const w = sz.width * f, h = sz.height * f, c = at || { x: r.x + r.w / 2, y: r.y + r.h / 2 }
         addItem({ kind: "image", x: c.x - w / 2, y: c.y - h / 2, w: w, h: h, src: file })
         return true
+    }
+    // Add image > Take Screenshot (ANN-12): the editor steps aside while you
+    // select an area or a window, then the shot lands in the canvas
+    property int shotToken: 0
+    function takeScreenshot() {
+        openedMenu = null
+        shotToken = controller.nextToken()
+        visible = false
+        shotTimer.start()
+    }
+    Timer {
+        id: shotTimer
+        interval: 300           // Hyprland fades the window out first
+        onTriggered: Engine.takeScreenshotForEditor(ed.shotToken)
+    }
+    Connections {
+        target: Engine
+        function onEditorScreenshot(token, path) {
+            if (token !== ed.shotToken) return
+            ed.shotToken = 0
+            ed.visible = true
+            ed.requestActivate()
+            keys.forceActiveFocus()
+            if (path) ed.addImageFile(Engine.editorImportImage(ed.basePath, path))
+        }
     }
     function chooseImage() {
         imageToken = controller.nextToken()
@@ -1559,6 +1584,7 @@ Window {
         id: addImageMenu
         Repeater {
             model: [{ label: "Choose From File…", key: "Ctrl+I", act: () => ed.chooseImage() },
+                    { label: "Take Screenshot", key: "Ctrl+Shift+I", act: () => ed.takeScreenshot() },
                     { label: "Paste From Clipboard", key: "Ctrl+V", act: () => ed.pasteImage() }]
             delegate: Rectangle {
                 required property var modelData
@@ -1853,6 +1879,7 @@ Window {
         case "bg-preset-save": saveBgPreset(a.slice(1).join(" ")); break
         case "bg-preset-delete": deleteBgPreset(a.slice(1).join(" ")); break
         case "bg-previous": applyPreviousBg(); break
+        case "take-screenshot": takeScreenshot(); break
         case "add-wallpaper": bgPanel.addWallpaper(a.slice(1).join(" ")); break
         case "remove-wallpaper": bgPanel.removeWallpaper(a.slice(1).join(" ")); break
         case "color": setColor(a[1]); break
