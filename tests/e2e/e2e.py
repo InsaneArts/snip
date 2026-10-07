@@ -1946,6 +1946,37 @@ def editor_auto_expand(s, env):
 
 
 @case
+def editor_window_settings(s, env):
+    """ANN-18: "Always on top" pins the editor (Hyprland); "Remember if the Background
+    tool was opened" opens the next editor with it."""
+    from PIL import Image
+    cfg = s.tmp / "cfg/snip/config.toml"
+    on = "object_shadows = false\nalways_on_top = true\nremember_background_tool = true"
+    cfg.write_text(cfg.read_text().replace("object_shadows = false", on))
+    try:
+        time.sleep(0.8)                                             # the config watcher reloads it
+        png = s.tmp / "win.png"
+        Image.new("RGB", (300, 200), "white").save(png)
+        s.json("edit", str(png))
+        assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3), "the editor opens"
+        assert wait_for(lambda: editor_window()["pinned"], 3), "always on top: pinned"
+        s.debug("ui", "editor", "tool", "background")
+        close_editor(s)
+        s.json("edit", str(png))
+        assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3), "the editor opens again"
+        assert editor_state(s)["tool"] == "background", "the Background tool is open again"
+        s.debug("ui", "editor", "tool", "arrow")
+        close_editor(s)
+        s.json("edit", str(png))
+        assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3), "the editor opens a third time"
+        assert editor_state(s)["tool"] != "background", "closed without it: opens without it"
+        close_editor(s)
+    finally:
+        cfg.write_text(cfg.read_text().replace(on, "object_shadows = false"))
+        time.sleep(0.8)
+
+
+@case
 def editor_object_shadows(s, env):
     """CleanShot's "Draw shadow on objects" (config [annotate] object_shadows, on by default):
     a soft shadow under objects; the objects themselves stay crisp."""
