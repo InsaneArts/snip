@@ -44,7 +44,7 @@ fn snapshot() -> Snapshot {
 
 enum Pending {
     /// Frames for a selection overlay (area / window / text)
-    Overlay { mode: String, waiter: Option<Waiter>, snap: JoinHandle<Snapshot>, cursor: bool },
+    Overlay { mode: String, waiter: Option<Waiter>, snap: JoinHandle<Snapshot>, cursor: bool, delay: u32 },
     /// A rectangle (or the whole output when `rect` is None) of one output
     Region { waiter: Option<Waiter>, output: String, rect: Option<Rect>, kind: String },
     /// A clean window buffer (CAP-05)
@@ -55,6 +55,16 @@ struct Session {
     mode: String,
     waiter: Option<Waiter>,
     clients: Vec<Client>,
+    cursor: bool,
+    delay: u32,
+}
+
+/// A running self-timer (CAP-06): captured live when the countdown ends.
+struct Countdown {
+    output: String,
+    rect: Option<Rect>,
+    kind: String,
+    waiter: Option<Waiter>,
     cursor: bool,
 }
 
@@ -78,6 +88,7 @@ pub struct Inner {
     deferred: Mutex<HashMap<u64, (Source, bool)>>,
     /// Wakes the history indexer (HIS-05)
     index_wake: Mutex<Option<mpsc::Sender<()>>>,
+    countdown: Mutex<Option<Countdown>>,
 }
 
 fn reply(w: Option<Waiter>, r: Response) {
@@ -139,6 +150,7 @@ impl Inner {
             ocr_langs: OnceLock::new(),
             deferred: Mutex::new(HashMap::new()),
             index_wake: Mutex::new(None),
+            countdown: Mutex::new(None),
         }))
     }
 
@@ -235,7 +247,11 @@ impl Inner {
 
     fn shortcut(self: &Arc<Self>, id: &str) {
         match id {
-            "area" | "fullscreen" | "window" | "previous" | "text" | "all-in-one" => self.begin(id, None, None, None),
+            "area" | "fullscreen" | "window" | "previous" | "text" | "all-in-one" => self.begin(id, None, None, None, 0),
+            "timer-area" | "timer-fullscreen" => {
+                let delay = self.cfg().capture.timer_seconds;
+                self.begin(&id["timer-".len()..], None, None, None, delay)
+            }
             "restore" => self.ui(|e| e.cards_command(&QString::from("restore"))),
             "close-all" => self.ui(|e| e.cards_command(&QString::from("close-all"))),
             _ => {}
@@ -245,10 +261,20 @@ impl Inner {
     // ------------------------------------------------------------------ capture
 
     /// Start a capture. `waiter` gets the outcome (the CLI blocks on it).
-    pub fn begin(self: &Arc<Self>, mode: &str, monitor: Option<String>, cursor: Option<bool>, waiter: Option<Waiter>) {
+    /// `delay` > 0 runs the self-timer (area: after the selection; fullscreen:
+    /// right away).
+    pub fn begin(self: &Arc<Self>, mode: &str, monitor: Option<String>, cursor: Option<bool>, waiter: Option<Waiter>, delay: u32) {
         let t0 = trace::now_ns();
         // CAP-11: the pointer in screen captures (config, or per capture)
         let cursor = cursor.unwrap_or_else(|| self.cfg().capture.show_cursor);
+        let delay = delay.min(60);
+        // a capture hotkey during a countdown cancels it
+        if let Some(c) = self.countdown.lock().unwrap().take() {
+            reply(c.waiter, cancelled());
+            reply(waiter, cancelled());
+            self.ui(|e| e.countdown_cancel());
+            return;
+        }
         match mode {
             "area" | "window" | "text" | "all-in-one" => {
                 // SEL-09: the capture hotkey while the overlay is up cancels it.
@@ -273,11 +299,11 @@ impl Inner {
                 let monitor = monitor.or_else(|| std::env::var("SNIP_OUTPUTS").ok().filter(|s| !s.is_empty()));
                 let outputs = monitor.filter(|m| self.output_names().contains(m)).map(|m| vec![m]);
                 if self.cfg().capture.freeze {
-                    self.pending.lock().unwrap().insert(req, Pending::Overlay { mode, waiter, snap, cursor });
+                    self.pending.lock().unwrap().insert(req, Pending::Overlay { mode, waiter, snap, cursor, delay });
                     self.capture_clean(req, Source::Outputs(outputs), cursor);
                 } else {
                     let snap = snap.join().unwrap_or_default();
-                    self.open_session(mode, req, waiter, snap, vec![], cursor);
+                    self.open_session(mode, req, waiter, snap, vec![], cursor, delay);
                 }
                 trace::trace("capture_begin", &format!("\"req\":{req},\"ms\":{:.2}", trace::ms_since(t0)));
             }
@@ -286,6 +312,10 @@ impl Inner {
                     reply(waiter, Response::err("no output"));
                     return;
                 };
+                if delay > 0 {
+                    self.start_countdown(Countdown { output, rect: None, kind: "fullscreen".into(), waiter, cursor }, delay, None);
+                    return;
+                }
                 self.play("shutter");
                 let req = self.next();
                 self.pending.lock().unwrap().insert(req, Pending::Region { waiter, output: output.clone(), rect: None, kind: "fullscreen".into() });
@@ -365,7 +395,7 @@ impl Inner {
             trace::warn("capture_failed", &format!("\"which\":{}", js(&r.failed.join(","))));
         }
         match p {
-            Pending::Overlay { mode, waiter, snap, cursor } => {
+            Pending::Overlay { mode, waiter, snap, cursor, delay } => {
                 if r.frames.is_empty() {
                     self.toast("Screen capture failed");
                     reply(waiter, Response::err("capture failed"));
@@ -376,7 +406,7 @@ impl Inner {
                     "frames_captured",
                     &format!("\"req\":{},\"n\":{},\"ms\":{:.2}", r.request, r.frames.len(), (r.t_done_ns - r.t_start_ns) as f64 / 1e6),
                 );
-                self.open_session(mode, r.request, waiter, snap, r.frames, cursor);
+                self.open_session(mode, r.request, waiter, snap, r.frames, cursor, delay);
             }
             Pending::Region { waiter, output, rect, kind } => {
                 let Some(frame) = r.frames.into_iter().next() else {
@@ -404,7 +434,8 @@ impl Inner {
         }
     }
 
-    fn open_session(self: &Arc<Self>, mode: String, epoch: u64, waiter: Option<Waiter>, snap: Snapshot, frames_: Vec<Frame>, cursor: bool) {
+    #[allow(clippy::too_many_arguments)]
+    fn open_session(self: &Arc<Self>, mode: String, epoch: u64, waiter: Option<Waiter>, snap: Snapshot, frames_: Vec<Frame>, cursor: bool, delay: u32) {
         let outputs = self.outputs.lock().unwrap().clone();
         let mut out_json = serde_json::Map::new();
         for o in &outputs {
@@ -451,7 +482,7 @@ impl Inner {
         .to_string();
         trace::trace("session", &format!("\"json\":{session}"));
         frames::publish(frames_);
-        *self.session.lock().unwrap() = Some(Session { mode, waiter, clients: snap.clients, cursor });
+        *self.session.lock().unwrap() = Some(Session { mode, waiter, clients: snap.clients, cursor, delay });
         self.ui(move |mut e| {
             e.as_mut().set_session(QString::from(session.as_str()));
             e.as_mut().set_epoch(epoch as i32);
@@ -464,12 +495,25 @@ impl Inner {
         trace::trace("finish_area", &format!("\"output\":{},\"rect\":[{},{},{},{}],\"kind\":{}", js(&output), rect.x, rect.y, rect.w, rect.h, js(&kind)));
         let Some(s) = self.session.lock().unwrap().take() else { return };
         let kind = if s.mode == "text" { "text".to_string() } else { kind };
-        if kind != "text" {
-            self.play("shutter");
-        }
         if kind == "area" {
             *self.last_area.lock().unwrap() = Some((output.clone(), rect));
             save_last_area(&output, rect);
+        }
+        // self-timer: the selected area is captured live after the countdown
+        if s.delay > 0 && kind != "text" {
+            let scale = frames::get(&output).map(|f| f.scale).unwrap_or(1.0);
+            frames::clear();
+            let shown = Rect::new(
+                (rect.x as f64 / scale).round() as i32,
+                (rect.y as f64 / scale).round() as i32,
+                (rect.w as f64 / scale).round() as i32,
+                (rect.h as f64 / scale).round() as i32,
+            );
+            self.start_countdown(Countdown { output, rect: Some(rect), kind, waiter: s.waiter, cursor: s.cursor }, s.delay, Some(shown));
+            return;
+        }
+        if kind != "text" {
+            self.play("shutter");
         }
         match frames::get(&output) {
             Some(frame) => {
@@ -489,6 +533,25 @@ impl Inner {
                 });
             }
         }
+    }
+
+    /// CAP-06: show the countdown (logical `shown` area, or the whole output)
+    /// and capture live when QML calls `countdown_done`.
+    fn start_countdown(&self, c: Countdown, seconds: u32, shown: Option<Rect>) {
+        let out = c.output.clone();
+        let r = shown.unwrap_or(Rect::new(-1, -1, 0, 0));
+        trace::trace("countdown", &format!("\"output\":{},\"seconds\":{seconds}", js(&out)));
+        *self.countdown.lock().unwrap() = Some(c);
+        self.ui(move |e| e.countdown(&QString::from(out.as_str()), r.x, r.y, r.w, r.h, seconds as i32));
+    }
+
+    /// The countdown reached zero and is off screen: capture now.
+    pub fn countdown_done(self: &Arc<Self>) {
+        let Some(c) = self.countdown.lock().unwrap().take() else { return };
+        self.play("shutter");
+        let req = self.next();
+        self.pending.lock().unwrap().insert(req, Pending::Region { waiter: c.waiter, output: c.output.clone(), rect: c.rect, kind: c.kind });
+        self.capture_clean(req, Source::Outputs(Some(vec![c.output])), c.cursor);
     }
 
     /// Window mode click (CAP-05): the window's own buffer, never occluded.
@@ -1033,9 +1096,9 @@ impl Inner {
         };
         match req {
             Ctl::Ping => Response::ok(json!("pong")),
-            Ctl::Capture { mode, monitor, cursor } => {
+            Ctl::Capture { mode, monitor, cursor, delay } => {
                 let (tx, rx) = mpsc::channel();
-                self.begin(&mode, monitor, cursor, Some(tx));
+                self.begin(&mode, monitor, cursor, Some(tx), delay.unwrap_or(0));
                 rx.recv_timeout(Duration::from_secs(590)).unwrap_or_else(|_| Response::err("timed out"))
             }
             Ctl::Open { path } => ok_or(self.open_file(&path)),

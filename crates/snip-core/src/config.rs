@@ -148,6 +148,8 @@ pub struct Capture {
     pub freeze: bool,
     /// CAP-11: include the mouse pointer in screen captures.
     pub show_cursor: bool,
+    /// CAP-06: countdown of the self-timer shortcuts, in seconds.
+    pub timer_seconds: u32,
     /// Keep the GPU context warm this long after the last capture (S01).
     pub keep_warm_minutes: u32,
     /// SEL-04: full-screen crosshair lines with a coordinate readout.
@@ -239,6 +241,7 @@ impl Default for Capture {
         Self {
             freeze: true,
             show_cursor: false,
+            timer_seconds: 5,
             keep_warm_minutes: 10,
             crosshair: Crosshair::Ctrl,
             magnifier: true,

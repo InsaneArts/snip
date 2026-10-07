@@ -130,6 +130,8 @@ QtObject {
         target: Engine
         function onFramesReady(epoch) { root.openSession() }
         function onCancelRequested() { root.closeOverlay() }
+        function onCountdown(output, x, y, w, h, seconds) { root.countdown.start(output, x, y, w, h, seconds) }
+        function onCountdownCancel() { root.countdown.stop() }
         function onPrepareCapture(req) { root.quickAccess.prepareCapture(req) }
         function onCaptureDone() { if (!root.overlayOpen) root.quickAccess.capturing = false }
         function onCardAdd(card) { root.quickAccess.add(JSON.parse(card)) }
@@ -178,6 +180,7 @@ QtObject {
 
     property QuickAccess quickAccess: QuickAccess { controller: root }
     property Toast toast: Toast {}
+    property Countdown countdown: Countdown {}
     property Preview preview: Preview {}
 
     // (a Loader-created Window never maps: spike S8; create it directly)

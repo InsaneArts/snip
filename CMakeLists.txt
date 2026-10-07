@@ -53,6 +53,7 @@ qt_add_qml_module(snipd
     app/qml/FrostButton.qml
     app/qml/Icon.qml
     app/qml/Toast.qml
+    app/qml/Countdown.qml
     app/qml/Preview.qml
     app/qml/Gallery.qml
   SOURCES

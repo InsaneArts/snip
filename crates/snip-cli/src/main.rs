@@ -9,6 +9,7 @@ const USAGE: &str = "usage: snip [--json] <command>
 
 capture
   area | fullscreen | window | previous | text | all-in-one [--monitor NAME] [--cursor | --no-cursor]
+  area | fullscreen --delay N   self-timer: N seconds of countdown, then the capture
   open FILE        add an image as a capture (also: edit FILE)
 captures (default: the most recent)
   copy [ID]        put a capture on the clipboard
@@ -49,7 +50,8 @@ fn main() -> ExitCode {
             } else {
                 None
             };
-            (Request::Capture { mode: cmd.clone(), monitor, cursor }, Duration::from_secs(600))
+            let delay = flag(&mut args, "--delay").and_then(|v| v.parse::<u32>().ok());
+            (Request::Capture { mode: cmd.clone(), monitor, cursor, delay }, Duration::from_secs(600))
         }
         "open" | "edit" => {
             let Some(p) = arg1 else {
