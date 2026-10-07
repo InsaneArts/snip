@@ -15,7 +15,7 @@
 -- timer-area, timer-fullscreen, edit-clipboard (open the clipboard's image in the editor),
 -- history (browse and search past captures), area-pin (capture an area and pin it
 -- in place), pins-toggle (hide or show every pin),
--- pins-close, pins-unlock (locked pins take no clicks).
+-- pins-close, pins-unlock (locked pins take no clicks), settings.
 
 local function bind(keys, action, description)
   pcall(hl.unbind, keys) -- the key may not be bound yet
@@ -45,6 +45,9 @@ hl.layer_rule({ match = { namespace = "^snip-" }, no_anim = true, animation = "n
 -- Editor — <name>"; a rule matching class and title together, or a title
 -- pattern with non-ASCII characters, never matches.)
 hl.window_rule({ match = { title = "^Snip Editor.*" }, float = true, center = true, opacity = "1 1", tag = "+snip-editor" })
+
+-- Settings float too, centred, as on macOS.
+hl.window_rule({ match = { title = "^Snip Settings$" }, float = true, center = true, opacity = "1 1", tag = "+snip-settings" })
 
 -- Pins float above every window, on every workspace of their monitor, and
 -- draw their own corners and shadow. (Rule patterns match the whole title.)

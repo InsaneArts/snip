@@ -64,6 +64,11 @@ pub enum Request {
     },
     /// Show the capture history window (HIS-01)
     History,
+    /// Show the settings window (SET-02), on a tab
+    Settings {
+        #[serde(default)]
+        tab: Option<String>,
+    },
     /// Re-open the most recently closed Quick Access card
     RestoreLast,
     CloseAll,
