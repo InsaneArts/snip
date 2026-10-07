@@ -273,6 +273,7 @@ impl Inner {
             }
             "restore" => self.ui(|e| e.cards_command(&QString::from("restore"))),
             "close-all" => self.ui(|e| e.cards_command(&QString::from("close-all"))),
+            "history" => self.open_history(),
             "pins-toggle" => self.ui(|e| e.pins_command(&QString::from("toggle"))),
             "pins-close" => self.ui(|e| e.pins_command(&QString::from("close"))),
             "pins-unlock" => self.ui(|e| e.pins_command(&QString::from("unlock"))),
@@ -887,15 +888,43 @@ impl Inner {
         self.ui(move |e| e.card_add(&QString::from(j.as_str())));
     }
 
-    /// An editor closed: its capture is in Quick Access again if its card had
-    /// gone (closed, or timed out while you annotated), to drag, save or copy.
-    pub fn editor_closed(&self, id: &str) {
+    /// A capture back in Quick Access, unless its card is there already:
+    /// after its editor closes (the card may have timed out meanwhile) and
+    /// when history restores it.
+    pub fn restore_card(&self, id: &str) {
         if self.cards.lock().unwrap().iter().any(|(i, _)| i == id) {
             return;
         }
         let Ok(rec) = self.store.get(id) else { return };
         let output = self.cursor_output().unwrap_or_default();
         self.show_card(&rec, &output);
+    }
+
+    /// Show the history window on the monitor with the pointer.
+    pub fn open_history(&self) {
+        let out = self.cursor_output().unwrap_or_default();
+        self.ui(move |e| e.history_open(&QString::from(out.as_str())));
+    }
+
+    /// The history window (HIS-01, HIS-05): the newest captures, or the ones
+    /// whose text (OCR, window title, app) matches `query`.
+    pub fn history(&self, query: &str, limit: u32) -> Value {
+        let recs = if query.trim().is_empty() {
+            self.store.recent(limit)
+        } else {
+            self.store.search(query, limit).map(|v| v.into_iter().map(|(r, _)| r).collect())
+        };
+        Value::Array(
+            recs.unwrap_or_default()
+                .iter()
+                .map(|r| {
+                    let mut j = card_json(r, "");
+                    j["title"] = json!(r.title);
+                    j["app"] = json!(r.app);
+                    j
+                })
+                .collect(),
+        )
     }
 
     pub fn card_closed(&self, id: &str) {
@@ -1497,6 +1526,10 @@ impl Inner {
             // Pin File… (PIN-01): the file becomes a capture first
             Ctl::Pin { id, path: Some(path) } if id.is_none() => ok_or(self.import(&path).and_then(|rec| self.pin(&rec.id))),
             Ctl::Pin { id, .. } => ok_or(self.resolve_id(id).and_then(|id| self.pin(&id))),
+            Ctl::History => {
+                self.open_history();
+                Response::ok(Value::Null)
+            }
             Ctl::Pins { action } => match action.as_str() {
                 "toggle" | "close" | "unlock" => {
                     self.ui(move |e| e.pins_command(&QString::from(action.as_str())));

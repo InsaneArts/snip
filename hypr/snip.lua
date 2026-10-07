@@ -13,7 +13,8 @@
 -- (hl.dsp.global): no process is spawned, so the overlay appears instantly.
 -- Actions: area, fullscreen, window, previous, text, all-in-one, restore, close-all,
 -- timer-area, timer-fullscreen, edit-clipboard (open the clipboard's image in the editor),
--- area-pin (capture an area and pin it in place), pins-toggle (hide or show every pin),
+-- history (browse and search past captures), area-pin (capture an area and pin it
+-- in place), pins-toggle (hide or show every pin),
 -- pins-close, pins-unlock (locked pins take no clicks).
 
 local function bind(keys, action, description)
