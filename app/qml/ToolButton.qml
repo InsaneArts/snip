@@ -1,7 +1,7 @@
 import QtQuick
 
-// An editor toolbar button: a glyph that turns into a filled accent circle
-// when its tool is selected (CleanShot's toolbar).
+// An editor toolbar button: a glyph on a rounded accent rectangle when its
+// tool is selected (CleanShot's toolbar).
 Item {
     id: root
     property string icon: ""
@@ -10,25 +10,27 @@ Item {
     property bool chevron: false       // opens a dropdown
     property string tip: ""
     property bool tipAbove: false
+    property real leftPad: 0           // room for content drawn before the glyph (the colour dot)
     signal clicked()
 
-    implicitWidth: label !== "" || chevron ? row.implicitWidth + 18 : 32
-    implicitHeight: 32
+    implicitWidth: label !== "" || chevron ? row.implicitWidth + 16 + leftPad : 34
+    implicitHeight: 24
 
     Rectangle {
         anchors.fill: parent
-        radius: height / 2
+        radius: 7
         color: root.selected ? Theme.accent : ma.pressed ? Theme.controlPressed : ma.containsMouse ? Theme.controlHover : "transparent"
         Behavior on color { ColorAnimation { duration: 90 } }
     }
     Row {
         id: row
-        anchors.centerIn: parent
+        x: (parent.width - implicitWidth + root.leftPad) / 2
+        anchors.verticalCenter: parent.verticalCenter
         spacing: 4
         Icon {
             visible: root.icon !== ""
             name: root.icon
-            size: 17
+            size: 16
             stroke: 2
             color: root.selected ? Theme.onAccent : Theme.text
             anchors.verticalCenter: parent.verticalCenter

@@ -60,6 +60,9 @@ qt_add_qml_module(snipd
     app/qml/EditorItem.qml
     app/qml/ToolButton.qml
     app/qml/Tip.qml
+    app/qml/Capsule.qml
+    app/qml/TextButton.qml
+    app/qml/EditorToolbar.qml
     app/qml/editor.js
   SOURCES
     app/src/frozenframe.cpp app/src/frozenframe.h

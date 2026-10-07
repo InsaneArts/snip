@@ -370,9 +370,9 @@ Window {
             case Qt.Key_A: ed.setTool("arrow"); break
             case Qt.Key_R: ed.setTool("rect"); break
             case Qt.Key_T: ed.setTool("text"); break
-            case Qt.Key_N: ed.setTool("counter"); break
+            case Qt.Key_C: ed.setTool("counter"); break
             case Qt.Key_P: ed.setTool("redact"); break
-            case Qt.Key_C: ed.setTool("crop"); break
+            case Qt.Key_K: ed.setTool("crop"); break
             case Qt.Key_Left: ed.nudge(-nudge, 0); break
             case Qt.Key_Right: ed.nudge(nudge, 0); break
             case Qt.Key_Up: ed.nudge(0, -nudge); break
@@ -388,96 +388,11 @@ Window {
     }
 
     // ---------------------------------------------------------------- toolbar
-    component Group: Rectangle {
-        default property alias content: groupRow.data
-        implicitWidth: groupRow.implicitWidth + 6
-        implicitHeight: 38
-        radius: height / 2
-        color: Theme.light ? Qt.rgba(1, 1, 1, 0.9) : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.07)
-        border.width: 1
-        border.color: Theme.hairline
-        Row { id: groupRow; anchors.centerIn: parent; spacing: 2 }
-    }
-
-    Rectangle {
+    EditorToolbar {
         id: toolbar
+        ed: ed
         z: 2
         anchors { left: parent.left; right: parent.right; top: parent.top }
-        height: 54
-        color: Theme.surface
-        Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom } height: 1; color: Theme.hairline }
-
-        Row {
-            anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
-            spacing: 10
-            Group {
-                ToolButton { icon: "crop"; tip: "Crop (C)"; selected: ed.tool === "crop"; onClicked: ed.tool === "crop" ? ed.cropDone() : ed.setTool("crop") }
-            }
-            Group {
-                ToolButton { icon: "pointer"; tip: "Select (V)"; selected: ed.tool === "select"; onClicked: ed.setTool("select") }
-                ToolButton { icon: "arrow"; tip: "Arrow (A)"; selected: ed.tool === "arrow"; onClicked: ed.setTool("arrow") }
-                ToolButton { icon: "square"; tip: "Rectangle (R)"; selected: ed.tool === "rect"; onClicked: ed.setTool("rect") }
-                ToolButton { icon: "text"; tip: "Text (T)"; selected: ed.tool === "text"; onClicked: ed.setTool("text") }
-                ToolButton { icon: "pixelate"; tip: "Pixelate (P)"; selected: ed.tool === "redact"; onClicked: ed.setTool("redact") }
-                ToolButton { icon: "counter"; tip: "Counter (N)"; selected: ed.tool === "counter"; onClicked: ed.setTool("counter") }
-            }
-            Group {
-                visible: ed.tool !== "crop"
-                Item {
-                    id: swatchButton
-                    visible: ed.sizeKind !== "redact"
-                    width: 50; height: 32
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: height / 2
-                        color: swatchMa.containsMouse ? Theme.controlHover : "transparent"
-                    }
-                    Rectangle {
-                        x: 9; anchors.verticalCenter: parent.verticalCenter
-                        width: 18; height: 18; radius: 9
-                        color: ed.ink
-                        border.width: 1; border.color: Qt.rgba(0, 0, 0, 0.18)
-                    }
-                    Icon { x: 32; anchors.verticalCenter: parent.verticalCenter; name: "chevron-down"; size: 11; stroke: 2.2; color: Theme.textSecondary }
-                    MouseArea { id: swatchMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                                onClicked: ed.openMenu(colorMenu, swatchButton) }
-                }
-                ToolButton {
-                    id: styleButton
-                    visible: ed.sizeKind === "redact"
-                    label: Ed.redactStyles.find(r => r.id === (ed.selectedObj && ed.selectedObj.kind === "redact" ? ed.selectedObj.style : ed.redactStyle)).label
-                    chevron: true
-                    onClicked: ed.openMenu(styleMenu, styleButton)
-                }
-                ToolButton {
-                    id: sizeButton
-                    visible: !!Ed.sizes[ed.sizeKind]
-                    icon: ed.sizeKind === "text" ? "" : ed.sizeKind === "counter" ? "counter" : "stroke"
-                    label: ed.sizeKind === "text" ? Ed.sizes.text[ed.sizeIndex.text] + " pt" : ""
-                    chevron: true
-                    onClicked: ed.openMenu(sizeMenu, sizeButton)
-                }
-            }
-        }
-
-        Row {
-            anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
-            spacing: 8
-            ToolButton { icon: "undo"; tip: "Undo (Ctrl+Z)"; opacity: ed.undoStack.length ? 1 : 0.4; onClicked: ed.undo() }
-            ToolButton { icon: "redo"; tip: "Redo (Ctrl+Shift+Z)"; opacity: ed.redoStack.length ? 1 : 0.4; onClicked: ed.redo() }
-            Rectangle {
-                id: saveButton
-                width: saveLabel.implicitWidth + 32; height: 32
-                radius: height / 2
-                color: saveMa.pressed ? Qt.darker(Theme.accent, 1.15) : saveMa.containsMouse ? Qt.lighter(Theme.accent, 1.08) : Theme.accent
-                Text { id: saveLabel; anchors.centerIn: parent; text: "Save"; color: Theme.onAccent
-                       font.family: Theme.fontUi; font.pixelSize: 13; font.weight: Font.DemiBold }
-                MouseArea { id: saveMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                            acceptedButtons: Qt.LeftButton | Qt.RightButton
-                            // right-click: Save As…
-                            onClicked: (m) => m.button === Qt.RightButton ? ed.saveAsDialog() : ed.flush("save") }
-            }
-        }
     }
 
     // ---------------------------------------------------------------- canvas
@@ -873,9 +788,8 @@ Window {
         color: Theme.surface
         Rectangle { anchors { left: parent.left; right: parent.right; top: parent.top } height: 1; color: Theme.hairline }
 
-        Group {
+        Capsule {
             anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
-            implicitHeight: 34
             ToolButton { id: zoomButton; label: Math.round(ed.zoom * 100) + "%"; chevron: true; tip: "Zoom (Ctrl+scroll)"; tipAbove: true
                          onClicked: ed.openMenu(zoomMenu, zoomButton) }
         }
@@ -922,6 +836,9 @@ Window {
     }
 
     // ---------------------------------------------------------------- dropdowns
+    function openMenuNamed(name, anchorItem) {
+        openMenu({ color: colorMenu, size: sizeMenu, style: styleMenu, zoom: zoomMenu }[name], anchorItem)
+    }
     property Item openedMenu: null
     function openMenu(menu, anchorItem) {
         if (openedMenu === menu) { openedMenu = null; return }
