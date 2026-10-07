@@ -1767,6 +1767,27 @@ def editor_take_screenshot(s, env):
 
 
 @case
+def editor_snapping(s, env):
+    """ANN-12 snapping guides: a moved object snaps its edges or middle to the canvas's
+    (and other objects') edges and middle when it comes near them."""
+    from PIL import Image
+    png = s.tmp / "snap.png"
+    Image.new("RGB", (400, 300), "white").save(png)
+    s.json("edit", str(png))
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    s.debug("ui", "editor", "rect", 100, 100, 80, 60)            # its middle: (140, 130)
+    s.debug("ui", "editor", "tool", "select")
+    w, mon, st = editor_window(), env.monitor(), editor_state(s)
+    at = lambda ix, iy: (w["at"][0] - mon["x"] + st["originX"] + (ix - st["shownX"]) * st["k"], w["at"][1] - mon["y"] + st["originY"] + (iy - st["shownY"]) * st["k"])
+    s.drag(*at(102, 130), *at(159, 148), steps=6)               # middle to (197, 148): near the canvas's (200, 150)
+    assert wait_for(lambda: editor_state(s)["items"][0]["x"] != 100, 2)
+    r = editor_state(s)["items"][0]
+    assert (round(r["x"]), round(r["y"])) == (160, 120), ("snapped to the canvas's middle", r)
+    assert editor_state(s)["guides"] is None, "the guides go when the drag ends"
+    close_editor(s)
+
+
+@case
 def editor_drop_zones(s, env):
     """ANN-12 combine images: a file dropped near an edge joins the canvas on that side,
     scaled to its width (or height), and the canvas grows (one undo step); dropped in the
