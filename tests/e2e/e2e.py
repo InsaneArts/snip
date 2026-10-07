@@ -1419,6 +1419,57 @@ def editor_add_image(s, env):
 
 
 @case
+def editor_auto_expand(s, env):
+    """ANN-17 "Auto-expand canvas": an object drawn past the image grows the canvas to
+    hold it, filled with the edge colour, in one undo step; inside it nothing changes."""
+    from PIL import Image
+    cfg = s.tmp / "cfg/snip/config.toml"
+    cfg.write_text(cfg.read_text().replace("object_shadows = false", "object_shadows = false\nauto_expand = true"))
+    try:
+        time.sleep(0.8)                                         # the config watcher reloads it
+        png = s.tmp / "expand.png"
+        noise_png(png, 300, 200, seed=5)
+        Image.open(png).convert("RGB").save(png)
+        im = Image.open(png).convert("RGB")
+        for x in range(300):                                    # a plain grey frame, the edge colour
+            for y in list(range(0, 6)) + list(range(194, 200)):
+                im.putpixel((x, y), (90, 90, 90))
+        for y in range(200):
+            for x in list(range(0, 6)) + list(range(294, 300)):
+                im.putpixel((x, y), (90, 90, 90))
+        im.save(png)
+        rec = s.json("edit", str(png))["result"]
+        assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+        s.debug("ui", "editor", "rect", 100, 60, 80, 50)        # inside: no change
+        assert editor_state(s)["crop"] is None
+        s.debug("ui", "editor", "frect", 250, 150, 100, 80)     # past the right and bottom edges
+        st = editor_state(s)
+        c = st["crop"]
+        assert c and c["x"] == 0 and c["y"] == 0 and c["w"] >= 350 and c["h"] >= 230, c
+        assert st["fill"].lower() == "#5a5a5a", st["fill"]
+        editor_flush(s)
+        out = Image.open(rec["source"]).convert("RGB")
+        assert out.size == (c["w"], c["h"]), out.size
+        assert out.getpixel((10, 10)) == im.getpixel((10, 10)), "the image stays where it was"
+        assert out.getpixel((c["w"] - 2, 20)) == (90, 90, 90), "the new canvas takes the edge colour"
+        assert out.getpixel((320, 200))[1] < 80, "the box is drawn in the new canvas"
+        s.debug("ui", "editor", "undo")
+        st = editor_state(s)
+        assert st["crop"] is None and len(st["items"]) == 1, "one undo takes back the box and the growth"
+        s.debug("ui", "editor", "text", 230, 40, "Expanding canvas")   # text measures itself
+        c = editor_state(s)["crop"]
+        assert c and c["w"] > 330 and c["y"] == 0 and c["h"] == 200, c
+        editor_flush(s)
+        out = Image.open(rec["source"]).convert("RGB")
+        assert any(out.getpixel((x, y))[1] < 120 and out.getpixel((x, y))[0] > 150 for x in range(300, c["w"]) for y in range(30, 80)), \
+            "the text past the old edge is drawn"
+        close_editor(s)
+    finally:
+        cfg.write_text(cfg.read_text().replace("\nauto_expand = true", ""))
+        time.sleep(0.8)
+
+
+@case
 def editor_object_shadows(s, env):
     """CleanShot's "Draw shadow on objects" (config [annotate] object_shadows, on by default):
     a soft shadow under objects; the objects themselves stay crisp."""
