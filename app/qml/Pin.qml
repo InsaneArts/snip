@@ -1,13 +1,15 @@
 import QtQuick
 import QtQuick.Window
 import QtQuick.Effects
+import org.kde.layershell as LayerShell
 import Snip.Core
 
 // A pinned screenshot (PIN-01…08), CleanShot's: the image floats above every
 // window, on every workspace of its monitor (Hyprland's pin rule, matched by
 // the title). Drag (or arrow keys) to move, scroll to fade, Ctrl+scroll to
-// zoom, middle-click to close; hovering shows close, the zoom and a grip to
-// drag the image out; right-click opens the menu.
+// zoom, middle-click to close; hovering shows close, the zoom, the lock and a
+// grip to drag the image out; right-click opens the menu. Locked, it lets
+// clicks through and fades under the pointer (unlock: snip pins unlock).
 Window {
     id: pin
     required property var capture           // a card's JSON plus its output's scale
@@ -32,7 +34,7 @@ Window {
     onHeightChanged: if (visible) resizeTimer.restart()
     Timer { id: resizeTimer; interval: 16; onTriggered: Engine.resizeWindow(pin.title, pin.width, pin.height) }
 
-    function close_() { visible = false; finished() }
+    function close_() { if (lockLayer) lockLayer.destroy(); visible = false; finished() }
     function act(action) {
         menuPopup.visible = false
         switch (action) {
@@ -41,19 +43,84 @@ Window {
         case "annotate": Engine.annotate(capture.id); break
         case "close": close_(); break
         case "close-all": controller.closePins(); break
+        case "lock": lock(); break
         }
     }
     function zoomBy(f) { zoom = Math.max(0.1, Math.min(4, zoom * f)) }
     // PIN-07: hidden pins come back where they were (Hyprland would centre them)
     property var hiddenAt: null
     function hide() {
+        if (locked) { lockLayer.visible = false; return }
         hiddenAt = JSON.parse(Engine.windowPosition(title))
         visible = false
     }
     function show() {
+        if (locked) { lockLayer.visible = true; Platform.setInputRects(lockLayer, []); return }
         frame.visible = false           // until it is back in place
         visible = true
         restoreTimer.start()
+    }
+    readonly property bool shown: visible || (locked && lockLayer.visible)
+
+    // PIN-05: locked, the pin is a layer surface in the same place with an
+    // empty input region (Hyprland ignores those on windows: spike S04), so
+    // clicks reach what is under it; it fades while the pointer is over it.
+    property bool locked: false
+    property var lockLayer: null
+    property var lockAt: null               // where the window was, in layout px
+    property bool lockHover: false
+    function lock() {
+        const place = JSON.parse(Engine.windowPlace(title))
+        lockAt = JSON.parse(Engine.windowPosition(title))
+        if (!place || !lockAt) return
+        menuPopup.visible = false
+        lockLayer = lockComponent.createObject(null, { output: place.output })
+        Platform.placeLayer(lockLayer, place.x, place.y)
+        lockLayer.visible = true
+        Platform.setInputRects(lockLayer, [])
+        locked = true
+        visible = false
+    }
+    function unlock() {
+        if (!locked) return
+        lockLayer.destroy()
+        lockLayer = null
+        locked = false
+        lockHover = false
+        hiddenAt = lockAt
+        show()
+    }
+    property Component lockComponent: Component {
+        Window {
+            property string output: ""
+            flags: Qt.FramelessWindowHint
+            color: "transparent"
+            width: pin.width; height: pin.height
+            LayerShell.Window.screen: Platform.screen(output)
+            LayerShell.Window.scope: "snip-pin"
+            LayerShell.Window.layer: LayerShell.Window.LayerOverlay
+            LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorLeft
+            LayerShell.Window.exclusionZone: -1
+            LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityNone
+            Face {
+                x: pin.margin; y: pin.margin
+                width: pin.width - 2 * pin.margin; height: pin.height - 2 * pin.margin
+                opacity: pin.fade * (pin.lockHover ? 0.15 : 1)
+                Behavior on opacity { NumberAnimation { duration: 120 } }
+                source: pin.imageUrl
+                radius: pin.radius
+            }
+        }
+    }
+    // the pointer can't be seen through an empty input region: ask Hyprland
+    Timer {
+        running: pin.locked && !!pin.lockLayer && pin.lockLayer.visible
+        interval: 120; repeat: true
+        onTriggered: {
+            const c = JSON.parse(Engine.cursorPosition()), a = pin.lockAt
+            pin.lockHover = !!c && c[0] >= a[0] + pin.margin && c[0] < a[0] + pin.width - pin.margin
+                                && c[1] >= a[1] + pin.margin && c[1] < a[1] + pin.height - pin.margin
+        }
     }
     Timer {
         id: restoreTimer
@@ -74,22 +141,21 @@ Window {
         visible = true
     }
 
-    Item {
-        id: frame
-        x: pin.margin; y: pin.margin
-        width: pin.width - 2 * pin.margin; height: pin.height - 2 * pin.margin
-        opacity: pin.fade
-
+    // the pin's look: the image with rounded corners, a soft shadow, a hairline
+    component Face: Item {
+        id: face
+        property url source
+        property real radius: 10
         RectangularShadow {
             anchors.fill: parent
-            radius: pin.radius
+            radius: face.radius
             blur: 14; offset.y: 4
             color: Qt.rgba(0, 0, 0, 0.35)
         }
         Image {
             id: picture
             anchors.fill: parent
-            source: "file://" + pin.capture.path + "?" + (pin.capture.rev || 0)
+            source: face.source
             smooth: true; mipmap: true
             visible: false
         }
@@ -98,7 +164,7 @@ Window {
             anchors.fill: parent
             visible: false
             layer.enabled: true
-            Rectangle { anchors.fill: parent; radius: pin.radius; color: "white" }
+            Rectangle { anchors.fill: parent; radius: face.radius; color: "white" }
         }
         MultiEffect {
             anchors.fill: parent
@@ -108,10 +174,20 @@ Window {
         }
         Rectangle {
             anchors.fill: parent
-            radius: pin.radius
+            radius: face.radius
             color: "transparent"
             border.width: 1; border.color: Qt.rgba(1, 1, 1, 0.18)
         }
+    }
+    readonly property url imageUrl: "file://" + capture.path + "?" + (capture.rev || 0)
+
+    Face {
+        id: frame
+        x: pin.margin; y: pin.margin
+        width: pin.width - 2 * pin.margin; height: pin.height - 2 * pin.margin
+        opacity: pin.fade
+        source: pin.imageUrl
+        radius: pin.radius
     }
 
     MouseArea {
@@ -149,11 +225,17 @@ Window {
     // hover chrome, as CleanShot's: close at the top left, the zoom at the top
     Item {
         anchors.fill: frame
-        visible: area.containsMouse || closeHover.hovered || gripHover.hovered
+        visible: area.containsMouse || closeHover.hovered || gripHover.hovered || lockHover_.hovered
         FrostButton {
             x: 8; y: 8; icon: "x"
             HoverHandler { id: closeHover }
             onClicked: pin.close_()
+        }
+        // PIN-05: lock (click-through)
+        FrostButton {
+            x: parent.width - width - 8; y: 8; icon: "lock"
+            HoverHandler { id: lockHover_ }
+            onClicked: pin.lock()
         }
         // PIN-03: drag the image out into another app
         FrostButton {
@@ -215,7 +297,8 @@ Window {
         case "keys": Platform.sendKeys(pin, a.slice(1).join(" ")); break
         case "state":
             Engine.log("pin_state", JSON.stringify({ id: capture.id, zoom: zoom, fade: fade, w: width, h: height,
-                                                    baseW: baseW, baseH: baseH, margin: margin, menu: menuPopup.visible }).slice(1, -1))
+                                                    baseW: baseW, baseH: baseH, margin: margin, menu: menuPopup.visible,
+                                                    locked: locked, lockHover: lockHover, shown: shown }).slice(1, -1))
             break
         }
     }
@@ -234,6 +317,7 @@ Window {
                 { label: "Copy", key: "Ctrl+C", action: "copy", icon: "copy" },
                 { label: "Save", key: "Ctrl+S", action: "save", icon: "save" },
                 { label: "Annotate", key: "Ctrl+E", action: "annotate", icon: "pencil" },
+                { label: "Lock (Click Through)", key: "", action: "lock", icon: "lock" },
                 { sep: true },
                 { label: "Close", key: "Ctrl+W", action: "close", icon: "x" },
                 { label: "Close All Pins", key: "", action: "close-all", icon: "layers" }
