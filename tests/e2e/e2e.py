@@ -912,6 +912,62 @@ def history_state(s):
     return s.traces("history_state")[-1]
 
 
+def settings_client():
+    return next((c for c in hypr_json("clients") if c["class"] == "snip-e2e" and c["title"] == "Snip Settings"), None)
+
+
+def settings_state(s, key=""):
+    n = len(s.traces("settings_state"))
+    s.debug("ui", "settings", "state", key)
+    assert wait_for(lambda: len(s.traces("settings_state")) > n, 2), "no settings state"
+    return s.traces("settings_state")[-1]
+
+
+def settings_click(s, env, name):
+    """Click a control of the settings window with the pointer, as a hand does."""
+    n = len(s.traces("settings_where"))
+    s.debug("ui", "settings", "where", name)
+    assert wait_for(lambda: len(s.traces("settings_where")) > n, 2), "no settings_where"
+    p = s.traces("settings_where")[-1]
+    assert p["x"] >= 0, (name, "isn't shown")
+    w, mon = settings_client(), env.monitor()
+    s.move(w["at"][0] - mon["x"] + p["x"], w["at"][1] - mon["y"] + p["y"])
+    s.click()
+
+
+@case
+def settings_window(s, env):
+    """SET-02: `snip settings TAB` opens Settings on that tab, floating (its rule tags it).
+    A click writes config.toml, keeping the file's comments, and the window follows the
+    file; a hand edit shows in it at once. Escape closes it."""
+    cfg = s.tmp / "cfg/snip/config.toml"
+    before = cfg.read_text()
+    cfg.write_text("# my settings\n" + before)
+    try:
+        s.json("settings", "annotate")
+        assert wait_for(lambda: settings_client(), 5), "the window opens"
+        w = settings_client()
+        assert any(t.rstrip("*") == "snip-settings" for t in w["tags"]) and w["floating"], (w["tags"], w["floating"])
+        st = settings_state(s, "annotate.object_shadows")
+        assert st["tab"] == "annotate" and st["value"] is False and st["version"], st
+        settings_click(s, env, "annotate.object_shadows")
+        assert wait_for(lambda: "object_shadows = true" in cfg.read_text(), 2), cfg.read_text()
+        assert cfg.read_text().startswith("# my settings\n"), "the file's comments stay"
+        assert wait_for(lambda: settings_state(s, "annotate.object_shadows")["value"] is True, 2), "the window follows"
+        settings_click(s, env, "tab:quick-access")
+        assert wait_for(lambda: settings_state(s)["tab"] == "quick-access", 2), "the tab bar switches"
+        settings_click(s, env, "quick_access.position=right")
+        assert wait_for(lambda: 'position = "right"' in cfg.read_text(), 2), cfg.read_text()
+        cfg.write_text(cfg.read_text().replace('position = "right"', 'position = "left"'))      # by hand
+        assert wait_for(lambda: settings_state(s, "quick_access.position")["value"] == "left", 3), "a hand edit shows"
+        s.debug("ui", "settings", "keys", "{Escape}")
+        assert wait_for(lambda: not settings_client(), 2), "Escape closes it"
+    finally:
+        s.debug("ui", "settings", "close")
+        cfg.write_text(before)
+        time.sleep(0.8)
+
+
 @case
 def history_window(s, env):
     """HIS-01, 05: `snip history` shows past captures newest first; ←/→ move, Enter restores
