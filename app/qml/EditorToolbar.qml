@@ -22,7 +22,11 @@ Rectangle {
 
     Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom } height: 1; color: Theme.hairline }
 
+    // the width it needs: the window never gets narrower (ANN-01)
+    readonly property real needed: Math.ceil(tools.implicitWidth + actions.implicitWidth + 12 + 16 + 12)
+
     Row {
+        id: tools
         anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
         spacing: 8
         Capsule {
@@ -179,6 +183,7 @@ Rectangle {
     }
 
     Row {
+        id: actions
         anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
         spacing: 8
         TextButton { text: "Save as…"; tip: "Save as… (Ctrl+Shift+S)"; onClicked: bar.ed.saveAsDialog() }
