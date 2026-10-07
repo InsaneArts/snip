@@ -13,6 +13,7 @@
 //   redact  {kind, x, y, w, h, style, seed}               pixelate | text | blur | black
 //   pencil  {kind, pts: [[x, y], …], color, size}         free hand, smoothed
 //   highlight {kind, x, y, w, h, color, opacity}          a translucent band
+//   image   {kind, x, y, w, h, src}                       src: a file beside the base image
 //   spotlight {kind, x, y, w, h, shape, dim}              shape: rect | ellipse; dims the rest
 //
 // Counters are numbered by their order in the document, each style on its
@@ -37,7 +38,7 @@ var sizes = {
 var defaultSize = { arrow: 2, rect: 2, ellipse: 2, line: 2, pencil: 2, highlight: 2, text: 1, counter: 2 }
 
 // Objects with a box (x, y, w, h) and corner handles.
-function isBox(o) { return o.kind === "rect" || o.kind === "ellipse" || o.kind === "redact" || o.kind === "spotlight" || o.kind === "highlight" }
+function isBox(o) { return ["rect", "ellipse", "redact", "spotlight", "highlight", "image"].indexOf(o.kind) >= 0 }
 
 var highlightOpacities = [0.25, 0.35, 0.45, 0.6]
 
@@ -256,6 +257,11 @@ function withHandle(o, h, x, y, box) {
         else if (h === "t") y1 = y; else if (h === "b") y2 = y
         else if (h === "l") x1 = x; else if (h === "r") x2 = x
         var r = normRect(x1, y1, x2, y2)
+        if (n.kind === "image" && h.length === 2) {   // pictures keep their shape: the opposite corner stays
+            var ratio = o.w / o.h
+            r.h = r.w / ratio
+            if (h[0] === "t") r.y = o.y + o.h - r.h
+        }
         n.x = r.x; n.y = r.y; n.w = r.w; n.h = r.h
         if (n.kind === "redact") n = whole(n)
     }
@@ -379,7 +385,7 @@ function hits(o, x, y, tol, box) {
     }
     if (o.kind === "counter")
         return dist(x, y, o.x, o.y) <= o.size / 2 + tol
-    if (o.kind === "redact" || o.kind === "spotlight" || o.kind === "highlight")
+    if (o.kind === "redact" || o.kind === "spotlight" || o.kind === "highlight" || o.kind === "image")
         return x >= o.x - tol && x <= o.x + o.w + tol && y >= o.y - tol && y <= o.y + o.h + tol
     if (o.kind === "text" && box)
         return x >= box.x - tol && x <= box.x + box.width + tol && y >= box.y - tol && y <= box.y + box.height + tol

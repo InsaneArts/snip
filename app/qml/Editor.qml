@@ -452,7 +452,9 @@ Window {
                 case Qt.Key_S: shift ? ed.saveAsDialog() : ed.flush("save"); break
                 // with an object selected Ctrl+C copies it; Ctrl+Shift+C always copies the image
                 case Qt.Key_C: (!shift && ed.selectedObj) ? ed.copyObjects() : ed.flush("copy"); break
-                case Qt.Key_V: ed.pasteObjects(); break
+                // objects copied in an editor first, else the clipboard's image
+                case Qt.Key_V: (controller.objectClipboard || []).length ? ed.pasteObjects() : ed.pasteImage(); break
+                case Qt.Key_I: ed.chooseImage(); break
                 case Qt.Key_D: ed.duplicateSelected(); break
                 case Qt.Key_0: ed.zoomFit(); break
                 case Qt.Key_1: ed.zoomTo(1); break
@@ -513,6 +515,31 @@ Window {
         const off = 16 * pasteCount * unit
         setItems(doc.items.concat(objs.map(o => Ed.moved(o, off, off))))
         selected = doc.items.length - 1
+    }
+    // Add image (ANN-12): a file, the clipboard's image or a dropped file,
+    // copied beside the base image and placed at most half the canvas big
+    property int imageToken: 0
+    function addImageFile(file, at) {
+        if (!file) return false
+        const sz = Platform.imageSize(basePath.replace(/[^/]*$/, "") + file)
+        if (!(sz.width > 0)) return false
+        const r = exportRect, f = Math.min(1, r.w * 0.5 / sz.width, r.h * 0.5 / sz.height)
+        const w = sz.width * f, h = sz.height * f, c = at || { x: r.x + r.w / 2, y: r.y + r.h / 2 }
+        addItem({ kind: "image", x: c.x - w / 2, y: c.y - h / 2, w: w, h: h, src: file })
+        return true
+    }
+    function chooseImage() {
+        imageToken = controller.nextToken()
+        Platform.openImageDialog(imageToken, "Add Image")
+    }
+    function pasteImage() {
+        if (!addImageFile(Engine.editorPasteImage(basePath))) toast("No image on the clipboard")
+    }
+    Connections {
+        target: Platform
+        function onFileChosen(token, path) {
+            if (token === ed.imageToken && path !== "") ed.addImageFile(Engine.editorImportImage(ed.basePath, path))
+        }
     }
     function duplicateSelected() {
         if (selectedObj) addItem(Ed.moved(selectedObj, 16 * unit, 16 * unit))
@@ -784,6 +811,20 @@ Window {
                     ToolButton { label: "Reset"; onClicked: { ed.cropRatio = 0; ed.setCrop(ed.full) } }
                     ToolButton { label: "Done"; selected: true; onClicked: ed.cropDone() }
                 }
+            }
+        }
+
+        // drop image files onto the canvas
+        DropArea {
+            anchors.fill: parent
+            keys: ["text/uri-list"]
+            onDropped: (drop) => {
+                const p = ed.toImage(drop.x, drop.y)
+                for (const u of drop.urls) {
+                    const path = decodeURIComponent(String(u).replace(/^file:\/\//, ""))
+                    ed.addImageFile(Engine.editorImportImage(ed.basePath, path), p)
+                }
+                drop.accept()
             }
         }
 
@@ -1110,7 +1151,7 @@ Window {
     // ---------------------------------------------------------------- dropdowns
     function openMenuNamed(name, anchorItem) {
         openMenu({ color: colorMenu, size: sizeMenu, style: styleMenu, zoom: zoomMenu, arrow: arrowMenu, text: textMenu, dim: dimMenu,
-                   counter: counterMenu, opacity: opacityMenu, ratio: ratioMenu, resize: resizeMenu }[name], anchorItem)
+                   counter: counterMenu, opacity: opacityMenu, ratio: ratioMenu, resize: resizeMenu, addImage: addImageMenu }[name], anchorItem)
     }
     property Item openedMenu: null
     function openMenu(menu, anchorItem) {
@@ -1320,6 +1361,25 @@ Window {
     }
 
     Menu {
+        id: addImageMenu
+        Repeater {
+            model: [{ label: "Choose From File…", key: "Ctrl+I", act: () => ed.chooseImage() },
+                    { label: "Paste From Clipboard", key: "Ctrl+V", act: () => ed.pasteImage() }]
+            delegate: Rectangle {
+                required property var modelData
+                width: 230; height: 30; radius: 8
+                color: aiMa.containsMouse ? Theme.controlHover : "transparent"
+                Text { x: 12; anchors.verticalCenter: parent.verticalCenter; text: parent.modelData.label; color: Theme.text
+                       font.family: Theme.fontUi; font.pixelSize: 13 }
+                Text { anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
+                       text: parent.modelData.key; color: Theme.textSecondary; font.family: Theme.fontUi; font.pixelSize: 12 }
+                MouseArea { id: aiMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                            onClicked: { ed.openedMenu = null; parent.modelData.act() } }
+            }
+        }
+    }
+
+    Menu {
         id: ratioMenu
         z: 11      // above the crop bar
         Repeater {
@@ -1479,6 +1539,8 @@ Window {
         case "counter-style": setCounterStyle(a[1]); break
         case "words": Engine.requestWords(basePath); break
         case "eyedropper": picking = true; break
+        case "add-image": addImageFile(Engine.editorImportImage(basePath, a.slice(1).join(" "))); break
+        case "paste-image": pasteImage(); break
         case "save-color": saveColor(a[1]); break
         case "counter-start": setCounterStart(n(1)); break
         case "text": addItem({ kind: "text", x: n(1), y: n(2), text: a.slice(3).join(" "), color: ink, size: sizeFor("text"), style: textStyle }); break

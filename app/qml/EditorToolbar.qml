@@ -30,6 +30,9 @@ Rectangle {
                          onClicked: bar.ed.tool === "crop" ? bar.ed.cropDone() : bar.ed.setTool("crop") }
         }
         Capsule {
+            ToolButton { id: addImageButton; icon: "image-plus"; tip: "Add image (Ctrl+I)"; onClicked: bar.ed.openMenuNamed("addImage", addImageButton) }
+        }
+        Capsule {
             ToolButton { icon: "image"; tip: "Background (B)"; selected: bar.ed.tool === "background"
                          onClicked: bar.ed.setTool(bar.ed.tool === "background" ? "select" : "background") }
         }
