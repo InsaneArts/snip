@@ -99,6 +99,13 @@ pub mod qobject {
         #[qinvokable]
         fn edge_color(self: &Engine, path: QString) -> QString;
 
+        /// Rotate, flip or resize the editor's base image (ANN-11) into a new
+        /// file beside it: op = rotate-left | rotate-right | flip-horizontal |
+        /// flip-vertical | resize (to w × h). Answers {file, width, height},
+        /// or "" on failure.
+        #[qinvokable]
+        fn editor_transform(self: &Engine, path: QString, op: QString, w: i32, h: i32) -> QString;
+
         /// The colour of pixel (x, y) of the image at `path`: "#rrggbb"
         #[qinvokable]
         fn pixel_color(self: &Engine, path: QString, x: i32, y: i32) -> QString;
@@ -419,6 +426,28 @@ impl qobject::Engine {
         let dir = snip_core::paths::data_dir();
         let _ = std::fs::create_dir_all(&dir);
         let _ = snip_core::store::atomic_write(&dir.join("colors.json"), json.to_string().as_bytes());
+    }
+
+    fn editor_transform(&self, path: QString, op: QString, w: i32, h: i32) -> QString {
+        use snip_core::encode;
+        let path = std::path::PathBuf::from(path.to_string());
+        let Some(img) = crate::edits::decoded(&path.to_string_lossy()) else { return QString::default() };
+        let (d, bpp, iw, ih) = (&img.data, img.bpp, img.width, img.height);
+        let (data, nw, nh) = match op.to_string().as_str() {
+            "rotate-left" => encode::rotate_left(d, iw, ih, bpp),
+            "rotate-right" => encode::rotate_right(d, iw, ih, bpp),
+            "flip-horizontal" => (encode::flip_horizontal(d, iw, ih, bpp), iw, ih),
+            "flip-vertical" => (encode::flip_vertical(d, iw, ih, bpp), iw, ih),
+            "resize" if w > 0 && h > 0 => (encode::resize(d, iw, ih, bpp, w as u32, h as u32), w as u32, h as u32),
+            _ => return QString::default(),
+        };
+        let file = format!("base-{}.png", chrono::Local::now().timestamp_millis());
+        let out = path.with_file_name(&file);
+        if snip_core::store::atomic_write(&out, &encode::encode_png(&data, nw, nh, bpp == 4)).is_err() {
+            return QString::default();
+        }
+        trace::trace("editor_transformed", &format!("\"op\":{},\"w\":{nw},\"h\":{nh}", trace::js(&op.to_string())));
+        QString::from(serde_json::json!({ "file": file, "width": nw, "height": nh }).to_string().as_str())
     }
 
     fn edge_color(&self, path: QString) -> QString {
