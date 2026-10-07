@@ -3,11 +3,12 @@ import QtQuick.Window
 import org.kde.layershell as LayerShell
 import Snip.Core
 
-// Snip's menu in the bar (OMA-08, D35), CleanShot's: a click on the bar icon
-// opens it under the icon, with the captures and their keys, History,
-// Settings and Quit. A full-output layer, so a click anywhere else (the icon
-// too) closes it, as Esc does. An entry runs once the menu is off screen, so
-// it's never in a capture.
+// Snip's menu in the bar (OMA-08, D35): CleanShot's, in its order (from its
+// MainMenu.nib), less what Snip hasn't got yet (Record Screen, Hide Desktop
+// Icons, Check for Updates). A click on the bar icon opens it under the icon.
+// A full-output layer, so a click anywhere else (the icon too) closes it, as
+// Esc does. An entry runs once the menu is off screen, so it's never in a
+// capture.
 Window {
     id: tray
     property var controller: null
@@ -30,11 +31,16 @@ Window {
     LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityExclusive
 
     readonly property var entries: [
-        ["area", "Capture Area"], ["fullscreen", "Capture Fullscreen"], ["window", "Capture Window"],
-        ["scroll", "Scrolling Capture"], ["text", "Capture Text"], ["all-in-one", "All-In-One"], null,
-        ["history", "Open History…"], ["restore", "Restore Recently Closed"], null,
-        ["settings", "Settings…"], ["quit", "Quit Snip"]
+        ["all-in-one", "All-In-One"], ["area", "Capture Area"], ["previous", "Capture Previous Area"],
+        ["fullscreen", "Capture Fullscreen"], ["window", "Capture Window"], ["timer-area", "Self-Timer"],
+        ["scroll", "Scrolling Capture"], ["text", "Capture Text"], null,
+        ["open", "Open…"], ["edit-clipboard", "Open from Clipboard"], ["pin", "Pin to the Screen…"],
+        ["history", "Capture History…"], ["restore", "Restore Recently Closed"], null,
+        ["settings", "Settings…"], ["about", "About Snip"], ["quit", "Quit Snip"]
     ]
+    // Open… and Pin to the Screen… ask for an image first
+    property string picking: ""
+    property int pickToken: 0
 
     function toggle() { if (visible) close(); else open() }
     function open() {
@@ -66,7 +72,17 @@ Window {
             tray.pending = ""
             tray.close()
             if (a === "quit") Qt.quit()
-            else Engine.runAction(a)
+            else if (a === "about") tray.controller.openSettings("about")
+            else if (a === "open" || a === "pin") {
+                tray.picking = a
+                tray.pickToken = tray.controller.nextToken()
+                Platform.openImageDialog(tray.pickToken, a === "open" ? "Open" : "Pin to the Screen")
+            } else Engine.runAction(a)
+        }
+        function onFileChosen(token, path) {
+            if (token !== tray.pickToken || path === "") return
+            if (tray.picking === "open") Engine.editFile(path)
+            else Engine.pinFile(path)
         }
     }
 
