@@ -1133,6 +1133,82 @@ def scrolling_capture_auto(s, env):
         hypr_eval('hl.config({ input = { natural_scroll = false } })')
 
 
+PAGE_HTML_ROW = '<div class="r">{cells}<em>row {i}</em></div>'
+
+
+def browser_page(path, rows):
+    """A long page for a real browser: rows numbered as LINES_PY's (cell colours), a sticky
+    header (#202833) and a fixed footer (#7a2a3a), as spike S06 had."""
+    body = "".join(PAGE_HTML_ROW.format(i=i, cells="".join(
+        f'<span style="background:rgb({20 * b},{0 if (i >> b) & 1 else 255},{255 if (i >> b) & 1 else 0})"></span>' for b in range(12)))
+        for i in range(rows))
+    path.write_text(
+        "<!doctype html><meta charset=utf-8><style>body{margin:0;background:#fafafa;font:16px sans-serif}"
+        "header{position:sticky;top:0;height:60px;background:#202833}footer{position:fixed;bottom:0;left:0;right:0;height:44px;background:#7a2a3a}"
+        ".r{height:34px;display:flex;align-items:center;border-bottom:1px solid #ddd;padding-left:16px}"
+        ".r span{display:inline-block;width:18px;height:22px}.r em{margin-left:16px}main{padding-bottom:44px}</style>"
+        f"<header></header><main>{body}</main><footer></footer>")
+
+
+def colour_runs(png, rgb):
+    """Runs of rows whose middle pixel is `rgb`: where a header or footer sits."""
+    from PIL import Image
+    img = Image.open(png).convert("RGB")
+    w, h = img.size
+    px = img.load()
+    runs = []
+    for y in range(h):
+        if all(abs(px[w // 2, y][k] - rgb[k]) <= 6 for k in range(3)):
+            if runs and runs[-1][1] == y - 1:
+                runs[-1][1] = y
+            else:
+                runs.append([y, y])
+    return runs
+
+
+@case
+def scrolling_capture_browser(s, env):
+    """SCR-03 on a real browser (Chromium's smooth scrolling and its own scale): every row
+    once, in order; the sticky header once at the top and the fixed footer once at the
+    bottom (a smooth scroll's first small step once left footer rows in the middle)."""
+    if not shutil.which("chromium"):
+        raise Skip("needs chromium")
+    browser_page(s.tmp / "page.html", 300)
+    cmd = (f"chromium --user-data-dir={s.tmp / 'chromium'} --ozone-platform=wayland --no-first-run "
+           f"--no-default-browser-check --app=file://{s.tmp / 'page.html'}")
+    before = {c["address"] for c in hypr_json("clients")}
+    hypr_eval(f'hl.dispatch(hl.dsp.exec_cmd([[{cmd}]]))')
+    new = lambda: [c for c in hypr_json("clients") if c["address"] not in before]
+    assert wait_for(lambda: new(), 20), "the browser opens"
+    time.sleep(2.5)                                                      # the page has rendered
+    c = new()[0]
+    try:
+        mon = env.monitor()
+        lx, ly, lw, lh = c["at"][0] - mon["x"], c["at"][1] - mon["y"], c["size"][0], c["size"][1]
+        p = s.bg("scroll"); time.sleep(0.5)
+        s.drag(lx + 4, ly + 4, lx + lw - 4, ly + lh - 4)
+        assert wait_for(lambda: scroll_hud(s)["open"], 3), "the frame and panel show"
+        hypr_eval('hl.dispatch(hl.dsp.global("snip-e2e:scroll-go"))')
+        assert wait_for(lambda: scroll_hud(s)["phase"] == "capturing", 3)
+        s.move(lx + lw // 2, ly + lh // 2)
+        for _ in range(60):                                            # a notch at a time, as a hand turns the wheel
+            s.debug("wheel", 1)
+            time.sleep(0.18)
+        time.sleep(0.6)
+        hypr_eval('hl.dispatch(hl.dsp.global("snip-e2e:scroll-go"))')
+        r, code = finish(p)
+        assert code == 0, r
+        src = r["result"]["source"]
+        lines = numbered_lines(src)
+        assert lines == list(range(lines[0], lines[0] + len(lines))) and lines[0] == 0 and len(lines) > 150, ("every row once, in order", lines)
+        head, foot = colour_runs(src, (0x20, 0x28, 0x33)), colour_runs(src, (0x7a, 0x2a, 0x3a))
+        h = r["result"]["height"]
+        assert len(head) == 1 and head[0][0] == 0, ("the header once, at the top", head)
+        assert len(foot) == 1 and foot[0][1] == h - 1, ("the footer once, at the bottom", foot)
+    finally:
+        os.kill(c["pid"], 15)
+
+
 @case
 def scrolling_capture(s, env):
     """SCR-01/03: choose an area inside a window, Start (Enter), scroll by hand, Done (Enter):
