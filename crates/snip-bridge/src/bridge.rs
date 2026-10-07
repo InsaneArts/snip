@@ -181,6 +181,13 @@ pub mod qobject {
 
         #[qinvokable]
         fn annotate(self: Pin<&mut Engine>, id: QString);
+        /// Pin the capture to the screen (PIN-01)
+        #[qinvokable]
+        fn pin(self: Pin<&mut Engine>, id: QString);
+        /// Resize one of Snip's own windows (by its title) through Hyprland,
+        /// which keeps a floating window's size otherwise (a pin's zoom)
+        #[qinvokable]
+        fn resize_window(self: &Engine, title: QString, w: i32, h: i32);
 
         #[qinvokable]
         fn extract_text(self: Pin<&mut Engine>, id: QString);
@@ -250,6 +257,10 @@ pub mod qobject {
         /// A result to show on a card: text-copied | qr-copied | no-text | error
         #[qsignal]
         fn card_status(self: Pin<&mut Engine>, id: &QString, status: &QString, detail: &QString);
+
+        /// Open a pin (PIN-01): a card's JSON plus the scale of its output
+        #[qsignal]
+        fn pin_open(self: Pin<&mut Engine>, pin: &QString);
 
         /// Open an editor window: {id, image, doc, width, height, title}
         #[qsignal]
@@ -653,6 +664,21 @@ impl qobject::Engine {
         if let Some(i) = self.inner() {
             i.trash(&id.to_string());
         }
+    }
+
+    fn pin(self: Pin<&mut Self>, id: QString) {
+        if let Some(i) = self.inner() {
+            let _ = i.pin(&id.to_string());
+        }
+    }
+
+    fn resize_window(&self, title: QString, w: i32, h: i32) {
+        let class = std::env::var("SNIP_APP_ID").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "snip".into());
+        let title = title.to_string();
+        // off the GUI thread: it talks to Hyprland's socket
+        std::thread::spawn(move || {
+            let _ = snip_hypr::resize_window(&class, &title, w, h);
+        });
     }
 
     fn annotate(self: Pin<&mut Self>, id: QString) {

@@ -128,6 +128,14 @@ pub fn visible_windows() -> Vec<Client> {
     v
 }
 
+/// Resize the window of class `class` with this exact title to `w` × `h`
+/// (logical px): Hyprland keeps a floating window's size, so a client can't
+/// resize itself.
+pub fn resize_window(class: &str, title: &str, w: i32, h: i32) -> std::io::Result<String> {
+    let c = clients().into_iter().find(|c| c.class == class && c.title == title).ok_or_else(|| std::io::Error::other("no such window"))?;
+    eval(&format!(r#"hl.dispatch(hl.dsp.window.resize({{ x = {w}, y = {h}, window = "address:0x{:x}" }}))"#, c.address))
+}
+
 pub fn cursor_pos() -> Option<(i32, i32)> {
     let v = json("j/cursorpos");
     Some((v["x"].as_i64()? as i32, v["y"].as_i64()? as i32))
@@ -153,12 +161,14 @@ pub fn eval(lua: &str) -> std::io::Result<String> {
 
 /// Runtime rules Snip needs whatever the user's config says: overlays must
 /// appear instantly (no layer fade), which also keeps fading overlays out of
-/// the first frames of a recording; the editor floats, centred. Re-applied
+/// the first frames of a recording; the editor floats, centred; a pin floats
+/// on every workspace, above fullscreen windows, with its own look. Re-applied
 /// on every `configreloaded`.
 pub fn install_runtime_rules() -> std::io::Result<String> {
     eval(
         r#"SNIP_LAYER_RULE = hl.layer_rule({ match = { namespace = "^snip-" }, no_anim = true, animation = "none" })
-SNIP_EDITOR_RULE = hl.window_rule({ match = { title = "^Snip Editor" }, float = true, center = true, opacity = "1 1" })"#,
+SNIP_EDITOR_RULE = hl.window_rule({ match = { title = "^Snip Editor" }, float = true, center = true, opacity = "1 1" })
+SNIP_PIN_RULE = hl.window_rule({ match = { title = "^Snip Pin .*" }, float = true, pin = true, center = true, border_size = 0, no_shadow = true, no_blur = true, no_dim = true, no_anim = true, rounding = 0, opacity = "1 override 1 override", suppress_event = "maximize fullscreen" })"#,
     )
 }
 

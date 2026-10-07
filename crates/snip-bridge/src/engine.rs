@@ -1036,6 +1036,21 @@ impl Inner {
         }
     }
 
+    /// Pin a capture to the screen (PIN-01): its image floats above every
+    /// window, on every workspace of its monitor, at its own size.
+    pub fn pin(&self, id: &str) -> Result<Value, String> {
+        let rec = self.store.get(id).map_err(|e| e.to_string())?;
+        let monitors = snip_hypr::monitors();
+        let here = self.cursor_output();
+        let scale = monitors.iter().find(|m| m.name == rec.output).or_else(|| monitors.iter().find(|m| Some(&m.name) == here.as_ref())).map(|m| m.scale).unwrap_or(1.0);
+        let mut j = card_json(&rec, &rec.output);
+        j["scale"] = json!(scale);
+        let s = j.to_string();
+        trace::trace("pin_open", &format!("\"id\":\"{id}\""));
+        self.ui(move |e| e.pin_open(&QString::from(s.as_str())));
+        Ok(j)
+    }
+
     /// Open Snip's editor on a capture (ANN-16: its objects stay editable).
     pub fn edit(&self, id: &str) {
         let Ok(rec) = self.store.get(id) else { return };
@@ -1095,6 +1110,7 @@ impl Inner {
             let res = match action.as_str() {
                 "copy" => me.copy(&id),
                 "save" => me.save(&id).map(|_| ()),
+                "pin" => me.pin(&id).map(|_| ()),
                 _ => Ok(()),
             };
             match res {
@@ -1374,6 +1390,7 @@ impl Inner {
             Ctl::EditClipboard => ok_or(self.edit_clipboard()),
             Ctl::Copy { id } => ok_or(self.resolve_id(id).and_then(|id| self.copy(&id).map(|_| json!(id)))),
             Ctl::Save { id } => ok_or(self.resolve_id(id).and_then(|id| self.save(&id).map(|p| json!(p)))),
+            Ctl::Pin { id } => ok_or(self.resolve_id(id).and_then(|id| self.pin(&id))),
             Ctl::Search { query, n } => ok_or(
                 self.store
                     .search(&query, n)
@@ -1446,8 +1463,8 @@ impl Inner {
                 self.wl(Wl::PointerMove { output, x: n(1) as u32, y: n(2) as u32, w: w as u32, h: h as u32 });
                 Response::ok(Value::Null)
             }
-            "down" | "up" | "rdown" | "rup" => {
-                let button = if op.starts_with('r') { 0x111 } else { 0x110 };
+            "down" | "up" | "rdown" | "rup" | "mdown" | "mup" => {
+                let button = if op.starts_with('r') { 0x111 } else if op.starts_with('m') { 0x112 } else { 0x110 };
                 self.wl(Wl::PointerButton { down: op.ends_with("down"), button });
                 Response::ok(Value::Null)
             }

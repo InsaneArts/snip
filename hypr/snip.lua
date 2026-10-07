@@ -41,3 +41,7 @@ hl.layer_rule({ match = { namespace = "^snip-" }, no_anim = true, animation = "n
 -- (Hyprland 0.56: a rule matching class and title together, or a title
 -- pattern with non-ASCII characters, never matches.)
 hl.window_rule({ match = { title = "^Snip Editor" }, float = true, center = true, opacity = "1 1" })
+
+-- Pins float above every window, on every workspace of their monitor, and
+-- draw their own corners and shadow. (Rule patterns match the whole title.)
+hl.window_rule({ match = { title = "^Snip Pin .*" }, float = true, pin = true, center = true, border_size = 0, no_shadow = true, no_blur = true, no_dim = true, no_anim = true, rounding = 0, opacity = "1 override 1 override", suppress_event = "maximize fullscreen" })
