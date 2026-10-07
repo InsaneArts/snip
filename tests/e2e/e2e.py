@@ -905,6 +905,51 @@ def editor_floats(s, env):
     close_editor(s)
 
 
+def history_state(s):
+    n = len(s.traces("history_state"))
+    s.debug("ui", "history", "state")
+    assert wait_for(lambda: len(s.traces("history_state")) > n, 2), "no history state"
+    return s.traces("history_state")[-1]
+
+
+@case
+def history_window(s, env):
+    """HIS-01, 05: `snip history` shows past captures newest first; ←/→ move, Enter restores
+    one to Quick Access (the band stays for more), typing searches their text, Ctrl+C copies,
+    Esc clears the search then closes; Annotate opens the editor."""
+    recs = []
+    for words in (["alpha history"], ["zebra history"], ["gamma history"]):
+        png = s.tmp / f"hist-{words[0].split()[0]}.png"
+        make_text_png(png, words)
+        recs.append(open_card(s, png))
+        time.sleep(0.2)
+    assert wait_for(lambda: s.json("search", "zebra")["result"], 10), "the text is indexed"
+    s.cli("close-all")
+    assert s.json("history")["ok"]
+    assert wait_for(lambda: layer_mapped("snip-history"), 3), "the history band shows"
+    st = history_state(s)
+    assert st["open"] and st["items"][:3] == [r["id"] for r in reversed(recs)], (st["items"][:3], [r["id"] for r in recs])
+    s.debug("ui", "history", "keys", "{Right}{Return}")       # the second newest: zebra
+    assert wait_for(lambda: recs[1]["id"] in s.json("status")["result"]["cards"], 3), "Enter restores it to Quick Access"
+    st = history_state(s)
+    assert st["open"] and st["restored"] == [recs[1]["id"]], st
+    s.debug("ui", "history", "keys", "zebra")
+    assert wait_for(lambda: history_state(s)["items"] == [recs[1]["id"]], 3), history_state(s)
+    s.debug("ui", "history", "keys", "{ctrl+c}")
+    assert wait_for(lambda: "image/png" in sh("wl-paste", "-l", check=False).stdout.split(), 3), "Ctrl+C copies the capture"
+    s.debug("ui", "history", "keys", "{Escape}")                # clears the search (the list follows 120 ms later)
+    assert wait_for(lambda: len(history_state(s)["items"]) >= 3, 2), history_state(s)
+    assert history_state(s)["open"] and history_state(s)["query"] == "", "Esc cleared the search, the band stays"
+    s.debug("ui", "history", "keys", "{Escape}")                # closes
+    assert wait_for(lambda: not layer_mapped("snip-history"), 3), "Esc closes it"
+    s.json("history")
+    assert wait_for(lambda: history_state(s)["open"], 3)
+    s.debug("ui", "history", "annotate")
+    assert wait_for(lambda: editor_window(), 5), "Annotate opens the editor"
+    assert not history_state(s)["open"], "and the band goes"
+    close_editor(s)
+
+
 @case
 def editor_round_trip(s, env):
     """ANN-15/16/19: snip edit FILE opens the editor; the export is pixel-exact outside the
