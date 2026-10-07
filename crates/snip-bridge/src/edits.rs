@@ -1,9 +1,9 @@
-//! Rendered editor images on their way from C++ to the engine. The editor's
-//! export (`Platform.grabExact`) hands its pixels over under a token, and
-//! `Engine.editor_commit` takes them by that token.
+//! Pixels the editor shares with C++: renders on their way to the engine
+//! (`Platform.grabExact` hands them over under a token, `editor_commit`
+//! takes them), and decoded images the Pixelate tiles are built from.
 
 use std::collections::HashMap;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 /// Straight (not premultiplied) RGBA, tightly packed.
 pub struct Rendered {
@@ -35,4 +35,27 @@ pub fn put(token: u32, data: &[u8], width: u32, height: u32, stride: u32) {
 
 pub fn take(token: u32) -> Option<Rendered> {
     map().lock().unwrap().remove(&token)
+}
+
+pub struct Decoded {
+    pub data: Vec<u8>,
+    pub width: u32,
+    pub height: u32,
+    pub bpp: usize,
+}
+
+/// The image at `path`, decoded once: a Pixelate region asks for new tiles
+/// on every pointer move.
+pub fn decoded(path: &str) -> Option<Arc<Decoded>> {
+    static CACHE: OnceLock<Mutex<Vec<(String, Arc<Decoded>)>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(Default::default);
+    if let Some(d) = cache.lock().unwrap().iter().find(|(p, _)| p == path).map(|(_, d)| d.clone()) {
+        return Some(d);
+    }
+    let (data, width, height, alpha) = snip_core::encode::decode_png(&std::fs::read(path).ok()?).ok()?;
+    let d = Arc::new(Decoded { data, width, height, bpp: if alpha { 4 } else { 3 } });
+    let mut c = cache.lock().unwrap();
+    c.insert(0, (path.to_string(), d.clone()));
+    c.truncate(2);
+    Some(d)
 }

@@ -24,6 +24,15 @@ pub mod qobject {
         transform: u32,
     }
 
+    /// Tiles for the editor's Pixelate / Blur (opaque RGBA, width × height).
+    #[derive(Default)]
+    struct RedactTiles {
+        valid: bool,
+        width: u32,
+        height: u32,
+        rgba: Vec<u8>,
+    }
+
     #[auto_cxx_name]
     extern "RustQt" {
         #[qobject]
@@ -185,6 +194,9 @@ pub mod qobject {
         /// An editor render, straight RGBA8888 rows `stride` bytes apart,
         /// kept under `token` for editor_commit.
         fn edit_put(token: u32, data: &[u8], width: u32, height: u32, stride: u32);
+        /// Pixelate (style 0) or Blur (1) tiles for a region of the image at
+        /// `path`, built only from pixels outside it (ANN-06, D26).
+        fn redact_tiles(path: &QString, x: i32, y: i32, w: i32, h: i32, style: u32, seed: u32) -> RedactTiles;
         /// Another snipd already answers on ctl.sock.
         fn already_running() -> bool;
     }
@@ -458,6 +470,17 @@ unsafe fn frame_release(handle: usize) {
 
 fn edit_put(token: u32, data: &[u8], width: u32, height: u32, stride: u32) {
     crate::edits::put(token, data, width, height, stride);
+}
+
+fn redact_tiles(path: &QString, x: i32, y: i32, w: i32, h: i32, style: u32, seed: u32) -> qobject::RedactTiles {
+    let style = if style == 1 { snip_core::redact::Style::Blur } else { snip_core::redact::Style::Pixelate };
+    match crate::edits::decoded(&path.to_string()) {
+        Some(img) => {
+            let (rgba, width, height) = snip_core::redact::tiles(&img.data, img.width, img.height, img.bpp, (x as i64, y as i64, w as i64, h as i64), style, seed);
+            qobject::RedactTiles { valid: true, width, height, rgba }
+        }
+        None => qobject::RedactTiles::default(),
+    }
 }
 
 fn mark_time(ev: &QString, extra_json: &QString) {

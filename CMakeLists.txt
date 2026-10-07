@@ -63,7 +63,8 @@ qt_add_qml_module(snipd
   SOURCES
     app/src/frozenframe.cpp app/src/frozenframe.h
     app/src/loupe.cpp app/src/loupe.h
-    app/src/platform.cpp app/src/platform.h)
+    app/src/platform.cpp app/src/platform.h
+    app/src/redact.cpp app/src/redact.h)
 
 target_link_libraries(snipd PRIVATE
   snip_core_qml
