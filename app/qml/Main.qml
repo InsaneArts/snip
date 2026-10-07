@@ -74,6 +74,13 @@ QtObject {
         Engine.finishArea(out, x, y, w, h, kind)
     }
 
+    // the eyedropper (ANN-13): the colour under the pointer
+    function finishPick(win) {
+        const hex = Platform.hex(win.magnifierColor)
+        closeOverlay()
+        Engine.finishPick(hex)
+    }
+
     function finishWindow(win, w, phys) {
         const out = win.outputName, addr = w.address, invert = shiftHeld
         const x = phys.x, y = phys.y, pw = phys.width, ph = phys.height
