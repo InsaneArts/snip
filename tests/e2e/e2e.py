@@ -112,6 +112,7 @@ class Snip:
             SNIP_APP_ID="snip-e2e",   # never trigger (or be triggered by) the user's daemon
             SNIP_OUTPUTS=OUT,         # overlays only on the test output
             SNIP_TRACE="1",
+            SNIP_NO_PORTALS="1",      # no portal dialog may open on the user's screen
             QT_FORCE_STDERR_LOGGING="1",
         )
         (self.tmp / "cfg/snip").mkdir(parents=True)
@@ -2076,6 +2077,24 @@ def project_file(s, env):
     s.debug("ui", "editor", "delete", 0)                          # the objects are objects again
     editor_flush(s)
     assert Image.open(rec2["source"]).convert("RGB").getpixel((40, 40)) == Image.open(base).convert("RGB").getpixel((40, 40)), "the rectangle came off"
+    close_editor(s)
+
+
+@case
+def open_with(s, env):
+    """CleanShot's share is "Open With…" here: the editor writes its edits back first,
+    then asks the desktop's app chooser (the portal; not opened in tests) for that file."""
+    from PIL import Image
+    png = s.tmp / "share.png"
+    Image.new("RGB", (300, 200), "white").save(png)
+    rec = s.json("edit", str(png))["result"]
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3), "the editor opens"
+    s.debug("ui", "editor", "frect", 20, 20, 60, 40)
+    s.debug("ui", "editor", "share")
+    assert wait_for(lambda: [e for e in s.traces("open_with") if e["id"] == rec["id"]], 5), "Open With asked"
+    path = [e for e in s.traces("open_with") if e["id"] == rec["id"]][-1]["path"]
+    assert Path(path).exists() and Image.open(path).convert("RGB").getpixel((40, 40))[1] < 100, ("the edited image", path)
+    assert editor_window(), "the editor stays open"
     close_editor(s)
 
 
