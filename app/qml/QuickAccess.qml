@@ -219,7 +219,7 @@ Window {
         capturing = true
         awaitSwap = true
         Platform.notifyNextFrame(qa)
-        captureGo.restart()     // fallback if no frame comes
+        captureGo.restart()     // fallback if the window draws nothing at all
     }
     function releaseCapture() {
         if (!awaitSwap) return
@@ -231,7 +231,9 @@ Window {
         target: Platform
         function onFramePresented(w) { if (w === qa) qa.releaseCapture() }
     }
-    Timer { id: captureGo; interval: 40; onTriggered: qa.releaseCapture() }
+    // Only for a window that stopped drawing. A slow one (a busy or nested
+    // compositor) would otherwise be captured with its cards (seen at 15 fps).
+    Timer { id: captureGo; interval: 250; onTriggered: qa.releaseCapture() }
 
     // The window has shown a frame since it was (re)mapped.
     property bool presented: false
