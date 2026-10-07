@@ -1310,7 +1310,7 @@ Window {
 
     // ---------------------------------------------------------------- dropdowns
     function openMenuNamed(name, anchorItem) {
-        openMenu({ color: colorMenu, size: sizeMenu, style: styleMenu, level: levelMenu, presets: presetsMenu, zoom: zoomMenu, arrow: arrowMenu, text: textMenu, dim: dimMenu,
+        openMenu({ color: colorMenu, size: sizeMenu, style: styleMenu, level: levelMenu, presets: presetsMenu, bgColor: bgColorMenu, zoom: zoomMenu, arrow: arrowMenu, text: textMenu, dim: dimMenu,
                    counter: counterMenu, opacity: opacityMenu, ratio: ratioMenu, resize: resizeMenu, addImage: addImageMenu }[name], anchorItem)
     }
     property Item openedMenu: null
@@ -1378,10 +1378,13 @@ Window {
     property bool customOpen: false
     // the eyedropper: the next click on the image picks its colour
     property bool picking: false
+    property bool pickingBg: false      // the eyedropper picks the background's colour
     function pickAt(ix, iy) {
         picking = false
         const c = Engine.pixelColor(basePath, Math.floor(ix), Math.floor(iy))
-        if (c) setColor(c)
+        if (c && pickingBg) setBg({ kind: "color", value: c })
+        else if (c) setColor(c)
+        pickingBg = false
     }
 
     Menu {
@@ -1661,6 +1664,18 @@ Window {
                     cursorShape: Qt.PointingHandCursor; onClicked: menuRow.activated() }
     }
 
+    // the Background tool's own colour: shown while picking, one undo step when it closes
+    Menu {
+        id: bgColorMenu
+        onVisibleChanged: if (!visible && ed.bgPreview) ed.setBg(ed.bgPreview)
+        ColorPanel {
+            value: ed.bgLive && ed.bgLive.kind === "color" && ed.bgLive.value.startsWith("#") ? ed.bgLive.value : "#3a7bd5"
+            onPicked: (c) => ed.previewBg({ kind: "color", value: c })
+            onSave: ed.saveColor(current)
+            onEyedropper: { ed.pickingBg = true; ed.picking = true; ed.openedMenu = null }
+        }
+    }
+
     // the Background tool's presets (BG-03)
     Menu {
         id: presetsMenu
@@ -1827,6 +1842,8 @@ Window {
         case "bg-preset-save": saveBgPreset(a.slice(1).join(" ")); break
         case "bg-preset-delete": deleteBgPreset(a.slice(1).join(" ")); break
         case "bg-previous": applyPreviousBg(); break
+        case "add-wallpaper": bgPanel.addWallpaper(a.slice(1).join(" ")); break
+        case "remove-wallpaper": bgPanel.removeWallpaper(a.slice(1).join(" ")); break
         case "color": setColor(a[1]); break
         case "tool": setTool(a[1]); break
         case "undo": undo(); break
@@ -1849,7 +1866,7 @@ Window {
                 selectionBox: { x: selectionBox.x, y: selectionBox.y, w: selectionBox.width, h: selectionBox.height },
                 words: words ? words.length : -1, fill: doc.fill || "", shownX: shown.x, shownY: shown.y,
                 imgW: imgW, imgH: imgH, base: doc.base || "", bg: doc.bg || null, exportRect: exportRect,
-                bgPresets: bgPresets.map(p => p.name), bgPreset: bgPreset, bgPresetChanged: bgPresetChanged,
+                bgPresets: bgPresets.map(p => p.name), bgPreset: bgPreset, bgPresetChanged: bgPresetChanged, ownWalls: bgPanel.ownWalls,
                 shadows: annotateCfg.object_shadows !== false, ink: ink, savedColors: savedColors, picking: picking,
                 counterLabels: doc.items.map((o, i) => o.kind === "counter" ? Ed.counterLabel(doc, Ed.counterNumber(doc.items, i), o.style) : null).filter(l => l !== null)
             }).slice(1, -1))
