@@ -1203,11 +1203,47 @@ def editor_crop(s, env):
     s.debug("ui", "editor", "tool", "crop")
     time.sleep(0.3)
     w, mon, st = editor_window(), env.monitor(), editor_state(s)
-    at = lambda ix, iy: (w["at"][0] - mon["x"] + st["originX"] + ix * st["k"], w["at"][1] - mon["y"] + st["originY"] + iy * st["k"])
+    # cropping shows room around the image: the view starts at (shownX, shownY)
+    at = lambda ix, iy: (w["at"][0] - mon["x"] + st["originX"] + (ix - st["shownX"]) * st["k"], w["at"][1] - mon["y"] + st["originY"] + (iy - st["shownY"]) * st["k"])
     s.drag(*at(301, 203), *at(201, 153), steps=5)
     time.sleep(0.2)
     c = editor_state(s)["crop"]
     assert c and c["x"] == 0 and c["y"] == 0 and abs(c["w"] - 201) <= 2 and abs(c["h"] - 153) <= 2, c
+    close_editor(s)
+
+
+@case
+def editor_crop_outward_and_ratios(s, env):
+    """ANN-11: cropping outward grows the canvas in the image's edge colour; a ratio
+    squares the crop; a handle dragged near the image's edge snaps onto it."""
+    from PIL import Image
+    im = Image.new("RGB", (300, 200), (40, 120, 200))
+    im.paste((250, 250, 250), (100, 60, 200, 140))
+    png = s.tmp / "outward.png"
+    im.save(png)
+    rec = s.json("edit", str(png))["result"]
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    s.debug("ui", "editor", "crop", -40, -30, 380, 260)
+    assert editor_state(s)["fill"].lower() == "#2878c8", editor_state(s)["fill"]
+    editor_flush(s)
+    out = Image.open(rec["source"]).convert("RGB")
+    assert out.size == (380, 260), out.size
+    assert out.getpixel((5, 5)) == (40, 120, 200) and out.getpixel((40 + 150, 30 + 100)) == (250, 250, 250), "grown canvas, image in place"
+    assert out.crop((40, 30, 340, 230)).tobytes() == im.tobytes(), "the image is exact inside the grown canvas"
+
+    s.debug("ui", "editor", "crop", "reset")
+    s.debug("ui", "editor", "crop-ratio", 1)
+    c = editor_state(s)["crop"]
+    assert c and c["w"] == c["h"] == 200, c                     # the largest square in 300 x 200
+
+    s.debug("ui", "editor", "crop-ratio", 0)
+    s.debug("ui", "editor", "crop", 20, 20, 200, 120)
+    s.debug("ui", "editor", "tool", "crop"); time.sleep(0.3)
+    w, mon, st = editor_window(), env.monitor(), editor_state(s)
+    at = lambda ix, iy: (w["at"][0] - mon["x"] + st["originX"] + (ix - st["shownX"]) * st["k"], w["at"][1] - mon["y"] + st["originY"] + (iy - st["shownY"]) * st["k"])
+    s.drag(*at(220, 140), *at(296, 197), steps=5); time.sleep(0.2)   # near the corner (300, 200)
+    c = editor_state(s)["crop"]
+    assert (c["x"] + c["w"], c["y"] + c["h"]) == (300, 200), ("snapped to the image's corner", c)
     close_editor(s)
 
 
