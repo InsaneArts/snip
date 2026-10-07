@@ -145,7 +145,10 @@ QtObject {
         function onCardUpdate(id, card) { root.quickAccess.update(id, JSON.parse(card)) }
         function onCardsCommand(cmd) { root.quickAccess.command(cmd) }
         function onToast(text, output) { root.toast.show(text, output || root.lastOutput || root.quickAccess.output || Qt.application.screens[0].name) }
-        function onCardStatus(id, status, detail) { root.quickAccess.cardStatus(id, status, detail) }
+        function onCardStatus(id, status, detail) {
+            root.quickAccess.cardStatus(id, status, detail)
+            for (const p of root.pins) if (p.capture.id === id) { p.status(status, detail); break }
+        }
         function onQuitRequested() { Qt.quit() }
         function onDebugCommand(cmd) { root.debug(cmd) }
         function onEditorOpen(json) { root.openEditor(JSON.parse(json)) }
