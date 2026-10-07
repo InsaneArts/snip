@@ -56,6 +56,10 @@ pub mod qobject {
         #[qinvokable]
         fn cancel(self: Pin<&mut Engine>);
 
+        /// The self-timer's countdown is over and off screen: capture.
+        #[qinvokable]
+        fn countdown_done(self: &Engine);
+
         /// The overlay is on screen: hand it the pointer even if it hasn't moved.
         #[qinvokable]
         fn refocus_pointer(self: &Engine);
@@ -106,6 +110,14 @@ pub mod qobject {
 
         #[qsignal]
         fn cancel_requested(self: Pin<&mut Engine>);
+
+        /// CAP-06: show a countdown on `output` around the logical area
+        /// (x < 0: the whole output), then call countdown_done.
+        #[qsignal]
+        fn countdown(self: Pin<&mut Engine>, output: &QString, x: i32, y: i32, w: i32, h: i32, seconds: i32);
+
+        #[qsignal]
+        fn countdown_cancel(self: Pin<&mut Engine>);
 
         /// Take Snip's own cards off screen before capture `request`.
         #[qsignal]
@@ -210,6 +222,8 @@ impl qobject::Engine {
                 ("text", "Capture text (OCR)"),
                 ("all-in-one", "All-In-One"),
                 ("restore", "Restore the last closed capture"),
+                ("timer-area", "Self-timer: area"),
+                ("timer-fullscreen", "Self-timer: fullscreen"),
                 ("close-all", "Close all Quick Access cards"),
             ] {
                 wl.send(snip_wayland::Request::RegisterShortcut { id: id.into(), description: d.into() });
@@ -256,7 +270,7 @@ impl qobject::Engine {
 
     fn capture(self: Pin<&mut Self>, mode: QString) {
         if let Some(i) = self.inner() {
-            i.begin(&mode.to_string(), None, None, None);
+            i.begin(&mode.to_string(), None, None, None, 0);
         }
     }
 
@@ -282,6 +296,12 @@ impl qobject::Engine {
     fn capture_ready(self: Pin<&mut Self>, request: i32) {
         if let Some(i) = self.inner() {
             i.capture_ready(request as u64);
+        }
+    }
+
+    fn countdown_done(&self) {
+        if let Some(i) = self.inner() {
+            i.countdown_done();
         }
     }
 
