@@ -4,7 +4,8 @@ import "editor.js" as Ed
 
 // The Background tool's panel (BG-01…06), CleanShot's sidebar: presets and
 // None, sources (gradients, the Omarchy theme's wallpapers, blurred, plain
-// colours), then padding, inset, shadow, corners, ratio and alignment.
+// colours), then padding, inset and Auto-balance, shadow, corners, ratio and
+// alignment.
 Rectangle {
     id: panel
     required property var ed
@@ -244,18 +245,42 @@ Rectangle {
                      value: panel.bg ? panel.bg.padding / panel.ed.unit : 0
                      onMoved: (v) => panel.ed.previewBg({ padding: Math.round(v * panel.ed.unit) })
                      onReleased: (v) => panel.ed.setBg({ padding: Math.round(v * panel.ed.unit) }) }
-            Slider { width: parent.width; label: "Inset"; from: 0; to: 60; unit: " px"
-                     value: panel.bg ? panel.bg.inset / panel.ed.unit : 0
-                     onMoved: (v) => panel.ed.previewBg({ inset: Math.round(v * panel.ed.unit) })
-                     onReleased: (v) => panel.ed.setBg({ inset: Math.round(v * panel.ed.unit) }) }
-            Slider { width: parent.width; label: "Shadow"; from: 0; to: 100; unit: "%"
-                     value: panel.bg ? panel.bg.shadow * 100 : 0
-                     onMoved: (v) => panel.ed.previewBg({ shadow: v / 100 })
-                     onReleased: (v) => panel.ed.setBg({ shadow: v / 100 }) }
-            Slider { width: parent.width; label: "Corners"; from: 0; to: 60; unit: " px"
-                     value: panel.bg ? panel.bg.radius / panel.ed.unit : 0
-                     onMoved: (v) => panel.ed.previewBg({ radius: Math.round(v * panel.ed.unit) })
-                     onReleased: (v) => panel.ed.setBg({ radius: Math.round(v * panel.ed.unit) }) }
+            // CleanShot's pairs: Inset with Auto-balance, Shadow with Corners
+            Row {
+                width: parent.width; spacing: 16
+                Slider { width: (parent.width - 16) / 2; label: "Inset"; from: 0; to: 60; unit: " px"
+                         value: panel.bg ? panel.bg.inset / panel.ed.unit : 0
+                         onMoved: (v) => panel.ed.previewBg({ inset: Math.round(v * panel.ed.unit) })
+                         onReleased: (v) => panel.ed.setBg({ inset: Math.round(v * panel.ed.unit) }) }
+                // Auto-balance (BG-02): even margins around the content
+                Item {
+                    width: (parent.width - 16) / 2; height: 40
+                    Row {
+                        y: 20; spacing: 8
+                        Rectangle {
+                            readonly property bool on: !!panel.bg && !!panel.bg.balance
+                            width: 16; height: 16; radius: 4
+                            color: on ? Theme.accent : "transparent"
+                            border.width: on ? 0 : 1.5; border.color: Theme.textSecondary
+                            Icon { visible: parent.on; anchors.centerIn: parent; name: "check"; size: 12; stroke: 2.5; color: Theme.background }
+                        }
+                        Text { text: "Auto-balance"; color: Theme.text; font.family: Theme.fontUi; font.pixelSize: 12 }
+                    }
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                onClicked: panel.ed.setBg({ balance: !(panel.bg && panel.bg.balance) }) }
+                }
+            }
+            Row {
+                width: parent.width; spacing: 16
+                Slider { width: (parent.width - 16) / 2; label: "Shadow"; from: 0; to: 100; unit: "%"
+                         value: panel.bg ? panel.bg.shadow * 100 : 0
+                         onMoved: (v) => panel.ed.previewBg({ shadow: v / 100 })
+                         onReleased: (v) => panel.ed.setBg({ shadow: v / 100 }) }
+                Slider { width: (parent.width - 16) / 2; label: "Corners"; from: 0; to: 60; unit: " px"
+                         value: panel.bg ? panel.bg.radius / panel.ed.unit : 0
+                         onMoved: (v) => panel.ed.previewBg({ radius: Math.round(v * panel.ed.unit) })
+                         onReleased: (v) => panel.ed.setBg({ radius: Math.round(v * panel.ed.unit) }) }
+            }
 
             Heading { text: "Aspect ratio" }
             Flow {
