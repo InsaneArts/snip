@@ -9,6 +9,7 @@ const USAGE: &str = "usage: snip [--json] <command>
 
 capture
   area | fullscreen | window | previous | text | all-in-one | area-pin [--monitor NAME] [--cursor | --no-cursor]
+  scroll           scrolling capture: choose the area, Start, scroll, Done (Enter; Esc cancels)
   area | fullscreen --delay N   self-timer: N seconds of countdown, then the capture
   open FILE        add an image (or a .snip project) as a capture, with a Quick Access card
   edit FILE        open an image or a .snip project in Snip's editor (as a new capture)
@@ -48,7 +49,7 @@ fn main() -> ExitCode {
     };
     let arg1 = args.get(1).cloned();
     let (req, timeout) = match cmd.as_str() {
-        "area" | "fullscreen" | "window" | "previous" | "text" | "all-in-one" | "area-pin" => {
+        "area" | "fullscreen" | "window" | "previous" | "text" | "all-in-one" | "area-pin" | "scroll" => {
             let monitor = flag(&mut args, "--monitor");
             let cursor = if args.iter().any(|a| a == "--cursor") {
                 Some(true)

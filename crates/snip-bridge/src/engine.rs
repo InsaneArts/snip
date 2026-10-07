@@ -27,6 +27,8 @@ use snip_wayland::{CaptureResult, Event, Features, Frame, OutputInfo, Request as
 use crate::bridge::qobject::Engine;
 use crate::frames;
 
+mod scroll;
+
 pub type Waiter = mpsc::Sender<Response>;
 
 const SHUTTER: &[u8] = include_bytes!("../../../app/sounds/shutter.wav");
@@ -49,6 +51,8 @@ enum Pending {
     Region { waiter: Option<Waiter>, output: String, rect: Option<Rect>, kind: String },
     /// A clean window buffer (CAP-05)
     Window { waiter: Option<Waiter>, client: Client, output: String, shadow: bool, fallback: Option<Frame>, rect: Rect },
+    /// A frame of a scrolling capture (SCR-01)
+    Scroll { tx: mpsc::Sender<CaptureResult> },
 }
 
 struct Session {
@@ -95,6 +99,8 @@ pub struct Inner {
     /// Wakes the history indexer (HIS-05)
     index_wake: Mutex<Option<mpsc::Sender<()>>>,
     countdown: Mutex<Option<Countdown>>,
+    /// A scrolling capture (SCR-01), from the chosen area until Done
+    scroll: Mutex<Option<scroll::Scroll>>,
 }
 
 fn reply(w: Option<Waiter>, r: Response) {
@@ -170,6 +176,7 @@ impl Inner {
             deferred: Mutex::new(HashMap::new()),
             index_wake: Mutex::new(None),
             countdown: Mutex::new(None),
+            scroll: Mutex::new(None),
         }))
     }
 
@@ -266,7 +273,9 @@ impl Inner {
 
     fn shortcut(self: &Arc<Self>, id: &str) {
         match id {
-            "area" | "fullscreen" | "window" | "previous" | "text" | "all-in-one" | "area-pin" => self.begin(id, None, None, None, 0),
+            "area" | "fullscreen" | "window" | "previous" | "text" | "all-in-one" | "area-pin" | "scroll" => self.begin(id, None, None, None, 0),
+            "scroll-go" => self.scroll_go(),
+            "scroll-cancel" => self.scroll_cancel(),
             "timer-area" | "timer-fullscreen" => {
                 let delay = self.cfg().capture.timer_seconds;
                 self.begin(&id["timer-".len()..], None, None, None, delay)
@@ -309,7 +318,7 @@ impl Inner {
             return;
         }
         match mode {
-            "area" | "window" | "text" | "all-in-one" | "insert" | "pick" | "area-pin" => {
+            "area" | "window" | "text" | "all-in-one" | "insert" | "pick" | "area-pin" | "scroll" => {
                 // SEL-09: the capture hotkey while the overlay is up cancels it.
                 if let Some(s) = self.session.lock().unwrap().take() {
                     reply(s.waiter, cancelled());
@@ -420,6 +429,10 @@ impl Inner {
     }
 
     fn captured(self: &Arc<Self>, p: Pending, r: CaptureResult) {
+        if let Pending::Scroll { tx } = p {
+            let _ = tx.send(r);
+            return;
+        }
         // The stack comes back now, except for a selection: then it returns
         // when the overlay closes (QML), so it can't flash in between.
         if !matches!(p, Pending::Overlay { .. }) || r.frames.is_empty() {
@@ -452,6 +465,7 @@ impl Inner {
                 let rect = rect.unwrap_or(Rect::new(0, 0, uw, uh));
                 self.finish_from_frame(&frame, rect, &kind, &output, waiter);
             }
+            Pending::Scroll { .. } => {}
             Pending::Window { waiter, client, output, shadow, fallback, rect } => {
                 match r.frames.into_iter().next() {
                     Some(f) => self.finish_window_frame(&f, &client, &output, shadow, waiter),
@@ -528,6 +542,11 @@ impl Inner {
     pub fn finish_area(self: &Arc<Self>, output: String, rect: Rect, kind: String) {
         trace::trace("finish_area", &format!("\"output\":{},\"rect\":[{},{},{},{}],\"kind\":{}", js(&output), rect.x, rect.y, rect.w, rect.h, js(&kind)));
         let Some(s) = self.session.lock().unwrap().take() else { return };
+        if s.mode == "scroll" {
+            let scale = frames::get(&output).map(|f| f.scale).unwrap_or(1.0);
+            frames::clear();
+            return self.scroll_open(output, rect, scale, s.waiter, &s.clients);
+        }
         // Capture Area & Pin (PIN-01): an area, pinned where it was
         let kind = if s.mode == "text" || s.mode == "insert" || (s.mode == "area-pin" && kind == "area") { s.mode.clone() } else { kind };
         if kind == "area" || kind == "area-pin" {
@@ -592,6 +611,12 @@ impl Inner {
     /// Window mode click (CAP-05): the window's own buffer, never occluded.
     pub fn finish_window(self: &Arc<Self>, address: &str, output: String, rect: Rect, invert: bool) {
         let Some(s) = self.session.lock().unwrap().take() else { return };
+        if s.mode == "scroll" {
+            // Space then a click: the window's area, scrolled
+            let scale = frames::get(&output).map(|f| f.scale).unwrap_or(1.0);
+            frames::clear();
+            return self.scroll_open(output, rect, scale, s.waiter, &s.clients);
+        }
         if s.mode == "insert" {
             // for an editor: the window as it is on screen
             self.play("shutter");
