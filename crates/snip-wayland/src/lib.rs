@@ -62,6 +62,9 @@ pub enum Request {
     Capture { request: u64, source: Source, cursor: bool },
     /// Offer these MIME types; replaces any current selection.
     SetClipboard { offers: Vec<(String, Arc<Vec<u8>>)> },
+    /// The clipboard's contents in the first of `mimes` it offers, answered
+    /// on `reply` (None: empty, none of those types, or unreadable).
+    ReadClipboard { mimes: Vec<String>, reply: std::sync::mpsc::Sender<Option<(String, Vec<u8>)>> },
     RegisterShortcut { id: String, description: String },
     PointerMove { output: String, x: u32, y: u32, w: u32, h: u32 },
     /// Linux button code: 0x110 left, 0x111 right, 0x112 middle
