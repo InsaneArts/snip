@@ -10,6 +10,25 @@ Rectangle {
     required property var ed
     readonly property var bg: ed.bgLive
     readonly property var walls: JSON.parse(Engine.wallpapers() || "[]")
+    // the user's own wallpapers (BG-01), added with + or by dropping a file
+    property var ownWalls: JSON.parse(Engine.customWallpapers() || "[]")
+    function addWallpaper(path) {
+        const p = Engine.addWallpaper(path)
+        if (!p) return
+        ownWalls = JSON.parse(Engine.customWallpapers() || "[]")
+        ed.setBg({ kind: "wallpaper", value: p })
+    }
+    function removeWallpaper(path) {
+        Engine.removeWallpaper(path)
+        ownWalls = JSON.parse(Engine.customWallpapers() || "[]")
+        if (bg && bg.value === path) ed.setBg(null)
+    }
+    property int wallToken: 0
+    Connections {
+        target: Platform
+        function onFileChosen(token, path) { if (token === panel.wallToken && path !== "") panel.addWallpaper(path) }
+    }
+    property bool allGradients: true
     property bool naming: false
     onNamingChanged: if (naming) { presetName.text = ""; presetName.forceActiveFocus() }
     function finishNaming(save) {
@@ -86,11 +105,19 @@ Rectangle {
                             onClicked: { panel.ed.setBg(null); panel.ed.bgPreset = "" } }
             }
 
-            Heading { text: "Gradients" }
+            Item {
+                width: parent.width; height: gradHead.implicitHeight
+                Heading { id: gradHead; text: "Gradients" }
+                Text { anchors { right: parent.right; bottom: parent.bottom }
+                       text: panel.allGradients ? "Show less ⌃" : "Show more ⌄"; color: Theme.textSecondary
+                       font.family: Theme.fontUi; font.pixelSize: 12
+                       MouseArea { anchors.fill: parent; anchors.margins: -4; cursorShape: Qt.PointingHandCursor
+                                   onClicked: panel.allGradients = !panel.allGradients } }
+            }
             Grid {
                 columns: 5; spacing: 6
                 Repeater {
-                    model: Ed.gradients.length
+                    model: panel.allGradients ? Ed.gradients.length : 10
                     delegate: Tile {
                         required property int index
                         current: !!panel.bg && panel.bg.kind === "gradient" && panel.bg.value === index
@@ -104,18 +131,57 @@ Rectangle {
                 }
             }
 
-            Heading { text: "Wallpapers"; visible: panel.walls.length > 0 }
-            Grid {
-                columns: 5; spacing: 6
-                Repeater {
-                    model: panel.walls
-                    delegate: Tile {
-                        required property string modelData
-                        current: !!panel.bg && panel.bg.kind === "wallpaper" && panel.bg.value === modelData
-                        clip: true
-                        Image { anchors.fill: parent; anchors.margins: 2; source: "file://" + parent.modelData; fillMode: Image.PreserveAspectCrop
-                                sourceSize: Qt.size(120, 80); asynchronous: true }
-                        onPicked: panel.ed.setBg({ kind: "wallpaper", value: modelData })
+            Heading { text: "Wallpapers" }
+            Item {
+                width: parent.width; height: wallGrid.height
+                Grid {
+                    id: wallGrid
+                    columns: 5; spacing: 6
+                    Repeater {
+                        model: panel.walls.concat(panel.ownWalls)
+                        delegate: Tile {
+                            id: wallTile
+                            required property string modelData
+                            readonly property bool own: panel.ownWalls.indexOf(modelData) >= 0
+                            current: !!panel.bg && panel.bg.kind === "wallpaper" && panel.bg.value === modelData
+                            clip: true
+                            Image { anchors.fill: parent; anchors.margins: 2; source: "file://" + parent.modelData; fillMode: Image.PreserveAspectCrop
+                                    sourceSize: Qt.size(120, 80); asynchronous: true }
+                            onPicked: panel.ed.setBg({ kind: "wallpaper", value: modelData })
+                            HoverHandler { id: wallHover }
+                            // the user's own ones can go again
+                            Rectangle {
+                                visible: wallTile.own && wallHover.hovered
+                                anchors { right: parent.right; top: parent.top; margins: 3 }
+                                width: 16; height: 16; radius: 8; color: Qt.rgba(0, 0, 0, 0.6)
+                                Icon { anchors.centerIn: parent; name: "x"; size: 10; stroke: 2.2; color: "white" }
+                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: panel.removeWallpaper(wallTile.modelData) }
+                            }
+                        }
+                    }
+                    // + : add an image of your own (or drop one here)
+                    Tile {
+                        color: "transparent"
+                        border.width: 0
+                        Canvas {
+                            anchors.fill: parent
+                            onPaint: {
+                                const g = getContext("2d")
+                                g.clearRect(0, 0, width, height)
+                                g.setLineDash([3, 3]); g.lineWidth = 1.2; g.strokeStyle = Theme.textSecondary
+                                g.beginPath(); g.roundedRect(1, 1, width - 2, height - 2, 7, 7); g.stroke()
+                            }
+                        }
+                        Icon { anchors.centerIn: parent; name: "plus"; size: 16; color: Theme.text }
+                        onPicked: { panel.wallToken = panel.ed.controller.nextToken(); Platform.openImageDialog(panel.wallToken, "Add Wallpaper") }
+                    }
+                }
+                DropArea {
+                    anchors.fill: parent
+                    keys: ["text/uri-list"]
+                    onDropped: (drop) => {
+                        for (const u of drop.urls) panel.addWallpaper(decodeURIComponent(String(u).replace(/^file:\/\//, "")))
+                        drop.accept()
                     }
                 }
             }
@@ -155,6 +221,22 @@ Rectangle {
                         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                                     onClicked: panel.ed.setBg({ kind: "color", value: parent.modelData }) }
                     }
+                }
+                // any other colour, from the colour panel
+                Rectangle {
+                    id: customBgColor
+                    readonly property bool current: !!panel.bg && panel.bg.kind === "color"
+                        && ["theme-a", "theme-b", "transparent"].concat(Ed.palette).indexOf(panel.bg.value) < 0
+                    width: 28; height: 28; radius: 14
+                    gradient: Gradient { orientation: Gradient.Horizontal
+                        GradientStop { position: 0.0; color: "#ff3b30" }
+                        GradientStop { position: 0.33; color: "#ffcc00" }
+                        GradientStop { position: 0.66; color: "#34c759" }
+                        GradientStop { position: 1.0; color: "#0a7cff" } }
+                    border.width: current ? 2 : 1
+                    border.color: current ? Theme.accent : Theme.hairline
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                onClicked: panel.ed.openMenuNamed("bgColor", customBgColor) }
                 }
             }
 
