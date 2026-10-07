@@ -410,6 +410,7 @@ Window {
             case Qt.Key_E: ed.setTool("ellipse"); break
             case Qt.Key_L: ed.setTool("line"); break
             case Qt.Key_H: ed.setTool("spotlight"); break
+            case Qt.Key_D: ed.setTool("pencil"); break
             case Qt.Key_T: ed.setTool("text"); break
             case Qt.Key_C: ed.setTool("counter"); break
             case Qt.Key_P: ed.setTool("redact"); break
@@ -735,6 +736,9 @@ Window {
                 case "rect": case "frect":
                     ed.draft = { kind: "rect", x: p.x, y: p.y, w: 0, h: 0, color: c, size: ed.sizeFor("rect"), filled: ed.tool === "frect" }
                     gesture = "draw"; break
+                case "pencil":
+                    ed.draft = { kind: "pencil", pts: [[p.x, p.y]], color: c, size: ed.sizeFor("pencil") }
+                    gesture = "draw"; break
                 case "spotlight":
                     ed.draft = { kind: "spotlight", x: p.x, y: p.y, w: 0, h: 0, shape: ed.spotShape, dim: ed.spotDim }
                     gesture = "draw"; break
@@ -784,6 +788,10 @@ Window {
                     ed.draft = Ed.moved(pressObj, p.x - pressAt.x, p.y - pressAt.y)
                 } else if (gesture === "handle") {
                     ed.draft = Ed.withHandle(pressObj, handle, p.x, p.y, pressBox)
+                } else if (gesture === "draw" && ed.draft.kind === "pencil") {
+                    const last = ed.draft.pts[ed.draft.pts.length - 1]
+                    if (Math.hypot(p.x - last[0], p.y - last[1]) * ed.k >= 2)       // a point every 2 view px
+                        ed.draft = Object.assign(Ed.copy(ed.draft), { pts: ed.draft.pts.concat([[p.x, p.y]]) })
                 } else if (gesture === "draw") {
                     const d = Ed.copy(ed.draft)
                     let x = p.x, y = p.y
@@ -827,6 +835,7 @@ Window {
                     // Alt while drawing points the arrow the other way (CleanShot)
                     if (d.kind === "arrow" && (m.modifiers & Qt.AltModifier))
                         Object.assign(d, { x1: d.x2, y1: d.y2, x2: d.x1, y2: d.y1 })
+                    if (d.kind === "pencil") d.pts = Ed.simplify(d.pts, 0.75 / ed.k)
                     if (!Ed.tooSmall(d)) ed.addItem(d)
                 } else if (g === "place") {
                     ed.addItem(d)

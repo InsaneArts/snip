@@ -11,6 +11,7 @@
 //   text    {kind, x, y, text, color, size, style, w}     size = font px; w wraps it (0: one line)
 //   counter {kind, x, y, color, size, style}              centre; size = diameter; num | alpha | roman
 //   redact  {kind, x, y, w, h, style, seed}               pixelate | text | blur | black
+//   pencil  {kind, pts: [[x, y], …], color, size}         free hand, smoothed
 //   spotlight {kind, x, y, w, h, shape, dim}              shape: rect | ellipse; dims the rest
 //
 // Counters are numbered by their order in the document, each style on its
@@ -27,10 +28,11 @@ var sizes = {
     rect: [2, 3, 5, 8, 12],
     ellipse: [2, 3, 5, 8, 12],
     line: [2, 3, 5, 8, 12],
+    pencil: [2, 3, 5, 8, 12],
     text: [14, 20, 28, 40, 56],
     counter: [20, 26, 32, 40, 52]
 }
-var defaultSize = { arrow: 2, rect: 2, ellipse: 2, line: 2, text: 1, counter: 2 }
+var defaultSize = { arrow: 2, rect: 2, ellipse: 2, line: 2, pencil: 2, text: 1, counter: 2 }
 
 // Objects with a box (x, y, w, h) and corner handles.
 function isBox(o) { return o.kind === "rect" || o.kind === "ellipse" || o.kind === "redact" || o.kind === "spotlight" }
@@ -84,6 +86,8 @@ function moved(o, dx, dy) {
         n.x1 += dx; n.y1 += dy; n.x2 += dx; n.y2 += dy; n.cx += dx; n.cy += dy
     } else if (n.kind === "line") {
         n.x1 += dx; n.y1 += dy; n.x2 += dx; n.y2 += dy
+    } else if (n.kind === "pencil") {
+        n.pts = n.pts.map(function (p) { return [p[0] + dx, p[1] + dy] })
     } else {
         n.x += dx; n.y += dy
     }
@@ -267,6 +271,11 @@ function hits(o, x, y, tol, box) {
     }
     if (o.kind === "line")
         return segmentDist(x, y, o.x1, o.y1, o.x2, o.y2) <= o.size + tol
+    if (o.kind === "pencil") {
+        for (var k = 1; k < o.pts.length; k++)
+            if (segmentDist(x, y, o.pts[k - 1][0], o.pts[k - 1][1], o.pts[k][0], o.pts[k][1]) <= o.size + tol) return true
+        return o.pts.length === 1 && dist(x, y, o.pts[0][0], o.pts[0][1]) <= o.size + tol
+    }
     if (o.kind === "counter")
         return dist(x, y, o.x, o.y) <= o.size / 2 + tol
     if (o.kind === "redact" || o.kind === "spotlight")
@@ -276,8 +285,31 @@ function hits(o, x, y, tol, box) {
     return false
 }
 
+// Pencil: drop points that add nothing (Ramer–Douglas–Peucker), then draw
+// smooth curves through the midpoints, so a shaky hand gives a calm line.
+function simplify(pts, eps) {
+    if (pts.length < 3) return pts
+    var a = pts[0], b = pts[pts.length - 1], far = 0, at = 0
+    for (var i = 1; i < pts.length - 1; i++) {
+        var d = segmentDist(pts[i][0], pts[i][1], a[0], a[1], b[0], b[1])
+        if (d > far) { far = d; at = i }
+    }
+    if (far <= eps) return [a, b]
+    return simplify(pts.slice(0, at + 1), eps).slice(0, -1).concat(simplify(pts.slice(at), eps))
+}
+function pencilPath(o) {
+    var p = o.pts
+    if (!p.length) return ""
+    if (p.length < 3) return "M " + p[0][0] + " " + p[0][1] + " L " + p[p.length - 1][0] + " " + p[p.length - 1][1]
+    var path = "M " + p[0][0] + " " + p[0][1] + " L " + (p[0][0] + p[1][0]) / 2 + " " + (p[0][1] + p[1][1]) / 2
+    for (var i = 1; i < p.length - 1; i++)
+        path += " Q " + p[i][0] + " " + p[i][1] + " " + (p[i][0] + p[i + 1][0]) / 2 + " " + (p[i][1] + p[i + 1][1]) / 2
+    return path + " L " + p[p.length - 1][0] + " " + p[p.length - 1][1]
+}
+
 // A drag shorter than this (image px) makes no object.
 function tooSmall(o) {
+    if (o.kind === "pencil") return o.pts.length < 2
     if (o.kind === "arrow") return dist(o.x1, o.y1, o.x2, o.y2) < o.size * 2
     if (o.kind === "line") return dist(o.x1, o.y1, o.x2, o.y2) < o.size * 2
     if (isBox(o)) return o.w < 3 || o.h < 3

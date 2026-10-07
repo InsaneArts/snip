@@ -224,4 +224,19 @@ Item {
             }
         }
     }
+
+    Loader {
+        active: root.kind === "pencil"
+        sourceComponent: Shape {
+            width: 1; height: 1
+            preferredRendererType: Shape.CurveRenderer
+            ShapePath {
+                strokeColor: root.halo ? root.haloColor : root.o.color
+                strokeWidth: root.o.size + (root.halo ? root.pad * 2 : 0)
+                fillColor: "transparent"
+                capStyle: ShapePath.RoundCap; joinStyle: ShapePath.RoundJoin
+                PathSvg { path: Ed.pencilPath(root.o) }
+            }
+        }
+    }
 }
