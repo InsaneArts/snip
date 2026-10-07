@@ -8,7 +8,7 @@
 //   rect    {kind, x, y, w, h, color, size, filled}
 //   ellipse {kind, x, y, w, h, color, size}
 //   line    {kind, x1, y1, x2, y2, color, size}
-//   text    {kind, x, y, text, color, size}               size = font px
+//   text    {kind, x, y, text, color, size, style, w}     size = font px; w wraps it (0: one line)
 //   counter {kind, x, y, color, size}                     centre; size = diameter
 //   redact  {kind, x, y, w, h, style, seed}               pixelate | blur | black
 //
@@ -71,6 +71,29 @@ function moved(o, dx, dy) {
     return n
 }
 
+// CleanShot's seven text styles: a font (system, rounded, mono), a box
+// tinted with the text colour, or an outline.
+var textStyles = [{ id: "standard", label: "Standard" }, { id: "box", label: "Box" }, { id: "rounded", label: "Rounded" },
+                  { id: "rounded-box", label: "Rounded Box" }, { id: "outline", label: "Outline" },
+                  { id: "mono", label: "Monospaced" }, { id: "mono-box", label: "Monospaced Box" }]
+function textBoxed(style) { return style === "box" || style === "rounded-box" || style === "mono-box" }
+function textFamily(style) { return style === "rounded" || style === "rounded-box" ? "rounded" : style === "mono" || style === "mono-box" ? "mono" : "ui" }
+
+function luminance(hex) {
+    var c = parseInt(String(hex).replace("#", "").slice(-6), 16)
+    return (0.299 * ((c >> 16) & 255) + 0.587 * ((c >> 8) & 255) + 0.114 * (c & 255)) / 255
+}
+// A box's background: the text colour mixed into white, or a dark glass for light text.
+function textTint(hex) {
+    if (luminance(hex) > 0.8) return "#cc1d1d1f"
+    var c = parseInt(String(hex).replace("#", "").slice(-6), 16), out = "#"
+    for (var sh = 16; sh >= 0; sh -= 8) {
+        var v = Math.round(((c >> sh) & 255) * 0.16 + 255 * 0.84)
+        out += (v < 16 ? "0" : "") + v.toString(16)
+    }
+    return out
+}
+
 var arrowStyles = [{ id: "standard", label: "Standard" }, { id: "fancy", label: "Fancy" },
                    { id: "curved", label: "Curved" }, { id: "double", label: "Double" }]
 
@@ -124,8 +147,11 @@ function arrowGeometry(o) {
     return { shaft: "M " + sx + " " + sy + " Q " + o.cx + " " + o.cy + " " + ex + " " + ey, heads: heads, body: "" }
 }
 
-// Handles of a selected object, in image px.
-function handles(o) {
+// Handles of a selected object, in image px. Text needs its drawn box.
+function handles(o, box) {
+    if (o.kind === "text" && box)
+        return [{ name: "l", x: box.x, y: box.y + box.height / 2 }, { name: "r", x: box.x + box.width, y: box.y + box.height / 2 },
+                { name: "br", x: box.x + box.width, y: box.y + box.height, square: true }]
     if (o.kind === "arrow") {
         var ends = [{ name: "start", x: o.x1, y: o.y1 }, { name: "end", x: o.x2, y: o.y2 }]
         if (o.style !== "curved") return ends
@@ -141,8 +167,19 @@ function handles(o) {
 }
 
 // The object with handle `h` dragged to (x, y).
-function withHandle(o, h, x, y) {
+function withHandle(o, h, x, y, box) {
     var n = copy(o)
+    if (n.kind === "text" && box) {
+        var pad = o.x - box.x, right = box.x + box.width
+        if (h === "r") n.w = Math.max(o.size * 2, x - o.x - pad)
+        else if (h === "l") { n.x = Math.min(x + pad, right - o.size * 2 - pad); n.w = Math.max(o.size * 2, right - pad - n.x) }
+        else if (h === "br") {     // the corner square scales the text
+            var f = Math.max(0.2, (y - box.y) / Math.max(1, box.height))
+            n.size = Math.max(6, Math.round(o.size * f))
+            if (o.w) n.w = o.w * n.size / o.size
+        }
+        return n
+    }
     if (n.kind === "arrow") {
         if (h === "mid") {
             var c = controlThrough(n, x, y)
@@ -216,7 +253,7 @@ function hits(o, x, y, tol, box) {
     if (o.kind === "redact")
         return x >= o.x - tol && x <= o.x + o.w + tol && y >= o.y - tol && y <= o.y + o.h + tol
     if (o.kind === "text" && box)
-        return x >= o.x - tol && x <= o.x + box.width + tol && y >= o.y - tol && y <= o.y + box.height + tol
+        return x >= box.x - tol && x <= box.x + box.width + tol && y >= box.y - tol && y <= box.y + box.height + tol
     return false
 }
 

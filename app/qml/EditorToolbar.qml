@@ -83,6 +83,23 @@ Rectangle {
             }
         }
         Capsule {
+            visible: bar.ed.sizeKind === "text" && bar.ed.tool !== "crop"
+            ToolButton {
+                id: textStyleButton
+                tip: "Text style"
+                chevron: true
+                leftPad: 18
+                readonly property string style: bar.ed.editingText && bar.ed.textObj ? (bar.ed.textObj.style || "standard")
+                                              : bar.ed.selectedObj && bar.ed.selectedObj.kind === "text" ? (bar.ed.selectedObj.style || "standard")
+                                              : bar.ed.textStyle
+                EditorItem {
+                    x: 9; y: 3
+                    o: ({ kind: "text", x: 0, y: 0, text: "A", color: Theme.text.toString(), size: 15, style: textStyleButton.style })
+                }
+                onClicked: bar.ed.openMenuNamed("text", textStyleButton)
+            }
+        }
+        Capsule {
             visible: bar.ed.sizeKind === "arrow" && bar.ed.tool !== "crop"
             ToolButton {
                 id: arrowStyleButton

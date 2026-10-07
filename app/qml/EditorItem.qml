@@ -16,7 +16,8 @@ Item {
     readonly property color haloColor: Qt.rgba(0.04, 0.47, 1, 0.28)
     readonly property string kind: o ? o.kind : ""
     // the rendered text box, for hit-testing (image px)
-    readonly property size box: textLoader.item ? Qt.size(textLoader.item.implicitWidth, textLoader.item.implicitHeight) : Qt.size(0, 0)
+    readonly property rect box: textLoader.item ? Qt.rect(textLoader.item.x, textLoader.item.y, textLoader.item.width, textLoader.item.height)
+                                                : Qt.rect(0, 0, 0, 0)
 
     Loader {
         active: root.kind === "arrow"
@@ -100,14 +101,25 @@ Item {
         id: textLoader
         active: root.kind === "text"
         sourceComponent: Item {
+            // the text stays where it was typed; a box grows around it
             readonly property var t: root.o
-            implicitWidth: label.implicitWidth
-            implicitHeight: label.implicitHeight
-            x: t.x; y: t.y
+            readonly property string st: t.style || "standard"
+            readonly property bool boxed: Ed.textBoxed(st)
+            readonly property real padX: boxed ? t.size * 0.35 : 0
+            readonly property real padY: boxed ? t.size * 0.14 : 0
+            x: t.x - padX; y: t.y - padY
+            width: label.width + padX * 2
+            height: label.implicitHeight + padY * 2
+            Rectangle {
+                visible: parent.boxed && !root.halo
+                anchors.fill: parent
+                radius: parent.st === "box" || parent.st === "mono-box" ? parent.t.size * 0.18 : parent.t.size * 0.5
+                color: Ed.textTint(parent.t.color)
+            }
             Rectangle {
                 visible: root.halo
                 x: -root.pad * 2; y: -root.pad
-                width: label.implicitWidth + root.pad * 4; height: label.implicitHeight + root.pad * 2
+                width: parent.width + root.pad * 4; height: parent.height + root.pad * 2
                 radius: root.pad * 1.5
                 color: "transparent"
                 border.width: Math.max(1, root.pad / 2)
@@ -116,11 +128,16 @@ Item {
             Text {
                 id: label
                 visible: !root.halo
+                x: parent.padX; y: parent.padY
+                width: parent.t.w > 0 ? parent.t.w : implicitWidth
+                wrapMode: parent.t.w > 0 ? Text.Wrap : Text.NoWrap
                 text: parent.t.text
                 color: parent.t.color
-                font.family: Theme.fontUi
+                font.family: { const f = Ed.textFamily(parent.st); return f === "rounded" ? Theme.fontRounded : f === "mono" ? Theme.fontMono : Theme.fontUi }
                 font.pixelSize: parent.t.size
-                font.weight: Font.Bold
+                font.weight: Ed.textFamily(parent.st) === "mono" ? Font.DemiBold : Font.Bold
+                style: parent.st === "outline" ? Text.Outline : Text.Normal
+                styleColor: Ed.luminance(parent.t.color) > 0.8 ? "#1d1d1f" : "white"
                 textFormat: Text.PlainText
             }
         }

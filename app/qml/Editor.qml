@@ -89,6 +89,7 @@ Window {
     function sizeFor(kind) { return Math.round(Ed.sizes[kind][sizeIndex[kind]] * unit) }
     property string redactStyle: "pixelate"   // CleanShot's default (D26)
     property string arrowStyle: "standard"
+    property string textStyle: "standard"
     property string toolBeforeCrop: "arrow"
 
     function setTool(t) {
@@ -96,6 +97,13 @@ Window {
         if (t === "crop" && tool !== "crop") toolBeforeCrop = tool
         tool = t
         if (t !== "select") selected = -1
+    }
+    function setTextStyle(st) {
+        textStyle = st
+        if (editingText) { textObj = Object.assign(Ed.copy(textObj), { style: st }); return }
+        if (selectedObj && selectedObj.kind === "text" && (selectedObj.style || "standard") !== st) {
+            const o = Ed.copy(selectedObj); o.style = st; replaceItem(selected, o)
+        }
     }
     function setArrowStyle(st) {
         arrowStyle = st
@@ -131,6 +139,7 @@ Window {
     property var draft: null
     property int draftIndex: -1
     readonly property var shownSelection: draft && draftIndex === selected ? draft : selectedObj
+    readonly property rect selectionBox: selectionHalo.box
 
     // ---------------------------------------------------------------- view
     readonly property var full: ({ x: 0, y: 0, w: imgW, h: imgH })
@@ -313,7 +322,7 @@ Window {
     function startText(p, index) {
         finishText()
         textObj = index >= 0 ? Ed.copy(doc.items[index])
-                             : { kind: "text", x: p.x, y: p.y - sizeFor("text") * 0.65, text: "", color: ink, size: sizeFor("text") }
+                             : { kind: "text", x: p.x, y: p.y - sizeFor("text") * 0.65, text: "", color: ink, size: sizeFor("text"), style: textStyle }
         draftIndex = index
         selected = index
         editingText = true
@@ -473,6 +482,8 @@ Window {
             Item {
                 x: -ed.shown.x; y: -ed.shown.y
                 EditorItem {
+                    // also measures the selection: text handles sit on its box
+                    id: selectionHalo
                     visible: ed.shownSelection !== null && !ed.editingText
                     o: ed.shownSelection
                     halo: true
@@ -492,7 +503,7 @@ Window {
                     width: Math.max(textEdit.contentWidth, ed.textObj ? ed.textObj.size * 0.6 : 0) + 16 / ed.k
                     height: textEdit.contentHeight + 8 / ed.k
                     radius: 6 / ed.k
-                    color: Qt.rgba(0.04, 0.47, 1, 0.06)
+                    color: ed.textObj && Ed.textBoxed(ed.textObj.style) ? Ed.textTint(ed.textObj.color) : Qt.rgba(0.04, 0.47, 1, 0.06)
                     border.width: 1.5 / ed.k
                     border.color: Qt.rgba(0.04, 0.47, 1, 0.75)
                 }
@@ -502,9 +513,12 @@ Window {
                     x: ed.textObj ? ed.textObj.x : 0
                     y: ed.textObj ? ed.textObj.y : 0
                     color: ed.textObj ? ed.textObj.color : "black"
-                    font.family: Theme.fontUi
+                    readonly property string family: ed.textObj ? Ed.textFamily(ed.textObj.style) : "ui"
+                    font.family: family === "rounded" ? Theme.fontRounded : family === "mono" ? Theme.fontMono : Theme.fontUi
                     font.pixelSize: ed.textObj ? ed.textObj.size : 20
-                    font.weight: Font.Bold
+                    font.weight: family === "mono" ? Font.DemiBold : Font.Bold
+                    width: ed.textObj && ed.textObj.w > 0 ? ed.textObj.w : implicitWidth
+                    wrapMode: ed.textObj && ed.textObj.w > 0 ? TextEdit.Wrap : TextEdit.NoWrap
                     textFormat: TextEdit.PlainText
                     selectByMouse: true
                     cursorDelegate: Rectangle { width: 2 / ed.k; color: Qt.rgba(0.04, 0.47, 1, 1) }
@@ -520,12 +534,12 @@ Window {
 
         // handles, in view px so they keep their size at any zoom
         Repeater {
-            model: ed.shownSelection && !ed.editingText ? Ed.handles(ed.shownSelection) : []
+            model: ed.shownSelection && !ed.editingText ? Ed.handles(ed.shownSelection, ed.selectionBox) : []
             delegate: Rectangle {
                 required property var modelData
                 readonly property var at: ed.toView(modelData.x, modelData.y)
                 x: at.x - width / 2; y: at.y - height / 2
-                width: 13; height: 13; radius: 6.5
+                width: modelData.square ? 10 : 13; height: width; radius: modelData.square ? 2 : 6.5
                 color: "#0a7cff"
                 border.width: 2; border.color: "white"
                 layer.enabled: true
@@ -616,6 +630,7 @@ Window {
             property string handle: ""
             property var pressAt: null       // image px
             property var pressObj: null
+            property rect pressBox
             property real pressVX: 0
             property real pressVY: 0
             property real pressPanX: 0
@@ -632,7 +647,7 @@ Window {
             }
             function handleAt(vx, vy) {
                 if (!ed.selectedObj) return ""
-                for (const h of Ed.handles(ed.selectedObj)) {
+                for (const h of Ed.handles(ed.selectedObj, ed.selectionBox)) {
                     const v = ed.toView(h.x, h.y)
                     if (Math.hypot(v.x - vx, v.y - vy) <= 10) return h.name
                 }
@@ -669,6 +684,7 @@ Window {
                 const h = handleAt(m.x, m.y)
                 if (h !== "") {
                     gesture = "handle"; handle = h
+                    pressBox = Qt.rect(ed.selectionBox.x, ed.selectionBox.y, ed.selectionBox.width, ed.selectionBox.height)
                     pressObj = ed.selectedObj; ed.draftIndex = ed.selected; ed.draft = Ed.copy(pressObj)
                     return
                 }
@@ -735,7 +751,7 @@ Window {
                 if (gesture === "move" || gesture === "place") {
                     ed.draft = Ed.moved(pressObj, p.x - pressAt.x, p.y - pressAt.y)
                 } else if (gesture === "handle") {
-                    ed.draft = Ed.withHandle(pressObj, handle, p.x, p.y)
+                    ed.draft = Ed.withHandle(pressObj, handle, p.x, p.y, pressBox)
                 } else if (gesture === "draw") {
                     const d = Ed.copy(ed.draft)
                     let x = p.x, y = p.y
@@ -861,7 +877,7 @@ Window {
 
     // ---------------------------------------------------------------- dropdowns
     function openMenuNamed(name, anchorItem) {
-        openMenu({ color: colorMenu, size: sizeMenu, style: styleMenu, zoom: zoomMenu, arrow: arrowMenu }[name], anchorItem)
+        openMenu({ color: colorMenu, size: sizeMenu, style: styleMenu, zoom: zoomMenu, arrow: arrowMenu, text: textMenu }[name], anchorItem)
     }
     property Item openedMenu: null
     function openMenu(menu, anchorItem) {
@@ -966,6 +982,27 @@ Window {
     }
 
     Menu {
+        id: textMenu
+        Repeater {
+            model: Ed.textStyles
+            delegate: Rectangle {
+                required property var modelData
+                readonly property bool current: (ed.selectedObj && ed.selectedObj.kind === "text" ? (ed.selectedObj.style || "standard")
+                                                 : ed.editingText && ed.textObj ? (ed.textObj.style || "standard") : ed.textStyle) === modelData.id
+                width: 168; height: 34; radius: 8
+                color: current ? Theme.controlPressed : txMa.containsMouse ? Theme.controlHover : "transparent"
+                EditorItem {
+                    o: ({ kind: "text", x: 14, y: 6, text: "Aa", color: ed.ink, size: 16, style: parent.modelData.id })
+                }
+                Text { x: 64; anchors.verticalCenter: parent.verticalCenter; text: parent.modelData.label; color: Theme.text
+                       font.family: Theme.fontUi; font.pixelSize: 13 }
+                MouseArea { id: txMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                            onClicked: { ed.setTextStyle(parent.modelData.id); ed.openedMenu = null } }
+            }
+        }
+    }
+
+    Menu {
         id: arrowMenu
         Repeater {
             model: Ed.arrowStyles
@@ -1014,7 +1051,9 @@ Window {
         case "ellipse": addItem({ kind: "ellipse", x: n(1), y: n(2), w: n(3), h: n(4), color: ink, size: sizeFor("ellipse") }); break
         case "line": addItem({ kind: "line", x1: n(1), y1: n(2), x2: n(3), y2: n(4), color: ink, size: sizeFor("line") }); break
         case "counter": addItem({ kind: "counter", x: n(1), y: n(2), color: ink, size: sizeFor("counter") }); break
-        case "text": addItem({ kind: "text", x: n(1), y: n(2), text: a.slice(3).join(" "), color: ink, size: sizeFor("text") }); break
+        case "text": addItem({ kind: "text", x: n(1), y: n(2), text: a.slice(3).join(" "), color: ink, size: sizeFor("text"), style: textStyle }); break
+        case "text-style": setTextStyle(a[1]); break
+        case "text-width": { const o = Ed.copy(selectedObj); o.w = n(1); replaceItem(selected, o); break }
         case "redact": addItem({ kind: "redact", x: n(1), y: n(2), w: n(3), h: n(4), style: a[5] || redactStyle, seed: a[6] ? n(6) : 1 }); break
         case "crop": a[1] === "reset" ? setCrop(full) : setCrop({ x: n(1), y: n(2), w: n(3), h: n(4) }); break
         case "color": setColor(a[1]); break
@@ -1034,7 +1073,8 @@ Window {
                 revision: revision, saved: savedRevision, undo: undoStack.length, redo: redoStack.length,
                 // where image px (0,0) is, in window-logical px, and logical px per image px
                 originX: originX, originY: originY + view.y, k: k, winW: width, winH: height,
-                ready: base.status === Image.Ready, editingText: editingText, typed: textEdit.text, active: ed.active
+                ready: base.status === Image.Ready, editingText: editingText, typed: textEdit.text, active: ed.active,
+                selectionBox: { x: selectionBox.x, y: selectionBox.y, w: selectionBox.width, h: selectionBox.height }
             }).slice(1, -1))
             break
         }
