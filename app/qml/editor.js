@@ -10,7 +10,8 @@
 //   line    {kind, x1, y1, x2, y2, color, size}
 //   text    {kind, x, y, text, color, size, style, w}     size = font px; w wraps it (0: one line)
 //   counter {kind, x, y, color, size}                     centre; size = diameter
-//   redact  {kind, x, y, w, h, style, seed}               pixelate | blur | black
+//   redact  {kind, x, y, w, h, style, seed}               pixelate | text | blur | black
+//   spotlight {kind, x, y, w, h, shape, dim}              shape: rect | ellipse; dims the rest
 //
 // Counters are numbered by their order in the document, so deleting one
 // renumbers the rest (ANN-08).
@@ -31,7 +32,24 @@ var sizes = {
 var defaultSize = { arrow: 2, rect: 2, ellipse: 2, line: 2, text: 1, counter: 2 }
 
 // Objects with a box (x, y, w, h) and corner handles.
-function isBox(o) { return o.kind === "rect" || o.kind === "ellipse" || o.kind === "redact" }
+function isBox(o) { return o.kind === "rect" || o.kind === "ellipse" || o.kind === "redact" || o.kind === "spotlight" }
+
+var spotlightDims = [0.25, 0.4, 0.55, 0.7, 0.85]
+
+// A spotlight's outline: a rounded rectangle or an ellipse, as an SVG path.
+function spotPath(o) {
+    var x = o.x, y = o.y, w = Math.max(1, o.w), h = Math.max(1, o.h)
+    if (o.shape === "ellipse") {
+        var rx = w / 2, ry = h / 2, cy = y + ry
+        return "M " + x + " " + cy + " A " + rx + " " + ry + " 0 1 0 " + (x + w) + " " + cy
+             + " A " + rx + " " + ry + " 0 1 0 " + x + " " + cy + " Z"
+    }
+    var r = Math.min(w, h) * 0.12
+    return "M " + (x + r) + " " + y + " H " + (x + w - r) + " A " + r + " " + r + " 0 0 1 " + (x + w) + " " + (y + r)
+         + " V " + (y + h - r) + " A " + r + " " + r + " 0 0 1 " + (x + w - r) + " " + (y + h)
+         + " H " + (x + r) + " A " + r + " " + r + " 0 0 1 " + x + " " + (y + h - r)
+         + " V " + (y + r) + " A " + r + " " + r + " 0 0 1 " + (x + r) + " " + y + " Z"
+}
 
 function dist(ax, ay, bx, by) { return Math.hypot(ax - bx, ay - by) }
 
@@ -250,7 +268,7 @@ function hits(o, x, y, tol, box) {
         return segmentDist(x, y, o.x1, o.y1, o.x2, o.y2) <= o.size + tol
     if (o.kind === "counter")
         return dist(x, y, o.x, o.y) <= o.size / 2 + tol
-    if (o.kind === "redact")
+    if (o.kind === "redact" || o.kind === "spotlight")
         return x >= o.x - tol && x <= o.x + o.w + tol && y >= o.y - tol && y <= o.y + o.h + tol
     if (o.kind === "text" && box)
         return x >= box.x - tol && x <= box.x + box.width + tol && y >= box.y - tol && y <= box.y + box.height + tol

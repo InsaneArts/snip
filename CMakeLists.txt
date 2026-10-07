@@ -63,6 +63,7 @@ qt_add_qml_module(snipd
     app/qml/Capsule.qml
     app/qml/TextButton.qml
     app/qml/EditorToolbar.qml
+    app/qml/SpotlightLayer.qml
     app/qml/editor.js
   RESOURCES
     app/fonts/Nunito.ttf
