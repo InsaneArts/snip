@@ -951,6 +951,38 @@ def history_window(s, env):
 
 
 @case
+def history_delete(s, env):
+    """HIS-03: Backspace deletes the chosen capture from history after asking (Esc keeps
+    it); its card goes too; the menu pins; Clear History empties it, asked first."""
+    recs = []
+    for k in range(3):
+        png = s.tmp / f"del-{k}.png"
+        noise_png(png, 120, 80, seed=20 + k)
+        recs.append(open_card(s, png))
+        time.sleep(0.2)
+    s.json("history")
+    assert wait_for(lambda: history_state(s)["open"], 3), "the history opens"
+    newest = recs[-1]["id"]
+    s.debug("ui", "history", "keys", "{Backspace}")
+    assert history_state(s)["asking"] == newest, "it asks first"
+    s.debug("ui", "history", "keys", "{Escape}")
+    st = history_state(s)
+    assert st["asking"] == "" and newest in st["items"] and st["open"], "Esc keeps it"
+    s.debug("ui", "history", "keys", "{Backspace}{Return}")
+    assert wait_for(lambda: newest not in history_state(s)["items"], 3), "deleted"
+    assert newest not in [r["id"] for r in s.json("list", "-n", "50")["result"]], "gone from history"
+    assert newest not in s.json("status")["result"]["cards"], "its card went too"
+    s.debug("ui", "history", "act", "pin")                     # the menu's Pin, on the new first one
+    assert wait_for(lambda: pin_windows(), 3), "Pin to Screen from history"
+    s.json("pins", "close")
+    s.debug("ui", "history", "clear")
+    s.debug("ui", "history", "keys", "{Return}")
+    assert wait_for(lambda: history_state(s)["items"] == [], 3), history_state(s)["items"]
+    assert s.json("list", "-n", "50")["result"] == [], "Clear History empties it"
+    s.debug("ui", "history", "keys", "{Escape}")
+
+
+@case
 def editor_round_trip(s, env):
     """ANN-15/16/19: snip edit FILE opens the editor; the export is pixel-exact outside the
     drawn object at a fractional scale; undo restores every pixel; the original and the
