@@ -99,6 +99,11 @@ pub mod qobject {
         #[qinvokable]
         fn edge_color(self: &Engine, path: QString) -> QString;
 
+        /// Auto-balance (BG-02): the plain margins of a region of the image
+        /// at `path` and their colour, as JSON {l, t, r, b, color}
+        #[qinvokable]
+        fn content_margins(self: &Engine, path: QString, x: i32, y: i32, w: i32, h: i32) -> QString;
+
         /// Rotate, flip or resize the editor's base image (ANN-11) into a new
         /// file beside it: op = rotate-left | rotate-right | flip-horizontal |
         /// flip-vertical | resize (to w × h). Answers {file, width, height},
@@ -570,6 +575,16 @@ impl qobject::Engine {
             format!("#{:02x}{:02x}{:02x}", c[0], c[1], c[2])
         });
         QString::from(c.unwrap_or_else(|| "#ffffff".into()).as_str())
+    }
+
+    fn content_margins(&self, path: QString, x: i32, y: i32, w: i32, h: i32) -> QString {
+        let j = crate::edits::decoded(&path.to_string()).map(|img| {
+            let (x0, y0) = (x.max(0), y.max(0));
+            let rect = (x0 as u32, y0 as u32, (x + w - x0).max(0) as u32, (y + h - y0).max(0) as u32);
+            let ([l, t, r, b], c) = snip_core::balance::margins(&img.data, img.width, img.height, img.bpp, rect);
+            format!(r##"{{"l":{l},"t":{t},"r":{r},"b":{b},"color":"#{:02x}{:02x}{:02x}"}}"##, c[0], c[1], c[2])
+        });
+        QString::from(j.unwrap_or_else(|| "null".into()).as_str())
     }
 
     fn pixel_color(&self, path: QString, x: i32, y: i32) -> QString {
