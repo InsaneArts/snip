@@ -35,6 +35,8 @@ Window {
     readonly property real dpr: devicePixelRatio > 0 ? devicePixelRatio : 1
     // image px per logical px: sizes look the same on any scale
     readonly property real unit: dpr
+    // Settings › Annotate (config [annotate])
+    readonly property var annotateCfg: (controller && controller.settings && controller.settings.annotate) || ({})
 
     title: "Snip Editor — " + (capture.title || "Capture")
     color: Theme.background
@@ -573,6 +575,21 @@ Window {
             width: ed.shown.w * ed.k; height: ed.shown.h * ed.k
             clip: true
 
+            // a checkerboard under transparent areas (ANN-01); not exported
+            Canvas {
+                anchors.fill: parent
+                onWidthChanged: requestPaint()
+                onHeightChanged: requestPaint()
+                onPaint: {
+                    const g = getContext("2d")
+                    for (let y = 0; y < height; y += 8)
+                        for (let x = 0; x < width; x += 8) {
+                            g.fillStyle = ((x + y) / 8) % 2 ? "#d8d8d8" : "#f4f4f4"
+                            g.fillRect(x, y, 8, 8)
+                        }
+                }
+            }
+
             // what gets exported: only this subtree, in image px (the grab
             // ignores its scale)
             Item {
@@ -636,27 +653,66 @@ Window {
                         width: ed.imgW; height: ed.imgH
                         items: ed.liveItems
                     }
-                    Repeater {
-                        id: objects
-                        model: ed.doc.items
-                        delegate: EditorItem {
-                            required property var modelData
-                            required property int index
-                            o: modelData
-                            base: ed.basePath
-                            label: Ed.counterLabel(ed.doc, Ed.counterNumber(ed.doc.items, index), modelData.style)
-                            z: modelData.kind === "counter" ? 1 : 0    // counters stay on top (CleanShot)
-                            visible: index !== ed.draftIndex
+                    // "Draw shadow on objects": a hidden copy of the objects casts the
+                    // shadow under them, so the objects themselves stay crisp
+                    Item {
+                        id: shadowCaster
+                        visible: false
+                        x: ed.exportRect.x; y: ed.exportRect.y
+                        width: ed.exportRect.w; height: ed.exportRect.h
+                        layer.enabled: shadowed.visible
+                        Item {
+                            x: -ed.exportRect.x; y: -ed.exportRect.y
+                            Repeater {
+                                model: shadowed.visible ? ed.liveItems.filter(o => o.kind !== "highlight" && o.kind !== "spotlight") : []
+                                delegate: EditorItem {
+                                    required property var modelData
+                                    o: modelData
+                                    base: ed.basePath
+                                }
+                            }
                         }
                     }
-                    EditorItem {
-                        o: ed.draft
-                        base: ed.basePath
-                        visible: ed.draft !== null && !ed.editingText
-                        z: 2
-                        label: ed.draft && ed.draft.kind === "counter"
-                               ? Ed.counterLabel(ed.doc, ed.draftIndex >= 0 ? Ed.counterNumber(ed.doc.items, ed.draftIndex)
-                                                                           : Ed.counterNumber(ed.doc.items, ed.doc.items.length, ed.draft.style), ed.draft.style) : "1"
+                    MultiEffect {
+                        id: shadowed
+                        visible: ed.annotateCfg.object_shadows !== false && ed.doc.items.length + (ed.draft ? 1 : 0) > 0
+                        anchors.fill: shadowCaster
+                        source: shadowCaster
+                        shadowEnabled: true
+                        shadowBlur: 0.35
+                        shadowOpacity: 0.35
+                        shadowVerticalOffset: 2 * ed.unit
+                        shadowHorizontalOffset: 0
+                    }
+                    Item {
+                        id: objectsGroup
+                        x: ed.exportRect.x; y: ed.exportRect.y
+                        width: ed.exportRect.w; height: ed.exportRect.h
+                        Item {
+                            x: -ed.exportRect.x; y: -ed.exportRect.y
+                            Repeater {
+                                id: objects
+                                model: ed.doc.items
+                                delegate: EditorItem {
+                                    required property var modelData
+                                    required property int index
+                                    o: modelData
+                                    base: ed.basePath
+                                    label: Ed.counterLabel(ed.doc, Ed.counterNumber(ed.doc.items, index), modelData.style)
+                                    z: modelData.kind === "counter" ? 1 : 0    // counters stay on top (CleanShot)
+                                    visible: index !== ed.draftIndex
+                                }
+                            }
+                            EditorItem {
+                                o: ed.draft
+                                base: ed.basePath
+                                visible: ed.draft !== null && !ed.editingText
+                                z: 2
+                                label: ed.draft && ed.draft.kind === "counter"
+                                       ? Ed.counterLabel(ed.doc, ed.draftIndex >= 0 ? Ed.counterNumber(ed.doc.items, ed.draftIndex)
+                                                                                   : Ed.counterNumber(ed.doc.items, ed.doc.items.length, ed.draft.style), ed.draft.style) : "1"
+                            }
+                        }
                     }
                 }
             }
@@ -1053,10 +1109,10 @@ Window {
                     delete d.snapped
                     if (d.w >= 3) ed.addItem(d)
                 } else if (g === "draw") {
-                    // Alt while drawing points the arrow the other way (CleanShot)
-                    if (d.kind === "arrow" && (m.modifiers & Qt.AltModifier))
+                    // "Inverse arrow direction", and Alt while drawing, point the arrow the other way (CleanShot)
+                    if (d.kind === "arrow" && (!!(m.modifiers & Qt.AltModifier) !== !!ed.annotateCfg.inverse_arrows))
                         Object.assign(d, { x1: d.x2, y1: d.y2, x2: d.x1, y2: d.y1 })
-                    if (d.kind === "pencil") d.pts = Ed.simplify(d.pts, 0.75 / ed.k)
+                    if (d.kind === "pencil" && ed.annotateCfg.smooth_drawing !== false) d.pts = Ed.simplify(d.pts, 0.75 / ed.k)
                     if (!Ed.tooSmall(d)) ed.addItem(d)
                 } else if (g === "place") {
                     ed.addItem(d)
@@ -1511,14 +1567,22 @@ Window {
     Menu {
         id: zoomMenu
         Repeater {
-            model: [{ t: "Fit", z: 0 }, { t: "50%", z: 0.5 }, { t: "100%", z: 1 }, { t: "200%", z: 2 }]
+            // CleanShot's zoom menu
+            model: [{ t: "Fit Canvas", k: "Ctrl+0", z: 0 }, { t: "50%", k: "", z: 0.5 }, { t: "100%", k: "Ctrl+1", z: 1 }, { t: "200%", k: "", z: 2 },
+                    { t: "Zoom In", k: "Ctrl++", z: "in" }, { t: "Zoom Out", k: "Ctrl+−", z: "out" }]
             delegate: Rectangle {
                 required property var modelData
-                width: 76; height: 28; radius: 14
+                width: 150; height: 28; radius: 8
                 color: zmMa.containsMouse ? Theme.controlHover : "transparent"
-                Text { anchors.centerIn: parent; text: parent.modelData.t; color: Theme.text; font.family: Theme.fontUi; font.pixelSize: 13 }
+                Text { x: 12; anchors.verticalCenter: parent.verticalCenter; text: parent.modelData.t; color: Theme.text; font.family: Theme.fontUi; font.pixelSize: 13 }
+                Text { anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
+                       text: parent.modelData.k; color: Theme.textSecondary; font.family: Theme.fontUi; font.pixelSize: 12 }
                 MouseArea { id: zmMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                            onClicked: { parent.modelData.z ? ed.zoomTo(parent.modelData.z) : ed.zoomFit(); ed.openedMenu = null } }
+                            onClicked: {
+                                const z = parent.modelData.z
+                                z === "in" ? ed.zoomStep(1) : z === "out" ? ed.zoomStep(-1) : z ? ed.zoomTo(z) : ed.zoomFit()
+                                ed.openedMenu = null
+                            } }
             }
         }
     }
@@ -1572,7 +1636,8 @@ Window {
                 ready: base.status === Image.Ready, editingText: editingText, typed: textEdit.text, active: ed.active,
                 selectionBox: { x: selectionBox.x, y: selectionBox.y, w: selectionBox.width, h: selectionBox.height },
                 words: words ? words.length : -1, fill: doc.fill || "", shownX: shown.x, shownY: shown.y,
-                imgW: imgW, imgH: imgH, base: doc.base || "", bg: doc.bg || null, exportRect: exportRect, ink: ink, savedColors: savedColors, picking: picking,
+                imgW: imgW, imgH: imgH, base: doc.base || "", bg: doc.bg || null, exportRect: exportRect,
+                shadows: annotateCfg.object_shadows !== false, ink: ink, savedColors: savedColors, picking: picking,
                 counterLabels: doc.items.map((o, i) => o.kind === "counter" ? Ed.counterLabel(doc, Ed.counterNumber(doc.items, i), o.style) : null).filter(l => l !== null)
             }).slice(1, -1))
             break
