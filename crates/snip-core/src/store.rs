@@ -182,6 +182,9 @@ impl Store {
     /// becomes the capture's saved file, so later edits reach it.
     pub fn save_as(&self, id: &str, path: &Path, cfg: &Config) -> Result<PathBuf, StoreError> {
         let ext = path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase());
+        if ext.as_deref() == Some("snip") {
+            return self.save_project(id, path);
+        }
         let (fmt, path) = match ext.as_deref() {
             Some("jpg") | Some("jpeg") => (crate::encode::Export::Jpg(cfg.general.jpg_quality), path.to_path_buf()),
             Some("webp") => (crate::encode::Export::Webp, path.to_path_buf()),
@@ -192,6 +195,40 @@ impl Store {
         atomic_write(&path, &out)?;
         self.history.lock().unwrap().set_saved(id, &path)?;
         Ok(path)
+    }
+
+    /// Save As a project (`.snip`, ANN-15): the original, the objects, the
+    /// files they draw from and the flattened image, so it opens editable.
+    pub fn save_project(&self, id: &str, path: &Path) -> Result<PathBuf, StoreError> {
+        let rec = self.get(id)?;
+        let dir = rec.source.parent().unwrap_or(Path::new(".")).to_path_buf();
+        let original = dir.join(ORIGINAL);
+        let source = std::fs::read(if original.exists() { &original } else { &rec.source })?;
+        let document = std::fs::read_to_string(dir.join(EDIT)).unwrap_or_else(|_| r#"{"v":1,"items":[]}"#.into());
+        let preview = std::fs::read(&rec.source)?;
+        let assets = crate::project::document_files(&document).into_iter().filter_map(|n| std::fs::read(dir.join(&n)).ok().map(|b| (n, b))).collect();
+        let thumb = thumbnail(&preview).unwrap_or_default();
+        let bytes = crate::project::to_bytes(&crate::project::Project { source, document, preview, assets }, &thumb)?;
+        atomic_write(path, &bytes)?;
+        self.history.lock().unwrap().set_saved(id, path)?;
+        Ok(path.to_path_buf())
+    }
+
+    /// A project file becomes a capture whose objects stay editable: its
+    /// flattened image is the capture, beside it the original, the objects
+    /// and their files.
+    pub fn import_project(&self, path: &Path, output: &str, now_secs: i64) -> Result<Record, StoreError> {
+        let p = crate::project::read(path)?;
+        let (_, w, h, _) = crate::encode::decode_png(&p.preview).map_err(|e| StoreError::Io(std::io::Error::other(e)))?;
+        let title = path.file_stem().map(|s| s.to_string_lossy().into_owned());
+        let rec = self.ingest(p.preview, w, h, CaptureMeta { kind: "import".into(), output: output.into(), app: None, title }, now_secs)?;
+        let dir = rec.source.parent().unwrap_or(Path::new(".")).to_path_buf();
+        atomic_write(&dir.join(ORIGINAL), &p.source)?;
+        atomic_write(&dir.join(EDIT), p.document.as_bytes())?;
+        for (name, data) in p.assets {
+            atomic_write(&dir.join(name), &data)?;
+        }
+        Ok(rec)
     }
 
     pub fn unindexed(&self, limit: u32) -> Result<Vec<(String, PathBuf)>, StoreError> {
@@ -283,6 +320,15 @@ impl Store {
     pub fn disk_usage(&self) -> u64 {
         self.history.lock().unwrap().disk_usage()
     }
+}
+
+/// A small WebP of a PNG (at most 256 px on its long side), for a project.
+fn thumbnail(png: &[u8]) -> Result<Vec<u8>, String> {
+    let (data, w, h, alpha) = crate::encode::decode_png(png)?;
+    let f = (256.0 / w.max(h) as f64).min(1.0);
+    let (nw, nh) = (((w as f64 * f).round() as u32).max(1), ((h as f64 * f).round() as u32).max(1));
+    let small = crate::encode::resize(&data, w, h, if alpha { 4 } else { 3 }, nw, nh);
+    crate::encode::transcode(&crate::encode::encode_png(&small, nw, nh, alpha), crate::encode::Export::Webp)
 }
 
 #[cfg(test)]
