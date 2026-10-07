@@ -94,6 +94,11 @@ pub mod qobject {
         #[qinvokable]
         fn set_saved_colors(self: &Engine, json: QString);
 
+        /// The colour around the image's edge (the most common one): what an
+        /// outward crop fills the new canvas with (ANN-11)
+        #[qinvokable]
+        fn edge_color(self: &Engine, path: QString) -> QString;
+
         /// The colour of pixel (x, y) of the image at `path`: "#rrggbb"
         #[qinvokable]
         fn pixel_color(self: &Engine, path: QString, x: i32, y: i32) -> QString;
@@ -414,6 +419,24 @@ impl qobject::Engine {
         let dir = snip_core::paths::data_dir();
         let _ = std::fs::create_dir_all(&dir);
         let _ = snip_core::store::atomic_write(&dir.join("colors.json"), json.to_string().as_bytes());
+    }
+
+    fn edge_color(&self, path: QString) -> QString {
+        let c = crate::edits::decoded(&path.to_string()).map(|img| {
+            let (w, h) = (img.width as usize, img.height as usize);
+            let px = |x: usize, y: usize| {
+                let i = (y * w + x) * img.bpp;
+                [img.data[i], img.data[i + 1], img.data[i + 2]]
+            };
+            let mut bins: std::collections::HashMap<[u8; 3], usize> = Default::default();
+            let edge = (0..w).flat_map(|x| [(x, 0), (x, h - 1)]).chain((0..h).flat_map(|y| [(0, y), (w - 1, y)]));
+            for (x, y) in edge {
+                *bins.entry(px(x, y)).or_default() += 1;
+            }
+            let c = bins.into_iter().max_by_key(|(_, n)| *n).map(|(c, _)| c).unwrap_or([255; 3]);
+            format!("#{:02x}{:02x}{:02x}", c[0], c[1], c[2])
+        });
+        QString::from(c.unwrap_or_else(|| "#ffffff".into()).as_str())
     }
 
     fn pixel_color(&self, path: QString, x: i32, y: i32) -> QString {
