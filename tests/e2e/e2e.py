@@ -710,8 +710,9 @@ def pin_state(s):
 
 @case
 def pins(s, env):
-    """PIN-01…06: a pin floats on every workspace at the capture's own size; scroll fades
-    it, Ctrl+= zooms it (the window follows), middle-click closes it; Close All Pins."""
+    """PIN-01…07: a pin floats on every workspace at the capture's own size; scroll fades
+    it, Ctrl+= zooms it (the window follows), a drag or the arrows move it, `snip pins
+    toggle` hides and brings back every pin in place, middle-click closes it; Close All."""
     from PIL import Image
     png = s.tmp / "pin.png"
     noise_png(png, 500, 300, seed=4)
@@ -736,6 +737,14 @@ def pins(s, env):
     at = pin_windows()[0]["at"]
     s.drag(cx, cy, cx - 120, cy - 60, steps=10)                  # a drag moves it (Hyprland picks it up a step late)
     assert wait_for(lambda: pin_windows()[0]["at"][0] < at[0] - 40 and pin_windows()[0]["at"][1] < at[1] - 15, 2), (at, pin_windows()[0]["at"])
+    at = pin_windows()[0]["at"]
+    s.debug("ui", "pin", "keys", "{Right}{shift+Down}")           # arrows nudge it (Shift: 10 px)
+    assert wait_for(lambda: pin_windows()[0]["at"] == [at[0] + 1, at[1] + 10], 2), (at, pin_windows()[0]["at"])
+    at = pin_windows()[0]["at"]
+    assert s.json("pins", "toggle")["ok"]                        # hide every pin…
+    assert wait_for(lambda: not pin_windows(), 3), "toggle hides the pins"
+    s.json("pins", "toggle")                                     # …and bring them back where they were
+    assert wait_for(lambda: pin_windows() and pin_windows()[0]["at"] == at, 3), (at, pin_windows())
     s.move(cx - 121, cy - 61); s.move(cx - 120, cy - 60); time.sleep(0.2)   # a real motion: the pin has the pointer again
     s.debug("mdown"); s.debug("mup")                             # middle-click closes
     assert wait_for(lambda: not pin_windows(), 3), "middle-click closes the pin"
@@ -744,6 +753,10 @@ def pins(s, env):
     assert wait_for(lambda: len(pin_windows()) == 2, 3)
     s.debug("ui", "pin", "act", "close-all")
     assert wait_for(lambda: not pin_windows(), 3), "Close All Pins"
+    s.json("pin", rec["id"])
+    assert wait_for(lambda: pin_windows(), 3)
+    s.json("pins", "close")
+    assert wait_for(lambda: not pin_windows(), 3), "snip pins close"
 
 
 @case
