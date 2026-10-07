@@ -151,6 +151,7 @@ QtObject {
         if (a[0] === "qa") { quickAccess.command(a[1]); return }
         if (a[0] === "save-as") { const card = quickAccess.cardById(a[1]); if (card) quickAccess.act("save-as", card); return }
         if (a[0] === "cancel-dialogs") { Platform.closeFileDialogs(); return }
+        if (a[0] === "close-editors") { for (const e of Object.values(editors)) e.closeEditor(); return }
         if (a[0] === "editor") {
             const e = Object.values(editors).pop()
             if (e) e.debug(a.slice(1))
