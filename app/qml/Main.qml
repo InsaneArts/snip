@@ -141,6 +141,7 @@ QtObject {
         function onCardStatus(id, status, detail) { root.quickAccess.cardStatus(id, status, detail) }
         function onQuitRequested() { Qt.quit() }
         function onDebugCommand(cmd) { root.debug(cmd) }
+        function onEditorOpen(json) { root.openEditor(JSON.parse(json)) }
     }
 
     // Test hooks (snip debug ui ...): keys the virtual pointer can't send.
@@ -148,6 +149,11 @@ QtObject {
         const a = cmd.split(" ")
         const w = activeOverlay
         if (a[0] === "qa") { quickAccess.command(a[1]); return }
+        if (a[0] === "editor") {
+            const e = Object.values(editors).pop()
+            if (e) e.debug(a.slice(1))
+            return
+        }
         if (a[0] === "state") {
             const o = activeOverlay
             Engine.log("overlay_state", JSON.stringify({ open: overlayOpen, shown: overlayShown, windowMode: windowMode,
@@ -182,6 +188,20 @@ QtObject {
     property Toast toast: Toast {}
     property Countdown countdown: Countdown {}
     property Preview preview: Preview {}
+
+    // Editors, one per capture: opening one again brings it forward.
+    property var editors: ({})
+    property Component editorComponent: Component { Editor {} }
+    function openEditor(capture) {
+        const open = editors[capture.id]
+        if (open) { open.raise(); open.requestActivate(); return }
+        const e = editorComponent.createObject(null, { capture: capture, controller: root })
+        editors[capture.id] = e
+        e.finished.connect(() => { delete editors[capture.id]; e.destroy() })
+    }
+    // Tokens for editor renders, unique across editors.
+    property int lastToken: 0
+    function nextToken() { return ++lastToken }
 
     // (a Loader-created Window never maps: spike S8; create it directly)
     property Component galleryComponent: Component { Gallery { controller: root } }
