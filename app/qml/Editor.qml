@@ -16,8 +16,22 @@ Window {
     signal finished()
 
     readonly property string captureId: capture.id || ""
-    readonly property int imgW: capture.width || 1
-    readonly property int imgH: capture.height || 1
+    // the image being drawn on: the capture's, or one rotated, flipped or
+    // resized from it (doc.base, a file beside it; undo goes back with the doc)
+    readonly property int imgW: doc.w || capture.width || 1
+    readonly property int imgH: doc.h || capture.height || 1
+    readonly property string basePath: doc.base ? String(capture.image || "").replace(/[^/]*$/, doc.base) : (capture.image || "")
+    onBasePathChanged: words = null
+    // Rotate / Flip / Resize the whole document, objects included (ANN-11)
+    function transformImage(op, nw, nh) {
+        const r = JSON.parse(Engine.editorTransform(basePath, op, nw || 0, nh || 0) || "null")
+        if (!r) { toast("Couldn't change the image"); return }
+        const next = Ed.transformDoc(doc, op, imgW, imgH, r.width, r.height)
+        next.base = r.file; next.w = r.width; next.h = r.height
+        if (next.fill === undefined) delete next.fill
+        selected = -1
+        commit(next)
+    }
     readonly property real dpr: devicePixelRatio > 0 ? devicePixelRatio : 1
     // image px per logical px: sizes look the same on any scale
     readonly property real unit: dpr
@@ -100,12 +114,12 @@ Window {
     property var words: null
     readonly property var textLines: words ? Ed.textLines(words) : []
     onToolChanged: {
-        if (tool === "highlight" && words === null) { words = []; Engine.requestWords(capture.image || "") }
-        if (tool === "crop" && !edgeFill) edgeFill = Engine.edgeColor(capture.image || "")
+        if (tool === "highlight" && words === null) { words = []; Engine.requestWords(basePath) }
+        if (tool === "crop" && !edgeFill) edgeFill = Engine.edgeColor(basePath)
     }
     Connections {
         target: Engine
-        function onEditorWords(path, json) { if (path === (ed.capture.image || "")) ed.words = JSON.parse(json) }
+        function onEditorWords(path, json) { if (path === ed.basePath) ed.words = JSON.parse(json) }
     }
     property string spotShape: "rect"
     property real spotDim: 0.55
@@ -212,7 +226,7 @@ Window {
         const c = r.x === 0 && r.y === 0 && r.w === imgW && r.h === imgH ? null : r
         const outward = c && (c.x < 0 || c.y < 0 || c.x + c.w > imgW || c.y + c.h > imgH)
         const next = Object.assign({}, doc, { crop: c })
-        if (outward && !doc.fill) next.fill = edgeFill || Engine.edgeColor(capture.image || "")
+        if (outward && !doc.fill) next.fill = edgeFill || Engine.edgeColor(basePath)
         if (JSON.stringify(next) !== JSON.stringify(doc)) commit(next)
     }
     function cropDone() { setTool(toolBeforeCrop === "crop" ? "arrow" : toolBeforeCrop) }
@@ -365,7 +379,7 @@ Window {
 
     Component.onCompleted: {
         const d = capture.doc
-        if (d && d.items) doc = { v: 1, items: d.items, crop: d.crop || null, counterStart: d.counterStart === undefined ? 1 : d.counterStart }
+        if (d && d.items) doc = Object.assign({ v: 1, crop: null, counterStart: 1 }, d)
         const scr = Platform.screen(capture.output || "")
         const aw = scr ? scr.availableGeometry.width : 1600, ah = scr ? scr.availableGeometry.height : 1000
         const s = capture.scale || 1
@@ -535,7 +549,7 @@ Window {
                     Image {
                         id: base
                         width: ed.imgW; height: ed.imgH
-                        source: ed.capture.image ? "file://" + ed.capture.image : ""
+                        source: ed.basePath ? "file://" + ed.basePath : ""
                         cache: false
                         smooth: true
                         mipmap: true
@@ -552,7 +566,7 @@ Window {
                             required property var modelData
                             required property int index
                             o: modelData
-                            base: ed.capture.image || ""
+                            base: ed.basePath
                             label: Ed.counterLabel(ed.doc, Ed.counterNumber(ed.doc.items, index), modelData.style)
                             z: modelData.kind === "counter" ? 1 : 0    // counters stay on top (CleanShot)
                             visible: index !== ed.draftIndex
@@ -560,7 +574,7 @@ Window {
                     }
                     EditorItem {
                         o: ed.draft
-                        base: ed.capture.image || ""
+                        base: ed.basePath
                         visible: ed.draft !== null && !ed.editingText
                         z: 2
                         label: ed.draft && ed.draft.kind === "counter"
@@ -589,7 +603,7 @@ Window {
                 EditorItem {
                     visible: ed.shownSelection !== null && !ed.editingText && ed.shownSelection.kind !== "text"
                     o: ed.shownSelection
-                    base: ed.capture.image || ""
+                    base: ed.basePath
                     label: ed.selected >= 0 && ed.shownSelection ? Ed.counterLabel(ed.doc, Ed.counterNumber(ed.doc.items, ed.selected), ed.shownSelection.style) : "1"
                 }
                 // text being typed, exactly where it will be drawn
@@ -706,6 +720,11 @@ Window {
                         color: Theme.textSecondary
                         font.family: Theme.fontUi; font.pixelSize: 13; font.features: { "tnum": 1 }
                     }
+                    ToolButton { icon: "rotate-ccw"; tip: "Rotate left"; onClicked: ed.transformImage("rotate-left") }
+                    ToolButton { icon: "rotate-cw"; tip: "Rotate right"; onClicked: ed.transformImage("rotate-right") }
+                    ToolButton { icon: "flip-horizontal"; tip: "Flip horizontal"; onClicked: ed.transformImage("flip-horizontal") }
+                    ToolButton { icon: "flip-vertical"; tip: "Flip vertical"; onClicked: ed.transformImage("flip-vertical") }
+                    ToolButton { id: resizeButton; label: "Resize"; chevron: true; onClicked: { resizeMenu.load(); ed.openMenuNamed("resize", resizeButton) } }
                     ToolButton {
                         id: ratioButton
                         label: (Ed.cropRatios.find(r => r.r === ed.cropRatio) || Ed.cropRatios[0]).label
@@ -1032,7 +1051,7 @@ Window {
     // ---------------------------------------------------------------- dropdowns
     function openMenuNamed(name, anchorItem) {
         openMenu({ color: colorMenu, size: sizeMenu, style: styleMenu, zoom: zoomMenu, arrow: arrowMenu, text: textMenu, dim: dimMenu,
-                   counter: counterMenu, opacity: opacityMenu, ratio: ratioMenu }[name], anchorItem)
+                   counter: counterMenu, opacity: opacityMenu, ratio: ratioMenu, resize: resizeMenu }[name], anchorItem)
     }
     property Item openedMenu: null
     function openMenu(menu, anchorItem) {
@@ -1101,7 +1120,7 @@ Window {
     property bool picking: false
     function pickAt(ix, iy) {
         picking = false
-        const c = Engine.pixelColor(capture.image || "", Math.floor(ix), Math.floor(iy))
+        const c = Engine.pixelColor(basePath, Math.floor(ix), Math.floor(iy))
         if (c) setColor(c)
     }
 
@@ -1192,6 +1211,52 @@ Window {
                 MouseArea { id: stMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
                             onClicked: { ed.setRedactStyle(parent.modelData.id); ed.openedMenu = null } }
             }
+        }
+    }
+
+    // Image size: width and height in pixels or percent, proportions locked
+    Menu {
+        id: resizeMenu
+        z: 11
+        property bool percent: false
+        property bool lock: true
+        property real rw: ed.imgW
+        property real rh: ed.imgH
+        function load() { rw = ed.imgW; rh = ed.imgH }
+        function shown(v, full) { return percent ? Math.round(v / full * 100) : Math.round(v) }
+        function set(which, text) {
+            const v = Number(text); if (!(v > 0)) return
+            const px = percent ? v / 100 * (which === "w" ? ed.imgW : ed.imgH) : v
+            if (which === "w") { rw = px; if (lock) rh = px * ed.imgH / ed.imgW }
+            else { rh = px; if (lock) rw = px * ed.imgW / ed.imgH }
+        }
+        component Field: Rectangle {
+            property alias text: input.text
+            signal edited(string text)
+            width: 70; height: 28; radius: 8
+            color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+            TextInput {
+                id: input
+                anchors.fill: parent; anchors.leftMargin: 8; anchors.rightMargin: 8
+                verticalAlignment: TextInput.AlignVCenter; horizontalAlignment: TextInput.AlignRight
+                color: Theme.text; font.family: Theme.fontUi; font.pixelSize: 13; font.features: { "tnum": 1 }
+                selectByMouse: true
+                validator: IntValidator { bottom: 1; top: 20000 }
+                onEditingFinished: parent.edited(text)
+            }
+        }
+        Row {
+            spacing: 6
+            Field { text: resizeMenu.shown(resizeMenu.rw, ed.imgW); onEdited: (t) => resizeMenu.set("w", t) }
+            Text { anchors.verticalCenter: parent.verticalCenter; text: "×"; color: Theme.textSecondary; font.pixelSize: 13 }
+            Field { text: resizeMenu.shown(resizeMenu.rh, ed.imgH); onEdited: (t) => resizeMenu.set("h", t) }
+            ToolButton { label: resizeMenu.percent ? "%" : "px"; onClicked: resizeMenu.percent = !resizeMenu.percent }
+        }
+        Row {
+            spacing: 6
+            ToolButton { label: resizeMenu.lock ? "Proportions locked" : "Proportions free"; onClicked: resizeMenu.lock = !resizeMenu.lock }
+            ToolButton { label: "Resize"; selected: true
+                         onClicked: { ed.openedMenu = null; ed.transformImage("resize", Math.round(resizeMenu.rw), Math.round(resizeMenu.rh)) } }
         }
     }
 
@@ -1353,7 +1418,7 @@ Window {
         case "line": addItem({ kind: "line", x1: n(1), y1: n(2), x2: n(3), y2: n(4), color: ink, size: sizeFor("line") }); break
         case "counter": addItem({ kind: "counter", x: n(1), y: n(2), color: ink, size: sizeFor("counter"), style: a[3] || counterStyle }); break
         case "counter-style": setCounterStyle(a[1]); break
-        case "words": Engine.requestWords(capture.image || ""); break
+        case "words": Engine.requestWords(basePath); break
         case "eyedropper": picking = true; break
         case "save-color": saveColor(a[1]); break
         case "counter-start": setCounterStart(n(1)); break
@@ -1364,6 +1429,7 @@ Window {
         case "redact": addItem({ kind: "redact", x: n(1), y: n(2), w: n(3), h: n(4), style: a[5] || redactStyle, seed: a[6] ? n(6) : 1 }); break
         case "crop": a[1] === "reset" ? setCrop(full) : setCrop({ x: n(1), y: n(2), w: n(3), h: n(4) }); break
         case "crop-ratio": setCropRatio(n(1)); break
+        case "transform": transformImage(a[1], n(2), n(3)); break
         case "color": setColor(a[1]); break
         case "tool": setTool(a[1]); break
         case "undo": undo(); break
@@ -1383,7 +1449,8 @@ Window {
                 originX: originX, originY: originY + view.y, k: k, winW: width, winH: height,
                 ready: base.status === Image.Ready, editingText: editingText, typed: textEdit.text, active: ed.active,
                 selectionBox: { x: selectionBox.x, y: selectionBox.y, w: selectionBox.width, h: selectionBox.height },
-                words: words ? words.length : -1, fill: doc.fill || "", shownX: shown.x, shownY: shown.y, ink: ink, savedColors: savedColors, picking: picking,
+                words: words ? words.length : -1, fill: doc.fill || "", shownX: shown.x, shownY: shown.y,
+                imgW: imgW, imgH: imgH, base: doc.base || "", ink: ink, savedColors: savedColors, picking: picking,
                 counterLabels: doc.items.map((o, i) => o.kind === "counter" ? Ed.counterLabel(doc, Ed.counterNumber(doc.items, i), o.style) : null).filter(l => l !== null)
             }).slice(1, -1))
             break
