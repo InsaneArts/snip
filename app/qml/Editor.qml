@@ -1032,6 +1032,7 @@ Window {
         case "delete": selected = n(1); removeSelected(); break
         case "zoom": a[1] === "fit" ? zoomFit() : zoomTo(n(1)); break
         case "flush": flush(a[1] || ""); break
+        case "keys": Platform.sendKeys(ed, a.slice(1).join(" ")); break
         case "close": closeEditor(); break
         case "state":
             Engine.log("editor_state", JSON.stringify({
@@ -1039,7 +1040,7 @@ Window {
                 revision: revision, saved: savedRevision, undo: undoStack.length, redo: redoStack.length,
                 // where image px (0,0) is, in window-logical px, and logical px per image px
                 originX: originX, originY: originY + view.y, k: k, winW: width, winH: height,
-                ready: base.status === Image.Ready
+                ready: base.status === Image.Ready, editingText: editingText, typed: textEdit.text, active: ed.active
             }).slice(1, -1))
             break
         }
