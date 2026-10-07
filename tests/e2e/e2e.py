@@ -1160,6 +1160,38 @@ def editor_redaction_is_secure(s, env):
 
 
 @case
+def editor_redact_intensity(s, env):
+    """ANN-06: intensity sets the Pixelate blocks' size; Natural blur (not secure) really
+    blurs what is under it."""
+    from PIL import Image
+    im = Image.new("RGB", (400, 240), (200, 210, 220))
+    for x in range(40, 360):        # fine black and white stripes under the blur
+        for y in range(140, 200):
+            im.putpixel((x, y), (255, 255, 255) if (x // 2) % 2 else (0, 0, 0))
+    for x in range(0, 400):         # a colourful band above and below the pixelated rows
+        for y in list(range(0, 30)) + list(range(110, 130)):
+            im.putpixel((x, y), ((x * 3) % 256, 90, 255 - (x * 3) % 256))
+    png = s.tmp / "intensity.png"
+    im.save(png)
+    rec = s.json("edit", str(png))["result"]
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    s.debug("ui", "editor", "redact", 20, 40, 360, 30, "pixelate", 7, 0.6)
+    s.debug("ui", "editor", "redact", 20, 75, 360, 30, "pixelate", 7, 2.4)
+    s.debug("ui", "editor", "redact", 40, 140, 320, 60, "natural", 1, 1)
+    editor_flush(s)
+    out = Image.open(rec["source"]).convert("RGB")
+
+    def runs(y):
+        row = [out.getpixel((x, y)) for x in range(22, 378)]
+        return 1 + sum(1 for a, b in zip(row, row[1:]) if a != b)
+    low, high = runs(55), runs(90)
+    assert low > high * 2, f"Maximum gives far bigger blocks: {low} vs {high} colour runs"
+    lum = [sum(out.getpixel((x, 170))) / 3 for x in range(60, 340)]
+    assert max(lum) - min(lum) < 30 and abs(sum(lum) / len(lum) - 128) < 20, "the stripes blur into grey"
+    close_editor(s)
+
+
+@case
 def editor_text_shape(s, env):
     """D30: Text shape shows word-shaped ink blocks on the paper colour, and the hidden
     words can't be read (they leave the history search)."""
