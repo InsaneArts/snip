@@ -988,6 +988,45 @@ def editor_pencil(s, env):
 
 
 @case
+def editor_highlighter(s, env):
+    """ANN-10: the Highlighter (M) snaps to text: pressed on a line, the band takes the
+    line's height and runs from word edge to word edge; elsewhere it is a free band."""
+    from PIL import Image, ImageDraw, ImageFont
+    try:
+        font = ImageFont.truetype("/usr/share/fonts/noto/NotoSans-Regular.ttf", 28)
+    except OSError:
+        font = ImageFont.load_default(28)
+    im = Image.new("RGB", (640, 260), "white")
+    d = ImageDraw.Draw(im)
+    d.text((40, 40), "alpha bravo charlie", fill="black", font=font)
+    png = s.tmp / "hl.png"
+    im.save(png)
+    bravo = d.textbbox((40, 40), "alpha bravo charlie", font=font)
+    x_b0 = 40 + d.textlength("alpha ", font=font); x_b1 = 40 + d.textlength("alpha bravo", font=font)
+    rec = s.json("edit", str(png))["result"]
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    time.sleep(0.3)
+    w, mon, st = editor_window(), env.monitor(), editor_state(s)
+    at = lambda ix, iy: (w["at"][0] - mon["x"] + st["originX"] + ix * st["k"], w["at"][1] - mon["y"] + st["originY"] + iy * st["k"])
+    s.move(*at(320, 230)); s.click(); time.sleep(0.2)
+    s.debug("ui", "editor", "keys", "m")
+    assert wait_for(lambda: editor_state(s)["words"] >= 3, 8), "no OCR words for the highlighter"
+    mid = (bravo[1] + bravo[3]) / 2
+    s.drag(*at(x_b0 + 8, mid), *at(x_b1 - 12, mid), steps=5); time.sleep(0.2)   # partly across "bravo"
+    h = editor_state(s)["items"][-1]
+    assert h["kind"] == "highlight", h
+    assert abs(h["x"] - x_b0) < 8 and abs(h["x"] + h["w"] - x_b1) < 8, ("snapped to the word's edges", h, x_b0, x_b1)
+    assert h["y"] <= bravo[1] and h["y"] + h["h"] >= bravo[3] - 2, ("the line's height", h, bravo)
+    s.drag(*at(100, 180), *at(300, 185), steps=4); time.sleep(0.2)            # empty space: a free band
+    f = editor_state(s)["items"][-1]
+    assert f["kind"] == "highlight" and abs(f["w"] - 200) < 4, f
+    editor_flush(s)
+    px = Image.open(rec["source"]).convert("RGB").getpixel((200, 180))
+    assert px[2] < 220 and px[0] > 230, ("translucent yellow", px)
+    close_editor(s)
+
+
+@case
 def editor_keyboard(s, env):
     """ANN-05/14: the Text tool types where you click and Enter commits; tool keys, undo,
     redo and Escape work. Keys are delivered inside snipd (never through the seat)."""
