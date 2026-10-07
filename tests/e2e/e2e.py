@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
-"""End-to-end tests for snipd on the live Hyprland session.
+"""End-to-end tests for snipd, in a Hyprland of their own.
 
-Everything happens on a temporary headless output with its own workspace, in
-an isolated snipd instance (own XDG dirs and ctl socket), driven by Snip's
-virtual pointer and test hooks. The user's monitors only see the selection
-overlay flash for the area cases (overlays cover every output).
+The suite starts a nested Hyprland inside the user's session, as a window
+on a hidden special workspace. Every test monitor, window, pointer motion,
+key and clipboard write happens in there: the user's monitors never change
+(GTK 4.22 apps crash on output hot-plug), their pointer never moves and the
+suite can run while they work. Inside it, cases use a temporary headless
+output and an isolated snipd instance (own XDG dirs and ctl socket), driven
+by Snip's virtual pointer and test hooks.
 
-    tests/e2e/e2e.py [--build build] [--only NAME ...] [--keep]
+    tests/e2e/e2e.py [--build build] [--only NAME ...] [--keep] [--live]
+
+--live runs against the user's own session instead (the old way: it adds a
+headless output there and moves their pointer, so only while they're away).
 
 Exit code 0 when every case passes. Cleanup always runs: the daemon quits,
-test windows close, the headless output is removed, the pointer and focus
-go back to where they were, and no snip layer may be left mapped.
+the nested Hyprland exits, and no snip layer may be left mapped.
 """
 
 import argparse
@@ -25,12 +30,61 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-OUT = "SNIPE2E"
+OUT = "SNIPE2E"          # the test output: a headless one (--live), or the nested Hyprland's own
 UID = os.getuid()
 
 
 def sh(*args, check=True, **kw):
     return subprocess.run(args, check=check, capture_output=True, text=True, **kw)
+
+
+class Nested:
+    """A Hyprland for the suite, nested in the user's session as a hidden window.
+
+    Its own output (WAYLAND-1, the window) is the test output: headless outputs
+    can't allocate buffers when nested on NVIDIA (aquamarine 0.15 asks for
+    linear ones). render_unfocused keeps the hidden window drawing."""
+
+    OUTPUT = "WAYLAND-1"
+
+    CONFIG = """hl.config({
+  xwayland = { enabled = false },
+  misc = { disable_hyprland_logo = true, disable_splash_rendering = true },
+  animations = { enabled = false },
+})
+"""
+
+    def __init__(self):
+        self.dir = Path(tempfile.mkdtemp(prefix="snip-e2e-hypr-"))
+        self.proc = None
+
+    def start(self):
+        """Start it; returns the environment that points tools and apps at it."""
+        # its window (app id "aquamarine") goes to a special workspace that is never shown
+        hypr_eval('hl.window_rule({ match = { class = "^aquamarine$" }, workspace = "special:snip-e2e silent", no_initial_focus = true, '
+                  'render_unfocused = true, float = true, size = { 1920, 1080 } })')
+        before = {i["instance"] for i in json.loads(sh("hyprctl", "instances", "-j").stdout)}
+        (self.dir / "hyprland.lua").write_text(self.CONFIG)
+        env = dict(os.environ, HYPRLAND_NO_SD_VARS="1", HYPRLAND_NO_SD_NOTIFY="1", HYPRLAND_NO_CRASHREPORTER="1")
+        env.pop("HYPRLAND_INSTANCE_SIGNATURE", None)
+        self.proc = subprocess.Popen(["Hyprland", "--config", str(self.dir / "hyprland.lua")], env=env,
+                                     stdout=open(self.dir / "hyprland.out", "w"), stderr=subprocess.STDOUT)
+        for _ in range(100):
+            time.sleep(0.1)
+            new = [i for i in json.loads(sh("hyprctl", "instances", "-j").stdout) if i["instance"] not in before]
+            if new:
+                time.sleep(0.5)
+                return {"HYPRLAND_INSTANCE_SIGNATURE": new[0]["instance"], "WAYLAND_DISPLAY": new[0]["wl_socket"]}
+        raise RuntimeError(f"the nested Hyprland did not start (see {self.dir})")
+
+    def stop(self):
+        if self.proc and self.proc.poll() is None:
+            self.proc.terminate()
+            try:
+                self.proc.wait(5)
+            except subprocess.TimeoutExpired:
+                self.proc.kill()
+        shutil.rmtree(self.dir, ignore_errors=True)
 
 
 def hypr_eval(lua):
@@ -111,8 +165,8 @@ class Snip:
     def debug(self, *args):
         self.cli("debug", *map(str, args))
 
-    def move(self, x, y, out=OUT):
-        self.debug("move", out, int(x), int(y))
+    def move(self, x, y, out=None):
+        self.debug("move", out or OUT, int(x), int(y))
         time.sleep(0.03)
 
     def click(self, right=False):
@@ -195,7 +249,8 @@ def wait_for(fn, timeout=5.0, step=0.1):
 # ------------------------------------------------------------------ environment
 
 class Env:
-    def __init__(self):
+    def __init__(self, own_output=True):
+        self.own_output = own_output     # created here, so removed at cleanup
         self.prev_focus = hypr_json("activewindow").get("address")
         self.prev_cursor = hypr_json("cursorpos")
         self.windows = []
@@ -246,8 +301,9 @@ class Env:
             ours = mon["x"] <= cur["x"] < mon["x"] + mon["width"] / mon["scale"]
         except StopIteration:
             ours = False
-        sh("hyprctl", "output", "remove", OUT, check=False)
-        time.sleep(0.3)
+        if self.own_output:
+            sh("hyprctl", "output", "remove", OUT, check=False)
+            time.sleep(0.3)
         c = self.prev_cursor
         if ours:
             hypr_eval(f'hl.dispatch(hl.dsp.cursor.move({{ x = {c["x"]}, y = {c["y"]} }}))')
@@ -522,7 +578,8 @@ def cursor_toggle(s, env):
     case captures the first real monitor with its own instance: no card, no clipboard,
     files deleted afterwards."""
     from PIL import Image, ImageChops
-    real = next(m for m in hypr_json("monitors") if m["name"] != OUT)
+    # nested, the test output is the only one, and a real (non-headless) one
+    real = next((m for m in hypr_json("monitors") if m["name"] != OUT), None) or env.monitor()
     prev = hypr_json("cursorpos")
     t = Snip(s.build)
     t.env["SNIP_RUNTIME_DIR"] = str(t.run_dir) + "-cursor"
@@ -972,13 +1029,21 @@ def main():
     ap.add_argument("--build", default=str(ROOT / "build"))
     ap.add_argument("--only", nargs="*")
     ap.add_argument("--keep", action="store_true", help="keep the temp dir")
-    ap.add_argument("--force", action="store_true", help="run even if the pointer is moving")
+    ap.add_argument("--live", action="store_true", help="test in the user's own session (moves their pointer)")
+    ap.add_argument("--force", action="store_true", help="--live even if the pointer is moving")
     a = ap.parse_args()
-    if not a.force and not pointer_idle():
-        print("the pointer is in use: run the e2e suite while the machine is idle (or --force)")
-        return 3
+    nested = None
+    if a.live:
+        if not a.force and not pointer_idle():
+            print("the pointer is in use: run --live while the machine is idle (or --force)")
+            return 3
+    else:
+        nested = Nested()
+        os.environ.update(nested.start())   # every hyprctl, grim, wl-copy and snipd below talks to it
+        global OUT
+        OUT = Nested.OUTPUT
 
-    env = Env()
+    env = Env(own_output=nested is None)
     s = Snip(a.build)
     failed, skipped = [], []
     try:
@@ -1011,6 +1076,8 @@ def main():
                 failed.append("stray_layers")
                 print(f"  FAIL stray layers left mapped: {left}")
         shutil.rmtree(s.run_dir, ignore_errors=True)
+        if nested:
+            nested.stop()
         if a.keep or failed:
             print(f"  logs: {s.tmp}")
         else:
