@@ -173,15 +173,21 @@ QtObject {
         if (a[0] !== "keydown") keyReleased(ev, w)
     }
 
-    // Pre-warm (SEL-01): every overlay maps once at start, invisibly, so the
-    // first capture is as quick as the rest.
+    // Pre-warm (SEL-01): every overlay and the Quick Access window map once at
+    // start, invisibly, so the first capture and card are as quick as the rest.
     property bool warming: false
     property int warmedCount: 0
     function warmed(w) {
         warmedCount++
-        if (warmedCount >= overlays.count) warming = false
+        if (warmedCount >= overlays.count + 1) endWarming()
     }
-    property Timer warmTimeout: Timer { interval: 1500; onTriggered: root.warming = false }
+    function endWarming() {
+        if (!warming) return
+        warming = false
+        warmTimeout.stop()
+        Engine.log("prewarmed", "\"windows\":" + warmedCount + ",\"of\":" + (overlays.count + 1))
+    }
+    property Timer warmTimeout: Timer { interval: 1500; onTriggered: root.endWarming() }
 
     Component.onCompleted: {
         Engine.start(mode === "interactive" ? "interactive" : "test")

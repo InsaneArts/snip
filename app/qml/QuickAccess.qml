@@ -43,13 +43,16 @@ Window {
     readonly property int firstVisible: expanded ? 0 : Math.max(0, count - maxVisible)
     readonly property bool collapsed: count > maxVisible && !expanded
 
-    visible: count > 0 && !remap && output !== ""
+    // mapped once at start, empty, like the overlays (Main.warming): the
+    // first card then appears as quickly as the rest
+    readonly property bool warming: c.warming && count === 0
+    visible: (count > 0 && !remap && output !== "") || warming
     color: "transparent"
     flags: Qt.FramelessWindowHint
     width: cardWidth + 2 * margin + menuSpace
     title: "snip-qao"
 
-    LayerShell.Window.screen: Platform.screen(output)
+    LayerShell.Window.screen: Platform.screen(output !== "" ? output : Qt.application.screens[0].name)
     LayerShell.Window.scope: "snip-qao"
     LayerShell.Window.layer: LayerShell.Window.LayerOverlay
     LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorBottom
@@ -213,6 +216,7 @@ Window {
         target: Platform
         function onFramePresented(w) {
             if (w !== qa) return
+            if (qa.warming) qa.c.warmed(qa)
             qa.presented = true
             const q = qa.presentQueue
             qa.presentQueue = []
@@ -254,6 +258,7 @@ Window {
     onVisibleChanged: {
         if (visible) Qt.callLater(updateMask)
         else presented = false
+        if (visible && warming) Platform.notifyNextFrame(qa)
     }
 
     // ---------------------------------------------------------------- content
@@ -444,6 +449,8 @@ Window {
         x: qa.cardX + (qa.cardWidth - width) / 2
         y: qa.hidden ? qa.height - (lifted ? height - 2 : 14) : qa.height + 8
         Behavior on y { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
+        // parked below the window, its shadow would still reach into it
+        visible: y < qa.height
         color: Qt.rgba(0.93, 0.93, 0.94, 0.95)
         RectangularShadow { z: -1; anchors.fill: parent; radius: parent.radius; blur: 16; offset.y: 2; color: Theme.shadow }
         Row {
