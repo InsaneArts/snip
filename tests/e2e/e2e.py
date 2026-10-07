@@ -205,6 +205,12 @@ class Env:
             sh("hyprctl", "output", "create", "headless", OUT)
             time.sleep(0.5)
         self.configure(scale, transform)
+        # The test instance's editor windows open on the test output, without
+        # taking focus. One rule: Hyprland 0.56 drops `float` from another
+        # matching rule when this one moves the window.
+        ws = self.monitor()["activeWorkspace"]["id"]
+        hypr_eval(f'hl.window_rule({{ match = {{ class = "^snip-e2e$" }}, workspace = "{ws} silent", float = true, center = true, '
+                  f'no_initial_focus = true, opacity = "1 1" }})')
 
     def configure(self, scale, transform=0):
         hypr_eval(f'hl.monitor({{ output = "{OUT}", mode = "1920x1080@60", position = "auto", scale = {scale}, transform = {transform} }})')
@@ -556,6 +562,112 @@ def rotate_and_flip(s, env):
     assert wait_for(lambda: len(s.traces("transformed")) >= 2, 5)
     b = Image.open(get()["source"]).convert("RGB")
     assert b.getpixel((145, 295))[0] > 200 and b.getpixel((5, 295))[1] > 200, "marker should move to the bottom-right"
+
+
+def noise_png(path, w, h, seed=7):
+    """Random pixels: any resampling or colour change in a round trip shows."""
+    import random
+    from PIL import Image
+    rnd = random.Random(seed)
+    Image.frombytes("RGB", (w, h), bytes(rnd.randrange(256) for _ in range(w * h * 3))).save(path)
+
+
+def editor_state(s):
+    n = len(s.traces("editor_state"))
+    s.debug("ui", "editor", "state")
+    assert wait_for(lambda: len(s.traces("editor_state")) > n, 3), "no editor state"
+    return s.traces("editor_state")[-1]
+
+
+def editor_flush(s):
+    n = len(s.traces("edited"))
+    s.debug("ui", "editor", "flush")
+    assert wait_for(lambda: len(s.traces("edited")) > n, 5), "the edit was not written back"
+
+
+def editor_window():
+    return next((c for c in hypr_json("clients") if c["class"] == "snip-e2e" and c["title"].startswith("Snip Editor")), None)
+
+
+def close_editor(s):
+    s.debug("ui", "editor", "close")
+    assert wait_for(lambda: editor_window() is None, 5), "the editor did not close"
+
+
+@case
+def editor_round_trip(s, env):
+    """ANN-15/16/19: snip edit FILE opens the editor; the export is pixel-exact outside the
+    drawn object at a fractional scale; undo restores every pixel; the original and the
+    objects are kept, so reopening keeps them editable."""
+    from PIL import Image
+    png = s.tmp / "noise.png"
+    noise_png(png, 333, 217)                        # odd sizes: 333 px is not a whole number of logical px at 1.25
+    rec = s.json("edit", str(png))["result"]
+    assert wait_for(lambda: editor_window(), 5), "no editor window"
+    w = editor_window()
+    assert w["floating"] and w["monitor"] == env.monitor()["id"], w
+    assert wait_for(lambda: editor_state(s)["ready"], 3)
+    assert not s.status()["cards"], "snip edit shows no card"
+
+    s.debug("ui", "editor", "rect", 100, 60, 120, 80)
+    editor_flush(s)
+    orig, out = Image.open(png).convert("RGB"), Image.open(rec["source"]).convert("RGB")
+    assert out.size == orig.size, out.size
+    inside = lambda x, y: 80 <= x <= 240 and 40 <= y <= 160
+    diff = [(x, y) for y in range(217) for x in range(333) if not inside(x, y) and out.getpixel((x, y)) != orig.getpixel((x, y))]
+    assert not diff, f"{len(diff)} pixels changed outside the rectangle, e.g. {diff[:3]}"
+    r, g, b = out.getpixel((100, 100))                # on the rectangle's left edge
+    assert r > 200 and g < 90, (r, g, b)
+    hist = Path(rec["source"]).parent
+    assert (hist / "original.png").exists() and json.loads((hist / "edit.json").read_text())["items"][0]["kind"] == "rect"
+
+    s.debug("ui", "editor", "undo")
+    editor_flush(s)
+    assert Image.open(rec["source"]).convert("RGB").tobytes() == orig.tobytes(), "undo must restore every pixel"
+    s.debug("ui", "editor", "redo")
+    editor_flush(s)
+    close_editor(s)
+
+    s.debug("annotate", rec["id"])                  # the card's pencil / double-click
+    assert wait_for(lambda: editor_window(), 5), "annotate did not open the editor"
+    st = editor_state(s)
+    assert [i["kind"] for i in st["items"]] == ["rect"] and st["undo"] == 0, st
+    close_editor(s)
+
+
+@case
+def editor_draws_with_pointer(s, env):
+    """Drawing an arrow and moving it with the pointer; Copy writes back, copies and closes."""
+    from PIL import Image
+    png = s.tmp / "white.png"
+    Image.new("RGB", (400, 260), "white").save(png)
+    rec = s.json("edit", str(png))["result"]
+    assert wait_for(lambda: editor_window(), 5)
+    assert wait_for(lambda: editor_state(s)["ready"], 3)
+    time.sleep(0.3)
+    w, mon, st = editor_window(), env.monitor(), editor_state(s)
+
+    def at(ix, iy):                                   # image px -> output-local logical px
+        return (w["at"][0] - mon["x"] + st["originX"] + ix * st["k"], w["at"][1] - mon["y"] + st["originY"] + iy * st["k"])
+
+    s.drag(*at(60, 200), *at(300, 60), steps=6)
+    time.sleep(0.2)
+    st = editor_state(s)
+    assert len(st["items"]) == 1 and st["items"][0]["kind"] == "arrow", st["items"]
+    a = st["items"][0]
+    assert abs(a["x1"] - 60) <= 3 and abs(a["y2"] - 60) <= 3, a
+    s.drag(*at(120, 165), *at(120, 215), steps=4)     # grab it a quarter along, move it down 50
+    time.sleep(0.2)
+    b = editor_state(s)["items"][0]
+    assert len(editor_state(s)["items"]) == 1 and abs((b["y1"] - a["y1"]) - 50) <= 3 and abs(b["cy"] - a["cy"] - 50) <= 3, (a, b)
+    s.drag(*at(180, 180), *at(180, 230), steps=4)     # its middle is the bend handle
+    c = editor_state(s)["items"][0]
+    assert abs(c["y1"] - b["y1"]) < 1 and c["cy"] - b["cy"] > 80, (b, c)
+    n = len(s.traces("copied"))
+    s.debug("ui", "editor", "flush", "copy")
+    assert wait_for(lambda: len(s.traces("copied")) > n and editor_window() is None, 5), "Copy did not copy and close"
+    px = Image.open(rec["source"]).convert("RGB").getpixel((round(c["x2"]), round(c["y2"])))  # the arrow's tip
+    assert px[0] > 200 and px[1] < 90, px
 
 
 @case
