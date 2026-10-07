@@ -40,7 +40,7 @@ Window {
 
     title: "Snip Editor — " + (capture.title || "Capture")
     color: Theme.background
-    minimumWidth: 640
+    minimumWidth: Math.max(640, toolbar.needed)
     minimumHeight: 420
 
     // ---------------------------------------------------------------- document
@@ -1735,7 +1735,7 @@ Window {
                 revision: revision, saved: savedRevision, undo: undoStack.length, redo: redoStack.length,
                 // where image px (0,0) is, in window-logical px, and logical px per image px
                 originX: originX, originY: originY + view.y, k: k, winW: width, winH: height,
-                ready: base.status === Image.Ready, editingText: editingText, typed: textEdit.text, active: ed.active, menuOpen: openedMenu !== null,
+                ready: base.status === Image.Ready, editingText: editingText, typed: textEdit.text, active: ed.active, menuOpen: openedMenu !== null, toolbarNeeds: toolbar.needed,
                 emojiButton: emojiButton.visible ? emojiButton.mapToItem(null, 11, 11) : null,
                 selectionBox: { x: selectionBox.x, y: selectionBox.y, w: selectionBox.width, h: selectionBox.height },
                 words: words ? words.length : -1, fill: doc.fill || "", shownX: shown.x, shownY: shown.y,

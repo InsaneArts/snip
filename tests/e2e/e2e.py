@@ -810,6 +810,10 @@ def editor_done_button(s, env):
     Image.new("RGB", (400, 240), "white").save(png)
     rec = s.json("edit", str(png))["result"]
     assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    for tool in ("text", "arrow", "redact", "counter"):     # the widest option sets
+        s.debug("ui", "editor", "tool", tool)
+        st = editor_state(s)
+        assert st["toolbarNeeds"] <= st["winW"], f"{tool}: the toolbar needs {st['toolbarNeeds']} of {st['winW']}"
     s.debug("ui", "editor", "rect", 50, 50, 120, 80)
     w, mon, st = editor_window(), env.monitor(), editor_state(s)
     n = len(s.traces("edited"))
