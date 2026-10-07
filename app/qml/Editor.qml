@@ -1029,8 +1029,7 @@ Window {
             anchors.fill: parent
             hoverEnabled: true
             acceptedButtons: Qt.LeftButton | Qt.MiddleButton
-            cursorShape: ed.picking ? Qt.CrossCursor
-                       : gesture === "pan" || keys.spaceHeld ? Qt.ClosedHandCursor
+            cursorShape: gesture === "pan" || keys.spaceHeld ? Qt.ClosedHandCursor
                        : ed.tool === "crop" ? Qt.CrossCursor
                        : hoverHandle !== "" ? Qt.SizeAllCursor
                        : hoverItem >= 0 ? Qt.OpenHandCursor
@@ -1075,11 +1074,6 @@ Window {
             onPressed: (m) => {
                 keys.forceActiveFocus()
                 pressVX = m.x; pressVY = m.y
-                if (ed.picking) {
-                    const ip = ed.toImage(m.x, m.y)
-                    ed.pickAt(ip.x, ip.y)
-                    return
-                }
                 if (keys.spaceHeld || m.button === Qt.MiddleButton) {
                     gesture = "pan"; pressPanX = ed.panX; pressPanY = ed.panY
                     return
@@ -1412,15 +1406,25 @@ Window {
         Engine.setSavedColors(JSON.stringify(list))
     }
     property bool customOpen: false
-    // the eyedropper: the next click on the image picks its colour
-    property bool picking: false
-    property bool pickingBg: false      // the eyedropper picks the background's colour
-    function pickAt(ix, iy) {
-        picking = false
-        const c = Engine.pixelColor(basePath, Math.floor(ix), Math.floor(iy))
-        if (c && pickingBg) setBg({ kind: "color", value: c })
-        else if (c) setColor(c)
-        pickingBg = false
+    // the eyedropper (ANN-13): the frozen screen with the magnifier, so it
+    // picks anywhere, this canvas included; for the ink or the background
+    property int pickToken: 0
+    property bool pickForBg: false
+    function pickColor(forBg) {
+        openedMenu = null
+        pickForBg = forBg
+        pickToken = controller.nextToken()
+        Engine.pickColorForEditor(pickToken)
+    }
+    Connections {
+        target: Engine
+        function onEditorColor(token, c) {
+            if (token !== ed.pickToken) return
+            ed.pickToken = 0
+            ed.requestActivate()
+            if (c && ed.pickForBg) ed.setBg({ kind: "color", value: c })
+            else if (c) ed.setColor(c)
+        }
     }
 
     Menu {
@@ -1467,7 +1471,7 @@ Window {
                 value: ed.toolInk
                 onPicked: (c) => ed.setColor(c)
                 onSave: ed.saveColor(current)
-                onEyedropper: { ed.picking = true; ed.openedMenu = null }
+                onEyedropper: ed.pickColor(false)
             }
         }
     }
@@ -1709,7 +1713,7 @@ Window {
             value: ed.bgLive && ed.bgLive.kind === "color" && ed.bgLive.value.startsWith("#") ? ed.bgLive.value : "#3a7bd5"
             onPicked: (c) => ed.previewBg({ kind: "color", value: c })
             onSave: ed.saveColor(current)
-            onEyedropper: { ed.pickingBg = true; ed.picking = true; ed.openedMenu = null }
+            onEyedropper: ed.pickColor(true)
         }
     }
 
@@ -1860,7 +1864,7 @@ Window {
         case "counter": addItem({ kind: "counter", x: n(1), y: n(2), color: ink, size: sizeFor("counter"), style: a[3] || counterStyle }); break
         case "counter-style": setCounterStyle(a[1]); break
         case "words": Engine.requestWords(basePath); break
-        case "eyedropper": picking = true; break
+        case "eyedropper": pickColor(a[1] === "bg"); break
         case "add-image": addImageFile(Engine.editorImportImage(basePath, a.slice(1).join(" "))); break
         case "paste-image": pasteImage(); break
         case "save-color": saveColor(a[1]); break
@@ -1905,7 +1909,7 @@ Window {
                 words: words ? words.length : -1, fill: doc.fill || "", shownX: shown.x, shownY: shown.y,
                 imgW: imgW, imgH: imgH, base: doc.base || "", bg: doc.bg || null, exportRect: exportRect, balance: balance, paddingValue: bgPanel.visible ? bgPanel.paddingSlider.valueBox.mapToItem(null, 14, 9) : null,
                 bgPresets: bgPresets.map(p => p.name), bgPreset: bgPreset, bgPresetChanged: bgPresetChanged, ownWalls: bgPanel.ownWalls,
-                shadows: annotateCfg.object_shadows !== false, ink: ink, savedColors: savedColors, picking: picking,
+                shadows: annotateCfg.object_shadows !== false, ink: ink, savedColors: savedColors, picking: pickToken !== 0,
                 counterLabels: doc.items.map((o, i) => o.kind === "counter" ? Ed.counterLabel(doc, Ed.counterNumber(doc.items, i), o.style) : null).filter(l => l !== null)
             }).slice(1, -1))
             break

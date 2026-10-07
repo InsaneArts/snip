@@ -144,7 +144,7 @@ Item {
                     onAccepted: { const c = text.startsWith("#") ? text : "#" + text; panel.load(c); panel.emit() }
                 }
             }
-            ToolButton { icon: "pipette"; tip: "Pick a colour from the image"; onClicked: panel.eyedropper() }
+            ToolButton { icon: "pipette"; tip: "Pick a colour from the screen"; onClicked: panel.eyedropper() }
             ToolButton { icon: "plus"; tip: "Add to My Colors"; onClicked: panel.save() }
         }
     }
