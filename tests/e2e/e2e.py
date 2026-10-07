@@ -1429,6 +1429,35 @@ def editor_background_presets(s, env):
 
 
 @case
+def editor_own_wallpaper(s, env):
+    """BG-01: an image of your own becomes a wallpaper (copied into Snip's data, so it
+    stays when the file goes), shows behind the capture, and can be removed again."""
+    from PIL import Image
+    src = s.tmp / "mywall.png"
+    Image.new("RGB", (64, 64), (200, 30, 160)).save(src)
+    png = s.tmp / "w.png"
+    noise_png(png, 120, 80, seed=3)
+    rec = s.json("edit", str(png))["result"]
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    s.debug("ui", "editor", "add-wallpaper", str(src))
+    st = editor_state(s)
+    walls = st["ownWalls"]
+    assert len(walls) == 1 and walls[0].startswith(str(s.tmp / "data")) and Path(walls[0]).exists(), walls
+    assert st["bg"]["kind"] == "wallpaper" and st["bg"]["value"] == walls[0], st["bg"]
+    src.unlink()                                                # the copy is what counts
+    s.debug("ui", "editor", "bg", '{"padding":30,"shadow":0,"radius":0,"inset":0}')
+    editor_flush(s)
+    corner = Image.open(rec["source"]).convert("RGB").getpixel((4, 4))
+    assert abs(corner[0] - 200) < 12 and corner[1] < 50 and abs(corner[2] - 160) < 12, corner
+    s.debug("ui", "editor", "add-wallpaper", str(s.tmp / "missing.txt"))
+    assert len(editor_state(s)["ownWalls"]) == 1, "only images become wallpapers"
+    s.debug("ui", "editor", "remove-wallpaper", walls[0])
+    st = editor_state(s)
+    assert st["ownWalls"] == [] and not Path(walls[0]).exists() and st["bg"] is None, st["bg"]
+    close_editor(s)
+
+
+@case
 def editor_add_image(s, env):
     """ANN-12: add an image from a file and from the clipboard; it keeps its shape when
     resized from a corner, and is drawn into the export."""
