@@ -8,10 +8,12 @@
 #include <QMimeData>
 #include <QPixmap>
 #include <QQmlEngine>
+#include <QQuickItemGrabResult>
 #include <QQuickWindow>
 #include <QRegion>
 #include <QUrl>
 #include <atomic>
+#include <cmath>
 #include <memory>
 
 #include "snip_bridge/src/bridge.cxxqt.h"
@@ -119,4 +121,46 @@ QString
 Platform::hex(const QColor& c) const
 {
   return c.name(QColor::HexRgb).toUpper();
+}
+
+void
+Platform::grabExact(QQuickItem* item, int width, int height, int token)
+{
+  QQuickWindow* win = item ? item->window() : nullptr;
+  if (!win || width < 1 || height < 1) {
+    Q_EMIT grabbed(token, false);
+    return;
+  }
+  // Qt renders a grab of logical size s into round(s * dpr) texels, mapping
+  // the item's rect onto them. Pick an s with at least `width` texels, then
+  // make the item exactly that many units wide: one unit per texel.
+  const qreal dpr = win->effectiveDevicePixelRatio();
+  auto fit = [dpr](int px) {
+    int s = std::max(1, int(std::ceil(px / dpr)));
+    while (qRound(s * dpr) < px)
+      ++s;
+    return s;
+  };
+  const QSize logical(fit(width), fit(height));
+  const QSize texels = logical * dpr;
+  item->setSize(QSizeF(texels));
+  QSharedPointer<QQuickItemGrabResult> result = item->grabToImage(logical);
+  if (!result) {
+    Q_EMIT grabbed(token, false);
+    return;
+  }
+  connect(result.data(), &QQuickItemGrabResult::ready, this, [this, result, width, height, token]() {
+    QImage img = result->image();
+    if (img.width() < width || img.height() < height) {
+      Q_EMIT grabbed(token, false);
+      return;
+    }
+    img = img.copy(0, 0, width, height).convertToFormat(QImage::Format_RGBA8888);
+    snip::edit_put(uint32_t(token),
+                   rust::Slice<const uint8_t>(img.constBits(), size_t(img.sizeInBytes())),
+                   uint32_t(width),
+                   uint32_t(height),
+                   uint32_t(img.bytesPerLine()));
+    Q_EMIT grabbed(token, true);
+  });
 }
