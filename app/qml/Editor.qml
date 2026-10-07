@@ -79,7 +79,27 @@ Window {
         selected = -1
         changed()
     }
-    function setItems(items) { commit(Object.assign({}, doc, { items: items })) }
+    function setItems(items) { commit(expanded(Object.assign({}, doc, { items: items }))) }
+    // "Auto-expand canvas" (ANN-17): a new or changed object past the canvas
+    // grows it in the same undo step, filled like an outward crop
+    function expanded(next) {
+        if (!annotateCfg.auto_expand) return next
+        const c = next.crop || full
+        let x0 = c.x, y0 = c.y, x1 = c.x + c.w, y1 = c.y + c.h
+        next.items.forEach((o, i) => {
+            if (o.kind === "redact" || o.kind === "spotlight" || JSON.stringify(o) === JSON.stringify(doc.items[i])) return
+            measure.o = o
+            const e = Ed.extent(o, measure.box), m = Math.round(Math.max(imgW, imgH) * 0.02)
+            if (e.x < x0) x0 = e.x - m
+            if (e.y < y0) y0 = e.y - m
+            if (e.x + e.w > x1) x1 = e.x + e.w + m
+            if (e.y + e.h > y1) y1 = e.y + e.h + m
+        })
+        measure.o = null
+        if (x0 === c.x && y0 === c.y && x1 === c.x + c.w && y1 === c.y + c.h) return next
+        const r = clampCrop({ x: Math.floor(x0), y: Math.floor(y0), w: Math.ceil(x1) - Math.floor(x0), h: Math.ceil(y1) - Math.floor(y0) })
+        return Object.assign({}, next, { crop: r, fill: next.fill || edgeFill || Engine.edgeColor(basePath) })
+    }
     function addItem(o) {
         setItems(doc.items.concat([o]))
         selected = doc.items.length - 1
@@ -746,6 +766,8 @@ Window {
             transformOrigin: Item.TopLeft
             Item {
                 x: -ed.shown.x; y: -ed.shown.y
+                // measures text for auto-expand
+                EditorItem { id: measure; visible: false; o: null }
                 EditorItem {
                     // also measures the selection: text handles sit on its box
                     id: selectionHalo

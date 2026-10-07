@@ -270,6 +270,20 @@ function withHandle(o, h, x, y, box) {
 
 // Redaction regions sit on whole pixels, so their tiles line up with the
 // image (and so does a crop).
+// Where an object draws, in image px (text needs its rendered `textBox`).
+function extent(o, textBox) {
+    var pts, pad = 0
+    if (o.kind === "arrow") { pts = [[o.x1, o.y1], [o.x2, o.y2], [o.cx === undefined ? o.x1 : o.cx, o.cy === undefined ? o.y1 : o.cy]]; pad = o.size * 2 }
+    else if (o.kind === "line") { pts = [[o.x1, o.y1], [o.x2, o.y2]]; pad = o.size / 2 }
+    else if (o.kind === "pencil") { pts = o.pts; pad = o.size / 2 }
+    else if (o.kind === "counter") { pts = [[o.x, o.y]]; pad = o.size / 2 }
+    else if (o.kind === "text") return { x: textBox.x, y: textBox.y, w: textBox.width, h: textBox.height }
+    else return { x: o.x, y: o.y, w: o.w, h: o.h }
+    var xs = pts.map(function (p) { return p[0] }), ys = pts.map(function (p) { return p[1] })
+    var x0 = Math.min.apply(null, xs) - pad, y0 = Math.min.apply(null, ys) - pad
+    return { x: x0, y: y0, w: Math.max.apply(null, xs) + pad - x0, h: Math.max.apply(null, ys) + pad - y0 }
+}
+
 function whole(r) {
     var n = copy(r)
     var x2 = Math.round(r.x + r.w), y2 = Math.round(r.y + r.h)
