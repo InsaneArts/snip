@@ -249,7 +249,7 @@ pub mod qobject {
         fn edit_put(token: u32, data: &[u8], width: u32, height: u32, stride: u32);
         /// Pixelate (style 0), Blur (1) or Text shape (2) tiles for a region
         /// of the image at `path` (ANN-06, D26, D30).
-        fn redact_tiles(path: &QString, x: i32, y: i32, w: i32, h: i32, style: u32, seed: u32) -> RedactTiles;
+        fn redact_tiles(path: &QString, x: i32, y: i32, w: i32, h: i32, style: u32, seed: u32, level: f32) -> RedactTiles;
         /// Another snipd already answers on ctl.sock.
         fn already_running() -> bool;
     }
@@ -634,15 +634,17 @@ fn edit_put(token: u32, data: &[u8], width: u32, height: u32, stride: u32) {
     crate::edits::put(token, data, width, height, stride);
 }
 
-fn redact_tiles(path: &QString, x: i32, y: i32, w: i32, h: i32, style: u32, seed: u32) -> qobject::RedactTiles {
+#[allow(clippy::too_many_arguments)]
+fn redact_tiles(path: &QString, x: i32, y: i32, w: i32, h: i32, style: u32, seed: u32, level: f32) -> qobject::RedactTiles {
     let style = match style {
         1 => snip_core::redact::Style::Blur,
         2 => snip_core::redact::Style::TextShape,
+        3 => snip_core::redact::Style::NaturalBlur,
         _ => snip_core::redact::Style::Pixelate,
     };
     match crate::edits::decoded(&path.to_string()) {
         Some(img) => {
-            let (rgba, width, height) = snip_core::redact::tiles(&img.data, img.width, img.height, img.bpp, (x as i64, y as i64, w as i64, h as i64), style, seed);
+            let (rgba, width, height) = snip_core::redact::tiles(&img.data, img.width, img.height, img.bpp, (x as i64, y as i64, w as i64, h as i64), style, seed, level);
             qobject::RedactTiles { valid: true, width, height, rgba }
         }
         None => qobject::RedactTiles::default(),

@@ -2,9 +2,10 @@
 
 #include <QQuickImageProvider>
 
-// image://snip-redact/<style>/<seed>/<x>,<y>,<w>,<h>/<percent-encoded path>:
-// the editor's Pixelate (style 0), Blur (1) and Text shape (2) tiles for a
-// region of an image, built in Rust (ANN-06, D26, D30).
+// image://snip-redact/<style>/<level>/<seed>/<x>,<y>,<w>,<h>/<percent-encoded path>:
+// the editor's Pixelate (style 0), Blur (1), Text shape (2) and Natural blur
+// (3, not secure) for a region of an image at an intensity, built in Rust
+// (ANN-06, D26, D30).
 class RedactProvider : public QQuickImageProvider
 {
 public:
