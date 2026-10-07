@@ -1262,6 +1262,7 @@ impl Inner {
                 "closeAfterDrag": c.quick_access.close_after_drag,
             },
             "capture": c.capture,
+            "annotate": c.annotate,
             "sounds": c.general.sounds,
             "saveAlsoCopies": c.general.save_also_copies,
         })

@@ -143,6 +143,25 @@ pub struct Ocr {
     pub index_history: bool,
 }
 
+/// The editor's settings (CleanShot: Settings › Annotate).
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct Annotate {
+    /// "Draw shadow on objects": a soft shadow under every object.
+    pub object_shadows: bool,
+    /// "Inverse arrow direction": arrows point where the drag started;
+    /// Alt while drawing flips it either way.
+    pub inverse_arrows: bool,
+    /// "Smooth drawing": the pencil drops points that add nothing.
+    pub smooth_drawing: bool,
+}
+
+impl Default for Annotate {
+    fn default() -> Self {
+        Self { object_shadows: true, inverse_arrows: false, smooth_drawing: true }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct Capture {
@@ -177,6 +196,7 @@ pub enum Crosshair {
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
     pub general: General,
+    pub annotate: Annotate,
     pub after_capture: AfterCaptureRules,
     pub quick_access: QuickAccess,
     pub history: History,
