@@ -1776,7 +1776,9 @@ def editor_drop_zones(s, env):
     Image.new("RGB", (200, 100), (200, 30, 160)).save(other)
     rec = s.json("edit", str(base))["result"]
     assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    h0 = editor_window()["size"][1]
     s.debug("ui", "editor", "drop", str(other), 150, 280)       # near the bottom edge
+    assert wait_for(lambda: editor_window()["size"][1] > h0 + 100, 3), ("the window grows with the canvas", h0, editor_window()["size"])
     st = editor_state(s)
     img = st["items"][-1]
     assert (img["kind"], img["x"], img["y"], img["w"], img["h"]) == ("image", 0, 300, 400, 200), img
