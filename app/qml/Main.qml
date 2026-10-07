@@ -184,6 +184,7 @@ QtObject {
         if (a[0] === "history") { history.debug(a.slice(1)); return }
         if (a[0] === "settings") { if (settingsWindow) settingsWindow.debug(a.slice(1)); return }
         if (a[0] === "scroll") { scrollHud.debug(a.slice(1)); return }
+        if (a[0] === "tray") { trayMenu.debug(a.slice(1)); return }
         if (a[0] === "pin") {
             const p = pins[pins.length - 1]
             if (p) p.debug(a.slice(1))
@@ -232,7 +233,7 @@ QtObject {
     Component.onCompleted: {
         Engine.start(mode === "interactive" ? "interactive" : "test")
         if (mode === "gallery") gallery = galleryComponent.createObject(null)
-        else { warming = true; warmTimeout.start() }
+        else { warming = true; warmTimeout.start(); Platform.showTray(Engine.trayIconDir()) }
     }
 
     // ---------------------------------------------------------------- surfaces
@@ -247,6 +248,12 @@ QtObject {
     property Preview preview: Preview {}
     property History history: History { controller: root }
     property ScrollHud scrollHud: ScrollHud { controller: root }
+    property TrayMenu trayMenu: TrayMenu { controller: root }
+    // Snip in the bar (OMA-08): a click on its icon opens the menu
+    property Connections trayClicks: Connections {
+        target: Platform
+        function onTrayActivated(x, y) { root.trayMenu.toggle() }
+    }
 
     // Editors, one per capture: opening one again brings it forward.
     property var editors: ({})

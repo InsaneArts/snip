@@ -54,6 +54,7 @@ Rectangle {
             model: menu.items
             delegate: Item {
                 required property var modelData
+                objectName: modelData.action ? "menu:" + modelData.action : ""
                 width: col.width
                 height: modelData.sep ? 9 : 30
                 Rectangle {
@@ -74,6 +75,7 @@ Rectangle {
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 10
                         Icon {
+                            visible: !!modelData.icon
                             name: modelData.icon || "x"
                             size: 15
                             stroke: 1.9
