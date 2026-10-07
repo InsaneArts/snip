@@ -28,10 +28,11 @@ pub struct Stitcher {
     w: usize,
     h: usize,
     prev: Option<Frame>,
-    top: usize,
     bottom: usize,
     /// content position of the last matched frame's row 0
     pos: i64,
+    /// the deepest `pos` so far: the frame whose rows end the content
+    deepest: i64,
     /// content rows in `canvas`
     end: i64,
     canvas: Vec<u8>,
@@ -58,7 +59,7 @@ const STILL: f32 = 3.0;
 
 impl Stitcher {
     pub fn new(width: u32, height: u32) -> Self {
-        Self { w: width as usize, h: height as usize, prev: None, top: 0, bottom: 0, pos: 0, end: 0, canvas: vec![], last_dy: 0 }
+        Self { w: width as usize, h: height as usize, prev: None, bottom: 0, pos: 0, deepest: 0, end: 0, canvas: vec![], last_dy: 0 }
     }
 
     /// The stitched image's height so far.
@@ -90,23 +91,21 @@ impl Stitcher {
             }
         };
         if dy != 0 {
-            // A band row stayed put while the content moved, and isn't just
-            // content that looks the same shifted (a blank stretch).
-            let band = |y: &usize| {
-                let from = *y as i32 + dy;
-                !(0..h as i32).contains(&from) || self.row_diff(&prev, from as usize, &cur, *y) > STILL
-            };
-            let top = (0..h).take_while(|&y| still[y]).filter(band).last().map_or(0, |y| y + 1).min(cap);
-            let bottom = (0..h).rev().take_while(|&y| still[y]).filter(band).last().map_or(0, |y| h - y).min(cap);
-            self.top = self.top.max(top);
+            // The footer: every bottom row that stayed put while the content
+            // moved. Too many is safe (rows keep their place in the content,
+            // and the last frame gives them); too few puts footer rows into
+            // the image (a smooth scroll's first small step).
+            let bottom = (0..h).rev().take_while(|&y| still[y]).count().min(cap);
             if bottom > self.bottom {
-                // rows past the content area of the last frame were its footer
-                self.end = self.end.min(self.pos + (h - bottom) as i64);
+                // the content's last rows came from the deepest frame: those
+                // past its content area were its footer
+                self.end = self.end.min(self.deepest + (h - bottom) as i64);
                 self.canvas.truncate(self.end as usize * self.w * 4);
                 self.bottom = bottom;
             }
         }
         self.pos += dy as i64;
+        self.deepest = self.deepest.max(self.pos);
         let reach = self.pos + (h - self.bottom) as i64;
         let added = (reach - self.end).max(0);
         for p in self.end..reach {
@@ -160,9 +159,10 @@ impl Stitcher {
     }
 
     /// How far the content moved from `prev` to `cur` (cur's row y shows what
-    /// prev's row y + dy did), between the known bands, on the rows that moved.
+    /// prev's row y + dy did), on the rows that moved: a sticky header or
+    /// footer stays put, so it never votes.
     fn shift(&self, prev: &Frame, cur: &Frame, still: &[bool]) -> Result<i32, Step> {
-        let (lo, hi) = (self.top as i32, (self.h - self.bottom) as i32);
+        let (lo, hi) = (0, self.h as i32);
         let span = hi - lo;
         if span < MIN_ROWS as i32 * 2 {
             return Err(Step::Lost);
@@ -390,6 +390,60 @@ mod tests {
         assert_eq!(steps[2], Step::Lost, "no overlap with the last frame");
         assert!(steps[3..].iter().all(|st| matches!(st, Step::Moved { .. })), "{steps:?}");
         check(&s, lines);
+    }
+
+    #[test]
+    fn a_bar_that_appears_above_where_it_started_keeps_the_image_whole() {
+        // Start mid-page, scroll up more than a view, and let a bar appear
+        // over the bottom of the page (a browser's link preview): the footer
+        // grows while the view is above the first frame. The image must stay
+        // whole and its size match its pixels (it once went negative and
+        // crashed the session). As in CleanShot, the image grows down from
+        // where it started; what's above the start isn't added.
+        let lines = 60;
+        let p = page(lines);
+        let mut s = Stitcher::new(W as u32, VIEW as u32);
+        let toast = |mut f: Vec<u8>| {
+            for y in VIEW - FOOTER - 14..VIEW - FOOTER {
+                for x in 0..W {
+                    let v = if (x / 7) % 2 == 0 { 70 } else { 150 };
+                    f[(y * W + x) * 4..(y * W + x) * 4 + 3].copy_from_slice(&[v, v, v]);
+                }
+            }
+            f
+        };
+        for (pos, with_toast) in [(800, false), (700, false), (560, false), (420, false), (300, true), (200, true), (100, false), (0, false)] {
+            let f = frame(&p, pos, 0);
+            s.push(&if with_toast { toast(f) } else { f });
+            let (w, h, img) = s.image();
+            assert_eq!(img.len(), (w * h * 4) as usize, "at {pos}: the size matches the pixels");
+        }
+        let last = lines * LINE - (VIEW - HEADER - FOOTER);
+        for pos in (0..=last).step_by(70).chain([last]) {
+            s.push(&frame(&p, pos, 0));
+        }
+        let (w, h, img) = s.image();
+        assert_eq!(img.len(), (w * h * 4) as usize);
+        let (seen, _, footers) = read(&img, h as usize);
+        assert_eq!(seen, (800 / LINE..lines).collect::<Vec<_>>(), "every line from the start down, once, in order");
+        assert_eq!(footers, FOOTER, "the footer once");
+    }
+
+    #[test]
+    fn a_small_first_step_finds_the_whole_footer() {
+        // A browser's smooth scroll: the first frame after it starts has moved
+        // a few rows only, so the footer's rows (all alike) match their shifted
+        // selves. None of them may end up in the middle of the image.
+        let lines = 40;
+        let p = page(lines);
+        let last = lines * LINE - (VIEW - HEADER - FOOTER);
+        let mut pos = vec![0, 6];
+        pos.extend((60..last).step_by(70));
+        pos.push(last);
+        let (s, steps) = stitch(&p, &pos, 0);
+        assert!(steps.iter().skip(1).all(|st| matches!(st, Step::Moved { .. })), "{steps:?}");
+        check(&s, lines);
+        exact(&s, &p);
     }
 
     #[test]
