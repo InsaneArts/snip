@@ -165,6 +165,24 @@ impl Default for Annotate {
     }
 }
 
+/// How pins look (PIN-08; CleanShot: Settings › Pin).
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct Pins {
+    /// Corner radius in px (0: square)
+    pub corner_radius: u32,
+    /// A soft shadow around each pin
+    pub shadow: bool,
+    /// A hairline border around each pin
+    pub border: bool,
+}
+
+impl Default for Pins {
+    fn default() -> Self {
+        Self { corner_radius: 10, shadow: true, border: true }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct Capture {
@@ -200,6 +218,7 @@ pub enum Crosshair {
 pub struct Config {
     pub general: General,
     pub annotate: Annotate,
+    pub pins: Pins,
     pub after_capture: AfterCaptureRules,
     pub quick_access: QuickAccess,
     pub history: History,
