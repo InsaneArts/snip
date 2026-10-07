@@ -161,6 +161,28 @@ Built: `snipd` (Rust core + Qt Quick UI in one process), `snip` CLI, `hypr/snip.
 - A feature-by-feature walk-through against the CleanShot inventory (screenshot areas) passes.
 - **First public release: Snip 0.x, "the screenshot experience".**
 
+## M3.5: Snip as a product (M; D36, planned, not built yet)
+
+Snip should feel like an app, not a set of commands. The CLI stays complete for scripts and agents.
+
+**Scope:**
+- **Logo and icon set:** the app icon in every size, plus a one-colour bar icon that follows the theme.
+- **Bar icon and menu** (OMA-08, D35): a click opens CleanShot's menu, with Settings… in it.
+- **Launcher** (OMA-09): "Snip" is searchable. It opens Settings and has capture actions. `app/snip.desktop` exists but isn't installed by the dev setup.
+- **Easy install while the repository is private:** one command. It builds Snip, installs it under `~/.local`, enables the user unit (so it starts at login), adds the launcher entry, and offers the Hyprland keys (OMA-02 onboarding).
+- **When the repository goes public** (D33): the AUR package and a landing page.
+
+**Open questions (the product owner's):**
+- Who draws the logo, and in what style? The current mark is the four corners of a selection (`app/icons/snip.svg`).
+- What should the landing page show: a feature tour with captures, or a one-page install guide? And where should it live (GitHub Pages)?
+- Should first run show onboarding (keys, Hyprland module, "start at login"), or should installing do it all?
+
+**Exit:**
+- On a fresh Omarchy, one command installs Snip.
+- Snip appears in the launcher and in the bar.
+- Its menu opens Settings and starts every capture.
+- Snip starts at login, and its keys work.
+
 ## M4: Recording suite and remaining parity (XL)
 
 **Scope:**
