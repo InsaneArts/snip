@@ -9,11 +9,12 @@ Rectangle {
     property var card: null
     signal triggered(string action)
 
-    readonly property var items: [
+    property var items: [
         { label: "Copy", key: "Ctrl+C", action: "copy", icon: "copy" },
         { label: card && card.saved ? "Show in Files" : "Save", key: card && card.saved ? "" : "Ctrl+S", action: card && card.saved ? "show" : "save", icon: card && card.saved ? "folder" : "save" },
         { label: "Save As…", key: "Ctrl+Shift+S", action: "save-as", icon: "save" },
         { label: "Annotate", key: "Ctrl+E", action: "annotate", icon: "pencil" },
+        { label: "Pin to Screen", key: "Ctrl+P", action: "pin", icon: "pin" },
         { label: "Extract Text", key: "", action: "text", icon: "scan-text" },
         { label: "Rotate Left", key: "", action: "rotate-left", icon: "rotate-ccw" },
         { label: "Flip Horizontal", key: "", action: "flip-horizontal", icon: "flip-horizontal" },

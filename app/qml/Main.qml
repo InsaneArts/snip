@@ -149,6 +149,7 @@ QtObject {
         function onQuitRequested() { Qt.quit() }
         function onDebugCommand(cmd) { root.debug(cmd) }
         function onEditorOpen(json) { root.openEditor(JSON.parse(json)) }
+        function onPinOpen(json) { root.openPin(JSON.parse(json)) }
     }
 
     // Test hooks (snip debug ui ...): keys the virtual pointer can't send.
@@ -159,6 +160,12 @@ QtObject {
         if (a[0] === "save-as") { const card = quickAccess.cardById(a[1]); if (card) quickAccess.act("save-as", card); return }
         if (a[0] === "cancel-dialogs") { Platform.closeFileDialogs(); return }
         if (a[0] === "close-editors") { for (const e of Object.values(editors)) e.closeEditor(); return }
+        if (a[0] === "close-pins") { closePins(); return }
+        if (a[0] === "pin") {
+            const p = pins[pins.length - 1]
+            if (p) p.debug(a.slice(1))
+            return
+        }
         if (a[0] === "editor") {
             const e = Object.values(editors).pop()
             if (e) e.debug(a.slice(1))
@@ -226,6 +233,16 @@ QtObject {
         editors[capture.id] = e
         e.finished.connect(() => { delete editors[capture.id]; e.destroy() })
     }
+    // Pins (PIN-01): one window each, created directly like editors
+    property var pins: []
+    property Component pinComponent: Component { Pin {} }
+    function openPin(capture) {
+        const p = pinComponent.createObject(null, { capture: capture, controller: root, number: nextToken() })
+        pins = pins.concat([p])
+        p.finished.connect(() => { pins = pins.filter(x => x !== p); p.destroy() })
+    }
+    function closePins() { for (const p of pins.slice()) p.close_() }
+
     // Objects copied in one editor, pasted in any (ANN-02: also between images).
     property var objectClipboard: []
     // Tokens for editor renders, unique across editors.

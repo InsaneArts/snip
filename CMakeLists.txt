@@ -68,6 +68,7 @@ qt_add_qml_module(snipd
     app/qml/BackgroundLayer.qml
     app/qml/BackgroundPanel.qml
     app/qml/Slider.qml
+    app/qml/Pin.qml
     app/qml/editor.js
   RESOURCES
     app/fonts/Nunito.ttf

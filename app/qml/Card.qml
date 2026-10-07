@@ -225,7 +225,8 @@ Item {
                 }
             }
             FrostButton { x: 8; y: 8; icon: "x"; onClicked: card.host.dismiss(card, -1) }
-            FrostButton { x: parent.width - width - 8; y: 8; icon: "more"; onClicked: card.menuRequested(x + width / 2, y + height) }
+            // CleanShot's corners: close, pin; annotate, (cloud →) text. Right-click: the menu.
+            FrostButton { x: parent.width - width - 8; y: 8; icon: "pin"; onClicked: card.host.act("pin", card) }
             FrostButton { x: 8; y: parent.height - height - 8; icon: "pencil"; onClicked: card.host.act("annotate", card) }
             FrostButton { x: parent.width - width - 8; y: parent.height - height - 8; icon: "scan-text"; onClicked: card.host.act("text", card) }
         }

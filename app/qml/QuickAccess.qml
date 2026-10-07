@@ -195,6 +195,7 @@ Window {
         case "save-as": saveAs(card); break
         case "show": Engine.showInFiles(id); break
         case "annotate": Engine.annotate(id); break
+        case "pin": Engine.pin(id); dismiss(card, outward); break
         case "text": card.flash("text", 0); Engine.extractText(id); break   // the result arrives as cardStatus
         case "rotate-left": case "flip-horizontal": Engine.transformCapture(id, action); break
         case "preview": c.preview.open(card.data_); break
@@ -526,6 +527,7 @@ Window {
             else if (ctrl && e.key === Qt.Key_S) qa.act((e.modifiers & Qt.ShiftModifier) ? "save-as" : "save", card)
             else if (ctrl && e.key === Qt.Key_W) qa.act("close", card)
             else if (ctrl && e.key === Qt.Key_E) qa.act("annotate", card)
+            else if (ctrl && e.key === Qt.Key_P) qa.act("pin", card)
             else if (e.key === Qt.Key_Space) qa.act("preview", card)
             else return
             e.accepted = true
