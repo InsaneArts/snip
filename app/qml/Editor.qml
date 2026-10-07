@@ -553,6 +553,7 @@ Window {
                 case Qt.Key_V: (controller.objectClipboard || []).length ? ed.pasteObjects() : ed.pasteImage(); break
                 case Qt.Key_I: shift ? ed.takeScreenshot() : ed.chooseImage(); break
                 case Qt.Key_D: ed.duplicateSelected(); break
+                case Qt.Key_P: ed.flush("pin"); break
                 case Qt.Key_0: ed.zoomFit(); break
                 case Qt.Key_1: ed.zoomTo(1); break
                 case Qt.Key_Plus: case Qt.Key_Equal: ed.zoomStep(1); break
@@ -1334,6 +1335,7 @@ Window {
         Row {
             anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
             spacing: 8
+            IconButton { icon: "pin"; tip: "Pin to Screen (Ctrl+P)"; tipAbove: true; width: 32; height: 32; radius: 16; onClicked: ed.flush("pin") }
             IconButton { icon: "copy"; tip: "Copy (Ctrl+C)"; tipAbove: true; width: 32; height: 32; radius: 16; onClicked: ed.flush("copy") }
         }
     }
