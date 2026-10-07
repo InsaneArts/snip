@@ -1178,9 +1178,13 @@ def editor_keyboard(s, env):
     assert wait_for(lambda: editor_state(s)["tool"] == "text", 2), editor_state(s)["tool"]
     s.move(*at(60, 100)); s.click(); time.sleep(0.2)
     assert editor_state(s)["editingText"], "clicking with the Text tool should start typing"
-    s.debug("ui", "editor", "keys", "Hello", "snip{Return}")
+    s.debug("ui", "editor", "keys", "Hello", "snip")
+    s.move(*at(61, 100)); s.click()                              # a click in the text moves the caret there
+    assert wait_for(lambda: editor_state(s)["caret"] == 0, 2), editor_state(s)["caret"]
+    assert editor_state(s)["editingText"], "clicking inside the text keeps typing"
+    s.debug("ui", "editor", "keys", "Oh, {Return}")
     st = editor_state(s)
-    assert [i.get("text") for i in st["items"]] == ["Hello snip"] and not st["editingText"], st
+    assert [i.get("text") for i in st["items"]] == ["Oh, Hello snip"] and not st["editingText"], st
     s.debug("ui", "editor", "keys", "{ctrl+z}")
     assert editor_state(s)["items"] == []
     s.debug("ui", "editor", "keys", "{ctrl+shift+z}")
