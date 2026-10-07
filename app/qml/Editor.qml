@@ -124,6 +124,7 @@ Window {
     readonly property string sizeKind: tool !== "select" ? tool
                                      : !selectedObj ? "arrow" : selectedObj.filled ? "frect" : selectedObj.kind
     function sizeFor(kind) { return Math.round(Ed.sizes[kind][sizeIndex[kind]] * unit) }
+    property var guides: null                 // snapping guides while moving: {x, y} in image px, or null each
     property string redactStyle: "pixelate"   // CleanShot's default (D26)
     property real redactLevel: 1
     property string arrowStyle: "standard"
@@ -1129,6 +1130,21 @@ Window {
                 drop.accept()
             }
         }
+        // snapping guides while moving an object
+        Rectangle {
+            visible: !!ed.guides && ed.guides.x !== null
+            readonly property var a: ed.toView(ed.guides && ed.guides.x !== null ? ed.guides.x : 0, ed.shown.y)
+            x: a.x - 0.5; y: a.y; width: 1
+            height: ed.shown.h * ed.k
+            color: "#ff2d95"
+        }
+        Rectangle {
+            visible: !!ed.guides && ed.guides.y !== null
+            readonly property var a: ed.toView(ed.shown.x, ed.guides && ed.guides.y !== null ? ed.guides.y : 0)
+            x: a.x; y: a.y - 0.5; height: 1
+            width: ed.shown.w * ed.k
+            color: "#ff2d95"
+        }
         // where a drop would join the canvas: its edge, lit
         Rectangle {
             visible: dropArea.containsDrag && dropArea.side !== ""
@@ -1164,6 +1180,9 @@ Window {
             property real pressPanX: 0
             property real pressPanY: 0
             property string hoverHandle: ""
+            property var snapFrom: null         // the moving object's box at press, and the lines it snaps to
+            property var snapXs: []
+            property var snapYs: []
             property int hoverItem: -1
 
             function cropHandleAt(vx, vy) {
@@ -1237,6 +1256,16 @@ Window {
                         gesture = "move"; ed.draftIndex = i
                     }
                     ed.draft = Ed.copy(pressObj)
+                    // what a move snaps to: the canvas's edges and middle, the other objects'
+                    const box = (k) => ed.doc.items[k].kind === "text" && objects.itemAt(k) ? Qt.rect(objects.itemAt(k).box.x, objects.itemAt(k).box.y, objects.itemAt(k).box.width, objects.itemAt(k).box.height) : null
+                    const ext = (k) => { const b = box(k); return b ? { x: b.x, y: b.y, w: b.width, h: b.height } : Ed.extent(ed.doc.items[k]) }
+                    const c = ed.shown, xs = [c.x, c.x + c.w / 2, c.x + c.w], ys = [c.y, c.y + c.h / 2, c.y + c.h]
+                    for (let k = 0; k < ed.doc.items.length; k++) {
+                        if (k === i || ["spotlight", "highlight"].indexOf(ed.doc.items[k].kind) >= 0) continue
+                        const e = ext(k)
+                        xs.push(e.x, e.x + e.w / 2, e.x + e.w); ys.push(e.y, e.y + e.h / 2, e.y + e.h)
+                    }
+                    snapFrom = ext(i); snapXs = xs; snapYs = ys
                     return
                 }
                 ed.selected = -1
@@ -1324,6 +1353,11 @@ Window {
                 if (gesture === "move" || gesture === "copy" || gesture === "place") {
                     let dx = p.x - pressAt.x, dy = p.y - pressAt.y
                     if (shift && gesture !== "place") { if (Math.abs(dx) > Math.abs(dy)) dy = 0; else dx = 0 }   // Shift locks an axis
+                    else if (gesture !== "place" && snapFrom) {
+                        const f = snapFrom, sn = Ed.snapBox({ x: f.x + dx, y: f.y + dy, w: f.w, h: f.h }, snapXs, snapYs, 6 / ed.k)
+                        dx += sn.dx; dy += sn.dy
+                        ed.guides = { x: sn.gx, y: sn.gy }
+                    }
                     ed.draft = Ed.moved(pressObj, dx, dy)
                 } else if (gesture === "handle") {
                     ed.draft = Ed.withHandle(pressObj, handle, p.x, p.y, pressBox)
@@ -1363,6 +1397,7 @@ Window {
             onReleased: (m) => {
                 const g = gesture
                 gesture = ""
+                ed.guides = null; snapFrom = null
                 if (g === "pan" || g === "" || g === "text") return
                 if (g.startsWith("crop")) {
                     const r = ed.cropDraft
@@ -2074,7 +2109,7 @@ Window {
                 emojiButton: emojiButton.visible ? emojiButton.mapToItem(null, 11, 11) : null,
                 selectionBox: { x: selectionBox.x, y: selectionBox.y, w: selectionBox.width, h: selectionBox.height },
                 words: words ? words.length : -1, fill: doc.fill || "", shownX: shown.x, shownY: shown.y,
-                imgW: imgW, imgH: imgH, base: doc.base || "", bg: doc.bg || null, exportRect: exportRect, balance: balance, paddingValue: bgPanel.visible ? bgPanel.paddingSlider.valueBox.mapToItem(null, 14, 9) : null,
+                imgW: imgW, imgH: imgH, base: doc.base || "", bg: doc.bg || null, exportRect: exportRect, balance: balance, guides: guides, paddingValue: bgPanel.visible ? bgPanel.paddingSlider.valueBox.mapToItem(null, 14, 9) : null,
                 bgPresets: bgPresets.map(p => p.name), bgPreset: bgPreset, bgPresetChanged: bgPresetChanged, ownWalls: bgPanel.ownWalls,
                 shadows: annotateCfg.object_shadows !== false, ink: ink, savedColors: savedColors, picking: pickToken !== 0,
                 counterLabels: doc.items.map((o, i) => o.kind === "counter" ? Ed.counterLabel(doc, Ed.counterNumber(doc.items, i), o.style) : null).filter(l => l !== null)
