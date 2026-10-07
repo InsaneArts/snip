@@ -89,6 +89,7 @@ Rectangle {
         anchors.margins: 16
         contentHeight: col.implicitHeight
         clip: true
+        acceptedButtons: Qt.NoButton            // the wheel scrolls it; a mouse drag never does
         Column {
             id: col
             x: 3                                // room for the chosen tile's ring
