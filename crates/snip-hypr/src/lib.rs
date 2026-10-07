@@ -128,12 +128,23 @@ pub fn visible_windows() -> Vec<Client> {
     v
 }
 
-/// Resize the window of class `class` with this exact title to `w` × `h`
-/// (logical px): Hyprland keeps a floating window's size, so a client can't
-/// resize itself.
+/// One of our own windows: the one of class `class` with this exact title.
+pub fn window(class: &str, title: &str) -> std::io::Result<Client> {
+    clients().into_iter().find(|c| c.class == class && c.title == title).ok_or_else(|| std::io::Error::other("no such window"))
+}
+
+/// Resize one of our windows to `w` × `h` (logical px): Hyprland keeps a
+/// floating window's size, so a client can't resize itself.
 pub fn resize_window(class: &str, title: &str, w: i32, h: i32) -> std::io::Result<String> {
-    let c = clients().into_iter().find(|c| c.class == class && c.title == title).ok_or_else(|| std::io::Error::other("no such window"))?;
+    let c = window(class, title)?;
     eval(&format!(r#"hl.dispatch(hl.dsp.window.resize({{ x = {w}, y = {h}, window = "address:0x{:x}" }}))"#, c.address))
+}
+
+/// Move one of our windows to (x, y) in layout px, or by (x, y) when
+/// `relative`: a client can't place itself.
+pub fn move_window(class: &str, title: &str, x: i32, y: i32, relative: bool) -> std::io::Result<String> {
+    let c = window(class, title)?;
+    eval(&format!(r#"hl.dispatch(hl.dsp.window.move({{ x = {x}, y = {y}, relative = {relative}, window = "address:0x{:x}" }}))"#, c.address))
 }
 
 pub fn cursor_pos() -> Option<(i32, i32)> {

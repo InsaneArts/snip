@@ -188,6 +188,13 @@ pub mod qobject {
         /// which keeps a floating window's size otherwise (a pin's zoom)
         #[qinvokable]
         fn resize_window(self: &Engine, title: QString, w: i32, h: i32);
+        /// Move one of Snip's own windows (by its title) to (x, y), or by
+        /// (x, y) when `relative`, through Hyprland (a pin's arrow keys)
+        #[qinvokable]
+        fn move_window(self: &Engine, title: QString, x: i32, y: i32, relative: bool);
+        /// Where one of Snip's own windows is: JSON [x, y], or "null"
+        #[qinvokable]
+        fn window_position(self: &Engine, title: QString) -> QString;
 
         #[qinvokable]
         fn extract_text(self: Pin<&mut Engine>, id: QString);
@@ -261,6 +268,9 @@ pub mod qobject {
         /// Open a pin (PIN-01): a card's JSON plus the scale of its output
         #[qsignal]
         fn pin_open(self: Pin<&mut Engine>, pin: &QString);
+        /// Every pin at once (PIN-07): toggle (hide or show) | close
+        #[qsignal]
+        fn pins_command(self: Pin<&mut Engine>, command: &QString);
 
         /// Open an editor window: {id, image, doc, width, height, title}
         #[qsignal]
@@ -352,7 +362,7 @@ impl qobject::Engine {
         let sink_inner = inner.clone();
         // Test instances use their own namespace (SNIP_APP_ID=snip-e2e) so
         // their shortcuts never reach the user's daemon, and vice versa.
-        let app_id = std::env::var("SNIP_APP_ID").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "snip".into());
+        let app_id = app_id();
         let wl = snip_wayland::spawn(&app_id, Box::new(move |ev| sink_inner.on_wayland(ev)));
         if interactive {
             // Only the user's daemon owns the shortcuts (a test instance must
@@ -370,6 +380,8 @@ impl qobject::Engine {
                 ("timer-fullscreen", "Self-timer: fullscreen"),
                 ("close-all", "Close all Quick Access cards"),
                 ("edit-clipboard", "Edit the image on the clipboard"),
+                ("pins-toggle", "Hide or show all pins"),
+                ("pins-close", "Close all pins"),
             ] {
                 wl.send(snip_wayland::Request::RegisterShortcut { id: id.into(), description: d.into() });
             }
@@ -673,12 +685,23 @@ impl qobject::Engine {
     }
 
     fn resize_window(&self, title: QString, w: i32, h: i32) {
-        let class = std::env::var("SNIP_APP_ID").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "snip".into());
-        let title = title.to_string();
+        let (class, title) = (app_id(), title.to_string());
         // off the GUI thread: it talks to Hyprland's socket
         std::thread::spawn(move || {
             let _ = snip_hypr::resize_window(&class, &title, w, h);
         });
+    }
+
+    fn move_window(&self, title: QString, x: i32, y: i32, relative: bool) {
+        let (class, title) = (app_id(), title.to_string());
+        std::thread::spawn(move || {
+            let _ = snip_hypr::move_window(&class, &title, x, y, relative);
+        });
+    }
+
+    fn window_position(&self, title: QString) -> QString {
+        let p = snip_hypr::window(&app_id(), &title.to_string()).map(|c| format!("[{},{}]", c.x, c.y)).unwrap_or_else(|_| "null".into());
+        QString::from(p.as_str())
     }
 
     fn annotate(self: Pin<&mut Self>, id: QString) {
@@ -763,6 +786,11 @@ unsafe fn frame_release(handle: usize) {
 
 fn edit_put(token: u32, data: &[u8], width: u32, height: u32, stride: u32) {
     crate::edits::put(token, data, width, height, stride);
+}
+
+/// Our Wayland app id, the windows' class: test instances set their own.
+fn app_id() -> String {
+    std::env::var("SNIP_APP_ID").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "snip".into())
 }
 
 #[allow(clippy::too_many_arguments)]
