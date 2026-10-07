@@ -233,7 +233,17 @@ Window {
     property var bgPreview: null              // a slider being dragged: shown, not yet in the document
     readonly property var bgLive: doc.bg ? Object.assign({}, doc.bg, bgPreview || {}) : null
     readonly property bool framed: !!bgLive && tool !== "crop"
-    readonly property var exportRect: bgLive ? Ed.bgRect(bgLive, innerRect) : innerRect
+    readonly property var exportRect: bgLive ? Ed.bgRect(bgLive, balancedRect) : innerRect
+    // Auto-balance (BG-02): the plain border around the content, evened out
+    // to its widest side in the border's own colour
+    readonly property var balance: bgLive && bgLive.balance && basePath
+        ? JSON.parse(Engine.contentMargins(basePath, innerRect.x, innerRect.y, innerRect.w, innerRect.h)) : null
+    readonly property var balancedRect: {
+        const r = innerRect, b = balance
+        if (!b) return r
+        const m = Math.max(b.l, b.t, b.r, b.b)
+        return { x: r.x - (m - b.l), y: r.y - (m - b.t), w: r.w + 2 * m - b.l - b.r, h: r.h + 2 * m - b.t - b.b }
+    }
     function setBg(patch) {
         bgPreview = null
         const next = Object.assign({}, doc)
@@ -691,7 +701,8 @@ Window {
                         visible: ed.framed
                         bg: ed.bgLive
                         rect: ed.exportRect
-                        inner: ed.innerRect
+                        inner: ed.balancedRect
+                        frameColor: ed.balance ? ed.balance.color : ""
                         imagePath: ed.basePath
                     }
                     // the image (and a grown canvas), cut to rounded corners on a background;
@@ -1865,7 +1876,7 @@ Window {
                 emojiButton: emojiButton.visible ? emojiButton.mapToItem(null, 11, 11) : null,
                 selectionBox: { x: selectionBox.x, y: selectionBox.y, w: selectionBox.width, h: selectionBox.height },
                 words: words ? words.length : -1, fill: doc.fill || "", shownX: shown.x, shownY: shown.y,
-                imgW: imgW, imgH: imgH, base: doc.base || "", bg: doc.bg || null, exportRect: exportRect,
+                imgW: imgW, imgH: imgH, base: doc.base || "", bg: doc.bg || null, exportRect: exportRect, balance: balance,
                 bgPresets: bgPresets.map(p => p.name), bgPreset: bgPreset, bgPresetChanged: bgPresetChanged, ownWalls: bgPanel.ownWalls,
                 shadows: annotateCfg.object_shadows !== false, ink: ink, savedColors: savedColors, picking: picking,
                 counterLabels: doc.items.map((o, i) => o.kind === "counter" ? Ed.counterLabel(doc, Ed.counterNumber(doc.items, i), o.style) : null).filter(l => l !== null)

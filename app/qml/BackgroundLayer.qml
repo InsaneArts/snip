@@ -5,13 +5,15 @@ import "editor.js" as Ed
 
 // The Background tool's backdrop (BG-01…06): a gradient, a wallpaper, a
 // blurred wallpaper or screenshot, or a colour, around the image; with the
-// inset and shadow between them. Drawn behind the image, in image px.
+// inset (and Auto-balance's border) and shadow between them. Drawn behind
+// the image, in image px.
 Item {
     id: layer
     property var bg: null
     property var rect: ({ x: 0, y: 0, w: 0, h: 0 })     // the backdrop
     property var inner: ({ x: 0, y: 0, w: 0, h: 0 })    // the image (or its crop)
     property string imagePath: ""
+    property string frameColor: ""                      // Auto-balance's border colour, for the inset frame
     readonly property string kind: bg ? bg.kind : ""
 
     function resolve(c) {
@@ -80,10 +82,10 @@ Item {
         color: Qt.rgba(0, 0, 0, layer.bg ? 0.55 * layer.bg.shadow : 0)
     }
     Rectangle {
-        visible: !!layer.bg && layer.bg.inset > 0
+        visible: !!layer.bg && (layer.bg.inset > 0 || layer.frameColor !== "")
         x: layer.inner.x - (layer.bg ? layer.bg.inset : 0); y: layer.inner.y - (layer.bg ? layer.bg.inset : 0)
         width: layer.inner.w + 2 * (layer.bg ? layer.bg.inset : 0); height: layer.inner.h + 2 * (layer.bg ? layer.bg.inset : 0)
         radius: layer.bg ? layer.bg.radius + layer.bg.inset : 0
-        color: (layer.bg && layer.bg.insetColor) || "transparent"
+        color: layer.frameColor || (layer.bg && layer.bg.insetColor) || "transparent"
     }
 }
