@@ -88,6 +88,16 @@ pub mod qobject {
         #[qinvokable]
         fn request_words(self: &Engine, path: QString);
 
+        /// "My Colors" (ANN-13): up to ten, kept across sessions (JSON array)
+        #[qinvokable]
+        fn saved_colors(self: &Engine) -> QString;
+        #[qinvokable]
+        fn set_saved_colors(self: &Engine, json: QString);
+
+        /// The colour of pixel (x, y) of the image at `path`: "#rrggbb"
+        #[qinvokable]
+        fn pixel_color(self: &Engine, path: QString, x: i32, y: i32) -> QString;
+
         /// Save As to `path` (from the portal's save dialog)
         #[qinvokable]
         fn save_as(self: Pin<&mut Engine>, id: QString, path: QString);
@@ -393,6 +403,28 @@ impl qobject::Engine {
                 }
             });
         }
+    }
+
+    fn saved_colors(&self) -> QString {
+        let j = std::fs::read_to_string(snip_core::paths::data_dir().join("colors.json")).unwrap_or_else(|_| "[]".into());
+        QString::from(j.as_str())
+    }
+
+    fn set_saved_colors(&self, json: QString) {
+        let dir = snip_core::paths::data_dir();
+        let _ = std::fs::create_dir_all(&dir);
+        let _ = snip_core::store::atomic_write(&dir.join("colors.json"), json.to_string().as_bytes());
+    }
+
+    fn pixel_color(&self, path: QString, x: i32, y: i32) -> QString {
+        let c = crate::edits::decoded(&path.to_string()).and_then(|img| {
+            if x < 0 || y < 0 || x as u32 >= img.width || y as u32 >= img.height {
+                return None;
+            }
+            let i = (y as usize * img.width as usize + x as usize) * img.bpp;
+            Some(format!("#{:02x}{:02x}{:02x}", img.data[i], img.data[i + 1], img.data[i + 2]))
+        });
+        QString::from(c.unwrap_or_default().as_str())
     }
 
     fn request_words(&self, path: QString) {
