@@ -154,11 +154,14 @@ pub struct Annotate {
     pub inverse_arrows: bool,
     /// "Smooth drawing": the pencil drops points that add nothing.
     pub smooth_drawing: bool,
+    /// "Auto-expand canvas" (ANN-17): an object drawn past the canvas grows
+    /// it, filled with the colour around the image's edge.
+    pub auto_expand: bool,
 }
 
 impl Default for Annotate {
     fn default() -> Self {
-        Self { object_shadows: true, inverse_arrows: false, smooth_drawing: true }
+        Self { object_shadows: true, inverse_arrows: false, smooth_drawing: true, auto_expand: false }
     }
 }
 
