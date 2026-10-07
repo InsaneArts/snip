@@ -153,9 +153,13 @@ pub fn eval(lua: &str) -> std::io::Result<String> {
 
 /// Runtime rules Snip needs whatever the user's config says: overlays must
 /// appear instantly (no layer fade), which also keeps fading overlays out of
-/// the first frames of a recording. Re-applied on every `configreloaded`.
+/// the first frames of a recording; the editor floats, centred. Re-applied
+/// on every `configreloaded`.
 pub fn install_runtime_rules() -> std::io::Result<String> {
-    eval(r#"SNIP_LAYER_RULE = hl.layer_rule({ match = { namespace = "^snip-" }, no_anim = true, animation = "none" })"#)
+    eval(
+        r#"SNIP_LAYER_RULE = hl.layer_rule({ match = { namespace = "^snip-" }, no_anim = true, animation = "none" })
+SNIP_EDITOR_RULE = hl.window_rule({ match = { title = "^Snip Editor" }, float = true, center = true, opacity = "1 1" })"#,
+    )
 }
 
 /// socket2 events: `name>>data` lines. Runs `f` on a background thread until

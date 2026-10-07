@@ -21,7 +21,10 @@ main(int argc, char* argv[])
 
   QGuiApplication app(argc, argv);
   QGuiApplication::setApplicationName(QStringLiteral("snip"));
-  QGuiApplication::setDesktopFileName(QStringLiteral("snip"));
+  // The window class (Wayland app_id). Test instances (SNIP_APP_ID) get
+  // their own, so a test can steer its editor window away from the user.
+  const QString appId = qEnvironmentVariable("SNIP_APP_ID");
+  QGuiApplication::setDesktopFileName(appId.isEmpty() ? QStringLiteral("snip") : appId);
   QGuiApplication::setQuitOnLastWindowClosed(false);
 
   QString mode = QStringLiteral("interactive");
