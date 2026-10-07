@@ -202,7 +202,7 @@ Item {
                 visible: !root.halo && parent.r.style !== "black"
                 anchors.fill: parent
                 source: visible && root.base !== ""
-                        ? "image://snip-redact/" + Ed.redactIndex(parent.r.style) + "/" + parent.r.seed + "/"
+                        ? "image://snip-redact/" + Ed.redactIndex(parent.r.style) + "/" + (parent.r.level || 1) + "/" + parent.r.seed + "/"
                           + [parent.r.x, parent.r.y, parent.r.w, parent.r.h].map(Math.round).join(",") + "/" + encodeURIComponent(root.base)
                         : ""
                 smooth: parent.r.style === "blur"
