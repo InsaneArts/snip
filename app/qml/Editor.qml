@@ -480,8 +480,11 @@ Window {
             ed.flush("")
         }
     }
+    Timer { id: pinTimer; interval: 150; onTriggered: Engine.pinWindow(ed.title) }
     function toast(t) { controller.toast.show(t, capture.output || Qt.application.screens[0].name) }
     function close_() {
+        // "Remember if the Background tool was opened" (ANN-18)
+        if (annotateCfg.remember_background_tool) storeBg({ toolOpen: tool === "background" })
         Engine.log("editor_closed", JSON.stringify({ id: captureId, revision: revision }).slice(1, -1))
         visible = false
         finished()
@@ -504,6 +507,8 @@ Window {
         visible = true
         requestActivate()
         keys.forceActiveFocus()
+        if (annotateCfg.remember_background_tool && bgStore.toolOpen) setTool("background")
+        if (annotateCfg.always_on_top) pinTimer.start()      // "Always on top" (ANN-18): once Hyprland has it
         Engine.log("editor_shown", JSON.stringify({ id: captureId, w: imgW, h: imgH, winW: width, winH: height, aw: aw, ah: ah, s: s }).slice(1, -1))
     }
 
