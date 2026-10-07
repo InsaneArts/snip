@@ -78,6 +78,7 @@ Item {
             id: drag
             anchors.fill: parent
             anchors.margins: -6
+            preventStealing: true           // a drag that wanders up or down still moves the slider
             function at(m) { return root.from + Math.max(0, Math.min(1, (m.x - 6) / track.width)) * (root.to - root.from) }
             onPressed: (m) => root.moved(at(m))
             onPositionChanged: (m) => { if (pressed) root.moved(at(m)) }
