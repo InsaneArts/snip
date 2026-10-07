@@ -73,7 +73,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 - `scripts/dev.sh` builds and (re)starts `snipd` from `build/` as the user unit `snip-dev`, with the user's real data, and loads `hypr/snip.lua` at runtime. `stop` restores Hyprland's own bindings; `log` follows the trace.
 - Unit tests: `cargo test -p snip-core -p snip-ipc -p snip-hypr -p snip_bridge`.
-- End to end: `tests/e2e/e2e.py`, a test instance on a temporary headless output. `--only CASE` runs one case.
+- End to end: `tests/e2e/e2e.py` runs in a **nested Hyprland** (a hidden window on a special workspace), so it never changes the user's monitors, pointer, keyboard focus or clipboard and can run while they work. `--only CASE` runs one case. `--live` is the old way (a headless output in the user's session): avoid it, since output hot-plug crashes GTK4 apps like Ghostty.
 - UI review: `snipd --gallery --output NAME --out DIR` renders every surface for chosen themes.
 - `SNIP_TRACE=1` prints JSON trace lines (timing, sessions, per-frame card motion).
 
@@ -81,7 +81,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 Development and testing happen on the user's real Hyprland session. Testing there is pre-approved, as long as it stays clean and invisible:
 
-- Run test instances on a temporary headless output, isolated with `SNIP_RUNTIME_DIR`, `SNIP_APP_ID`, `SNIP_OUTPUTS` and XDG dirs (the e2e harness does this).
+- Run test instances inside the e2e harness's nested Hyprland, isolated with `SNIP_RUNTIME_DIR`, `SNIP_APP_ID`, `SNIP_OUTPUTS` and XDG dirs (the harness does this). Never add or remove outputs in the user's session: GTK 4.22 apps (Ghostty) crash on it.
 - Synthetic pointer or keyboard input only while the user is idle (`pointer_idle()`), and never while a fullscreen app or game has focus.
 - Afterwards: remove headless outputs, check `hyprctl -j layers` for stray `snip-*` layers, and leave nothing running that draws on screen.
 - Ask before pushing, publishing, or editing the user's own config files (`~/.config/hypr`, `~/.config/snip`).
@@ -102,4 +102,5 @@ What cost us hours before:
 - **Tracing**: `trace::js()` returns a quoted JSON string, so format it with `{}`.
 - **Hyprland 0.56 window rules**: a rule matching `class` and `title` together never matches, nor does a `title` pattern with non-ASCII characters; and when one rule moves a window (`workspace`, `monitor`), `float` from another matching rule is dropped. Use one ASCII field per rule, and put everything a window needs in one rule.
 - **Grabbing an item** (`grabToImage`) renders `round(size × dpr)` texels: ask `Platform.grabExact` for exact pixels at a fractional scale.
+- **Nested Hyprland on NVIDIA** can't use headless outputs (aquamarine asks for linear buffers); the harness uses the nested window's own output, kept drawing by `render_unfocused` (15 fps).
 - **`color` is taken** on a QML `Window`: a custom property with that name fails to compile ("Property value set multiple times").
