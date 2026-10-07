@@ -13,7 +13,7 @@ CleanShot X's screenshot workflow for [Omarchy](https://omarchy.org) and Hyprlan
 - **Selection overlay:**
   - pixel-exact at any scale, including rotated monitors;
   - crosshair, magnifier with hex colour;
-  - Shift (square), Alt (from centre), Space while dragging (move).
+  - Alt (square), Ctrl (from centre), Space while dragging (move); Shift as you let go skips an auto-applied Background preset (CleanShot's keys).
 - **Quick Access cards:**
   - hover to frost, then Copy or Save;
   - drag out, context menu, preview, auto-close;
