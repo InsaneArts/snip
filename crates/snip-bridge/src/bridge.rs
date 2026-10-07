@@ -116,6 +116,13 @@ pub mod qobject {
         #[qinvokable]
         fn editor_paste_image(self: &Engine, base: QString) -> QString;
 
+        /// The Background tool's presets and previous settings (BG-03), as
+        /// JSON {previous, presets: [{name, bg}]}, sizes in points
+        #[qinvokable]
+        fn backgrounds(self: &Engine) -> QString;
+        #[qinvokable]
+        fn set_backgrounds(self: &Engine, json: QString);
+
         /// Wallpapers for the Background tool (JSON array of paths)
         #[qinvokable]
         fn wallpapers(self: &Engine) -> QString;
@@ -445,6 +452,17 @@ impl qobject::Engine {
         let dir = snip_core::paths::data_dir();
         let _ = std::fs::create_dir_all(&dir);
         let _ = snip_core::store::atomic_write(&dir.join("colors.json"), json.to_string().as_bytes());
+    }
+
+    fn backgrounds(&self) -> QString {
+        let j = std::fs::read_to_string(snip_core::paths::data_dir().join("backgrounds.json")).unwrap_or_else(|_| "{}".into());
+        QString::from(j.as_str())
+    }
+
+    fn set_backgrounds(&self, json: QString) {
+        let dir = snip_core::paths::data_dir();
+        let _ = std::fs::create_dir_all(&dir);
+        let _ = snip_core::store::atomic_write(&dir.join("backgrounds.json"), json.to_string().as_bytes());
     }
 
     fn editor_transform(&self, path: QString, op: QString, w: i32, h: i32) -> QString {
