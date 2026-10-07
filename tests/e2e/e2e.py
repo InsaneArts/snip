@@ -796,6 +796,24 @@ def editor_draws_with_pointer(s, env):
 
 
 @case
+def editor_done_button(s, env):
+    """CleanShot's top-right Done: the edits go back to the capture and the editor closes."""
+    from PIL import Image
+    png = s.tmp / "done.png"
+    Image.new("RGB", (400, 240), "white").save(png)
+    rec = s.json("edit", str(png))["result"]
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    s.debug("ui", "editor", "rect", 50, 50, 120, 80)
+    w, mon, st = editor_window(), env.monitor(), editor_state(s)
+    n = len(s.traces("edited"))
+    s.move(w["at"][0] - mon["x"] + st["winW"] - 12 - 30, w["at"][1] - mon["y"] + 26)   # Done, the last button on the bar
+    time.sleep(0.2); s.click()
+    assert wait_for(lambda: editor_window() is None, 5), "Done did not close the editor"
+    assert len(s.traces("edited")) > n, "Done must write the edits back"
+    assert Image.open(rec["source"]).convert("RGB").getpixel((50, 90))[1] < 120
+
+
+@case
 def editor_keyboard(s, env):
     """ANN-05/14: the Text tool types where you click and Enter commits; tool keys, undo,
     redo and Escape work. Keys are delivered inside snipd (never through the seat)."""
