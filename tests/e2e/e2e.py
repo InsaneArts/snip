@@ -1011,6 +1011,28 @@ def editor_draws_with_pointer(s, env):
 
 
 @case
+def card_after_done(s, env):
+    """After Done, the edited capture is in Quick Access even when its card had gone
+    (closed, or timed out while annotating): there to drag, save or copy. One card only."""
+    from PIL import Image
+    png = s.tmp / "after-done.png"
+    Image.new("RGB", (300, 200), "white").save(png)
+    rec = open_card(s, png)
+    s.debug("annotate", rec["id"])
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3), "the editor opens"
+    s.cli("close-all")                                          # the card goes while the editor is open
+    assert wait_for(lambda: rec["id"] not in s.json("status")["result"]["cards"], 3), "the card closed"
+    s.debug("ui", "editor", "frect", 20, 20, 60, 40)
+    close_editor(s)                                             # Done
+    assert wait_for(lambda: rec["id"] in s.json("status")["result"]["cards"], 3), "the card is back"
+    s.debug("annotate", rec["id"])                              # with its card still there: no second one
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3), "the editor opens again"
+    close_editor(s)
+    time.sleep(0.3)
+    assert s.json("status")["result"]["cards"].count(rec["id"]) == 1, s.json("status")["result"]["cards"]
+
+
+@case
 def editor_done_button(s, env):
     """CleanShot's top-right Done: the edits go back to the capture and the editor closes."""
     from PIL import Image
