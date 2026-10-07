@@ -190,6 +190,16 @@ pub mod qobject {
         /// Clear History: how many captures left
         #[qinvokable]
         fn clear_history(self: Pin<&mut Engine>) -> i32;
+        /// Settings (SET-02): set one config.toml key ("general.sounds") to a
+        /// JSON value; "" when written, else why not
+        #[qinvokable]
+        fn set_setting(self: Pin<&mut Engine>, key: QString, value: QString) -> QString;
+        /// Settings › File name: a capture taken now, named by `pattern`
+        #[qinvokable]
+        fn file_name_preview(self: &Engine, pattern: QString) -> QString;
+        /// Settings › History: the space history takes, in bytes (HIS-02)
+        #[qinvokable]
+        fn history_bytes(self: &Engine) -> f64;
 
         #[qinvokable]
         fn annotate(self: Pin<&mut Engine>, id: QString);
@@ -308,6 +318,10 @@ pub mod qobject {
         #[qsignal]
         fn history_open(self: Pin<&mut Engine>, output: &QString);
 
+        /// Show the settings window (SET-02) on a tab ("" keeps the last)
+        #[qsignal]
+        fn settings_open(self: Pin<&mut Engine>, tab: &QString);
+
         /// Every pin at once (PIN-07): toggle (hide or show) | close
         #[qsignal]
         fn pins_command(self: Pin<&mut Engine>, command: &QString);
@@ -422,6 +436,7 @@ impl qobject::Engine {
                 ("edit-clipboard", "Edit the image on the clipboard"),
                 ("area-pin", "Capture area and pin it"),
                 ("history", "Open capture history"),
+                ("settings", "Open Snip's settings"),
                 ("pins-toggle", "Hide or show all pins"),
                 ("pins-close", "Close all pins"),
                 ("pins-unlock", "Unlock all pins"),
@@ -731,6 +746,20 @@ impl qobject::Engine {
 
     fn clear_history(self: Pin<&mut Self>) -> i32 {
         self.inner().map(|i| i.clear_history() as i32).unwrap_or(0)
+    }
+
+    fn set_setting(self: Pin<&mut Self>, key: QString, value: QString) -> QString {
+        let r = self.inner().map(|i| i.set_setting(&key.to_string(), &value.to_string()));
+        QString::from(r.and_then(|r| r.err()).unwrap_or_default().as_str())
+    }
+
+    fn file_name_preview(&self, pattern: QString) -> QString {
+        let ctx = snip_core::naming::NameContext { window_title: Some("Firefox".into()), app_name: Some("firefox".into()), counter: 1, random: "k3x9".into() };
+        QString::from(snip_core::naming::render(&pattern.to_string(), chrono::Local::now(), &ctx).as_str())
+    }
+
+    fn history_bytes(&self) -> f64 {
+        self.inner().map(|i| i.history_bytes() as f64).unwrap_or(0.0)
     }
 
     fn show_in_files(self: Pin<&mut Self>, id: QString) {

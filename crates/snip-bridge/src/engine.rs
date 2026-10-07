@@ -274,6 +274,7 @@ impl Inner {
             "restore" => self.ui(|e| e.cards_command(&QString::from("restore"))),
             "close-all" => self.ui(|e| e.cards_command(&QString::from("close-all"))),
             "history" => self.open_history(),
+            "settings" => self.ui(|e| e.settings_open(&QString::from(""))),
             "pins-toggle" => self.ui(|e| e.pins_command(&QString::from("toggle"))),
             "pins-close" => self.ui(|e| e.pins_command(&QString::from("close"))),
             "pins-unlock" => self.ui(|e| e.pins_command(&QString::from("unlock"))),
@@ -1124,6 +1125,10 @@ impl Inner {
         self.closed.lock().unwrap().retain(|i| i != id);
     }
 
+    pub fn history_bytes(&self) -> u64 {
+        self.store.disk_usage()
+    }
+
     /// Clear History: every capture leaves history (saved copies stay).
     pub fn clear_history(&self) -> usize {
         let all = self.store.recent(u32::MAX).unwrap_or_default();
@@ -1471,6 +1476,26 @@ impl Inner {
         self.push_settings();
     }
 
+    /// The settings window changes one setting (SET-02): written into
+    /// config.toml (comments kept) only if the file stays valid.
+    pub fn set_setting(&self, dotted: &str, value: &str) -> Result<(), String> {
+        let value: Value = serde_json::from_str(value).map_err(|e| e.to_string())?;
+        let path = Config::path();
+        let text = match std::fs::read_to_string(&path) {
+            Ok(t) => t,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+            Err(e) => return Err(e.to_string()),
+        };
+        let out = snip_core::config::set_json(&text, dotted, &value)?;
+        let tmp = path.with_extension("toml.tmp");
+        std::fs::create_dir_all(path.parent().unwrap_or(&path))
+            .and_then(|_| std::fs::write(&tmp, out))
+            .and_then(|_| std::fs::rename(&tmp, &path))
+            .map_err(|e| e.to_string())?;
+        self.reload_config();
+        Ok(())
+    }
+
     pub fn push_settings(&self) {
         let c = self.cfg();
         let j = json!({
@@ -1488,6 +1513,11 @@ impl Inner {
             "pins": c.pins,
             "sounds": c.general.sounds,
             "saveAlsoCopies": c.general.save_also_copies,
+            // the settings window (SET-02): everything, as in the file
+            "config": c,
+            "configError": *self.cfg_error.lock().unwrap(),
+            "configPath": Config::path(),
+            "version": env!("SNIP_VERSION"),
         })
         .to_string();
         self.ui(move |mut e| e.as_mut().set_settings(QString::from(j.as_str())));
@@ -1546,6 +1576,10 @@ impl Inner {
             Ctl::Pin { id, .. } => ok_or(self.resolve_id(id).and_then(|id| self.pin(&id))),
             Ctl::History => {
                 self.open_history();
+                Response::ok(Value::Null)
+            }
+            Ctl::Settings { tab } => {
+                self.ui(move |e| e.settings_open(&QString::from(tab.unwrap_or_default().as_str())));
                 Response::ok(Value::Null)
             }
             Ctl::Pins { action } => match action.as_str() {
