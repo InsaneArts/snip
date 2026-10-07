@@ -740,6 +740,45 @@ def editor_crop(s, env):
 
 
 @case
+def editor_from_clipboard(s, env):
+    """ANN-19: snip edit --clipboard opens the clipboard's image (from another app), or a
+    copied PNG file, in the editor; text alone is a clean error."""
+    from PIL import Image
+    png = s.tmp / "clip me.png"
+    noise_png(png, 120, 80, seed=11)
+    try:
+        subprocess.run(["wl-copy", "--type", "image/png"], stdin=open(png, "rb"), check=True)
+        time.sleep(0.3)
+        rec = s.json("edit", "--clipboard")
+        assert rec["ok"], rec
+        assert wait_for(lambda: editor_window(), 5), "no editor for the clipboard image"
+        assert Image.open(rec["result"]["source"]).convert("RGB").tobytes() == Image.open(png).convert("RGB").tobytes()
+        close_editor(s)
+
+        card = open_card(s, png)                      # Snip's own copy: it reads its own selection
+        s.cli("copy", card["id"])
+        time.sleep(0.3)
+        rec = s.json("edit", "--clipboard")
+        assert rec["ok"] and wait_for(lambda: editor_window(), 5), rec
+        close_editor(s)
+
+        uri = "file://" + str(png).replace(" ", "%20")
+        subprocess.run(["wl-copy", "--type", "text/uri-list", uri + "\r\n"], check=True)
+        time.sleep(0.3)
+        rec = s.json("edit", "--clipboard")
+        assert rec["ok"] and rec["result"]["title"] == "clip me", rec
+        assert wait_for(lambda: editor_window(), 5)
+        close_editor(s)
+
+        subprocess.run(["wl-copy", "just some text"], check=True)
+        time.sleep(0.3)
+        r = s.cli("edit", "--clipboard", check=False)
+        assert r.returncode == 2 and "no image" in r.stderr, (r.returncode, r.stderr)
+    finally:
+        subprocess.run(["wl-copy", "--clear"], check=False)
+
+
+@case
 def self_timer(s, env):
     """CAP-06: --delay counts down on screen, then captures live; the countdown is
     never in the capture; the capture hotkey cancels a running countdown."""
