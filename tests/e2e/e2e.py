@@ -851,7 +851,8 @@ def pin_lock(s, env):
     assert wait_for(lambda: not pin_state(s)["lockHover"], 2), "it comes back when the pointer leaves"
     assert s.json("pins", "unlock")["ok"], "unlock"
     assert wait_for(lambda: pin_windows() and pin_windows()[0]["at"] == at, 3), (at, pin_windows())
-    assert not [l for m in hypr_json("layers").values() for lv in m["levels"].values() for l in lv if l["namespace"] == "snip-pin"], "the layer goes"
+    assert wait_for(lambda: not [l for m in hypr_json("layers").values() for lv in m["levels"].values() for l in lv if l["namespace"] == "snip-pin"], 2), \
+        "the layer goes"                                            # (Hyprland fades it out first)
     close_editor(s)
 
 
