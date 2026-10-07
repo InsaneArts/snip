@@ -120,8 +120,10 @@ class Snip:
         self.log = self.tmp / "snipd.err"
 
     def write_config(self, extra):
+        # objects cast no shadow here, so pixel checks next to them stay exact;
+        # editor_object_shadows turns them on
         (self.tmp / "cfg/snip/config.toml").write_text(
-            f'[general]\nexport_dir = "{self.export}"\nsounds = false\n{extra}\n'
+            f'[general]\nexport_dir = "{self.export}"\nsounds = false\n{extra}\n[annotate]\nobject_shadows = false\n'
         )
 
     def start(self):
@@ -1339,6 +1341,32 @@ def editor_add_image(s, env):
     px = Image.open(rec["source"]).convert("RGB").getpixel((round(c["x"] + c["w"] / 2), round(c["y"] + c["h"] / 2)))
     assert px == (200, 30, 160), px
     close_editor(s)
+
+
+@case
+def editor_object_shadows(s, env):
+    """CleanShot's "Draw shadow on objects" (config [annotate] object_shadows, on by default):
+    a soft shadow under objects; the objects themselves stay crisp."""
+    from PIL import Image
+    cfg = s.tmp / "cfg/snip/config.toml"
+    cfg.write_text(cfg.read_text().replace("object_shadows = false", "object_shadows = true"))
+    try:
+        time.sleep(0.8)                                         # the config watcher reloads it
+        png = s.tmp / "shadow.png"
+        Image.new("RGB", (300, 200), "white").save(png)
+        rec = s.json("edit", str(png))["result"]
+        assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+        s.debug("ui", "editor", "frect", 100, 60, 80, 50)
+        editor_flush(s)
+        out = Image.open(rec["source"]).convert("RGB")
+        below = out.getpixel((140, 60 + 50 + 3))
+        assert below[0] < 250 and abs(below[0] - below[2]) < 12, ("a grey shadow under the box", below)
+        inside, edge = out.getpixel((140, 85)), out.getpixel((100, 85))
+        assert inside[0] > 230 and inside[1] < 60 and edge[0] > 220 and edge[1] < 70, ("crisp box", inside, edge)
+        close_editor(s)
+    finally:
+        cfg.write_text(cfg.read_text().replace("object_shadows = true", "object_shadows = false"))
+        time.sleep(0.8)
 
 
 @case
