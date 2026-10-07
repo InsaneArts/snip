@@ -33,9 +33,11 @@ pub enum Request {
         #[serde(default)]
         id: Option<String>,
     },
-    /// Add an image file as a capture with a Quick Access card (OMA-06:
-    /// Snip as OMARCHY_SCREENSHOT_EDITOR; opens the editor once M2 lands)
+    /// Add an image file as a capture with a Quick Access card
     Open { path: String },
+    /// Add an image file as a capture and open it in Snip's editor (ANN-19;
+    /// OMA-06: Snip as OMARCHY_SCREENSHOT_EDITOR)
+    Edit { path: String },
     /// Search history by the text in captures, window titles and apps
     Search {
         query: String,

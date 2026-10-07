@@ -10,7 +10,8 @@ const USAGE: &str = "usage: snip [--json] <command>
 capture
   area | fullscreen | window | previous | text | all-in-one [--monitor NAME] [--cursor | --no-cursor]
   area | fullscreen --delay N   self-timer: N seconds of countdown, then the capture
-  open FILE        add an image as a capture (also: edit FILE)
+  open FILE        add an image as a capture, with a Quick Access card
+  edit FILE        open an image in Snip's editor (as a new capture)
 captures (default: the most recent)
   copy [ID]        put a capture on the clipboard
   save [ID]        save to the export folder (and copy)
@@ -59,7 +60,8 @@ fn main() -> ExitCode {
                 return ExitCode::from(2);
             };
             let abs = std::fs::canonicalize(&p).unwrap_or_else(|_| p.into());
-            (Request::Open { path: abs.to_string_lossy().into_owned() }, Duration::from_secs(10))
+            let path = abs.to_string_lossy().into_owned();
+            (if cmd == "open" { Request::Open { path } } else { Request::Edit { path } }, Duration::from_secs(10))
         }
         "copy" => (Request::Copy { id: arg1 }, Duration::from_secs(10)),
         "save" => (Request::Save { id: arg1 }, Duration::from_secs(10)),
