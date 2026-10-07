@@ -1398,6 +1398,39 @@ def editor_crop_outward_and_ratios(s, env):
 
 
 @case
+def editor_crop_bar(s, env):
+    """CleanShot's crop bar: the canvas beyond the image can be transparent, white, black or
+    any colour; Cancel (or Escape) goes back to the crop it started with."""
+    from PIL import Image
+    png = s.tmp / "cropbar.png"
+    Image.new("RGB", (300, 200), (90, 140, 220)).save(png)
+    rec = s.json("edit", str(png))["result"]
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    s.debug("ui", "editor", "crop", -20, -20, 340, 240)        # outward: the edge colour by default
+    assert editor_state(s)["fill"] == "#5a8cdc", editor_state(s)["fill"]
+    s.debug("ui", "editor", "fill", "transparent")
+    editor_flush(s)
+    out = Image.open(rec["source"])
+    assert out.mode == "RGBA" and out.getpixel((5, 5))[3] == 0 and out.getpixel((150, 100))[3] == 255, out.mode
+    s.debug("ui", "editor", "fill", "#000000")
+    editor_flush(s)
+    assert Image.open(rec["source"]).convert("RGB").getpixel((5, 5)) == (0, 0, 0)
+    s.debug("ui", "editor", "tool", "crop")                    # Cancel: back to where cropping started
+    s.debug("ui", "editor", "crop", 10, 10, 100, 80)
+    s.debug("ui", "editor", "fill", "#ffffff")
+    s.debug("ui", "editor", "keys", "{Escape}")
+    st = editor_state(s)
+    assert st["crop"] == {"x": -20, "y": -20, "w": 340, "h": 240} and st["fill"] == "#000000" and st["tool"] != "crop", st
+    s.debug("ui", "editor", "tool", "crop")                    # the bar's buttons take real clicks
+    s.debug("ui", "editor", "crop", 30, 30, 120, 90)
+    w, mon, at = editor_window(), env.monitor(), editor_state(s)["cropCancelAt"]
+    s.move(w["at"][0] - mon["x"] + at["x"], w["at"][1] - mon["y"] + at["y"]); time.sleep(0.2); s.click()
+    st = editor_state(s)
+    assert st["tool"] != "crop" and st["crop"] == {"x": -20, "y": -20, "w": 340, "h": 240}, ("Cancel clicked", st["tool"], st["crop"])
+    close_editor(s)
+
+
+@case
 def editor_rotate_flip_resize(s, env):
     """ANN-11: rotate, flip and resize the image with its objects; undo puts it back."""
     from PIL import Image
