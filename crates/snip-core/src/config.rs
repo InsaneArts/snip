@@ -353,6 +353,28 @@ pub fn set_value(text: &str, dotted: &str, value: toml_edit::Item) -> Result<Str
     Ok(doc.to_string())
 }
 
+/// The settings window's write (SET-02): one setting from JSON (a bool,
+/// number, string or list of strings). The file must still be a valid
+/// config afterwards (known key, right type), or nothing changes.
+pub fn set_json(text: &str, dotted: &str, value: &serde_json::Value) -> Result<String, String> {
+    use serde_json::Value;
+    let item = match value {
+        Value::Bool(b) => toml_edit::value(*b),
+        Value::Number(n) => match n.as_i64() {
+            Some(i) => toml_edit::value(i),
+            None => toml_edit::value(n.as_f64().unwrap_or_default()),
+        },
+        Value::String(s) => toml_edit::value(s.as_str()),
+        Value::Array(a) => toml_edit::value(a.iter().map(|v| v.as_str().unwrap_or_default()).collect::<toml_edit::Array>()),
+        _ => return Err(format!("{dotted}: unsupported value {value}")),
+    };
+    let out = set_value(text, dotted, item)?;
+    match Config::parse(&out) {
+        (_, Some(e)) => Err(e),
+        _ => Ok(out),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -390,5 +412,18 @@ mod tests {
         assert!(out.contains("position = \"right\""));
         let out = set_value(&out, "history.retention", toml_edit::value("1d")).unwrap();
         assert_eq!(Config::parse(&out).0.history.retention, Retention::Day1);
+    }
+
+    #[test]
+    fn set_json_writes_only_valid_settings() {
+        let src = "# mine\n[general]\nsounds = true # click\n";
+        let out = set_json(src, "general.sounds", &serde_json::json!(false)).unwrap();
+        assert!(out.contains("# mine") && out.contains("sounds = false"));
+        let out = set_json(&out, "after_capture.screenshot", &serde_json::json!(["show_qao", "copy"])).unwrap();
+        assert_eq!(Config::parse(&out).0.after_capture.screenshot, vec![AfterCapture::ShowQao, AfterCapture::Copy]);
+        let out = set_json(&out, "quick_access.size", &serde_json::json!(320)).unwrap();
+        assert_eq!(Config::parse(&out).0.quick_access.size, 320);
+        assert!(set_json(&out, "quick_access.position", &serde_json::json!("middle")).is_err());
+        assert!(set_json(&out, "general.nope", &serde_json::json!(1)).is_err());
     }
 }
