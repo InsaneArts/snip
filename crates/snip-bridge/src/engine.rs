@@ -1760,6 +1760,10 @@ impl Inner {
                 self.wl(Wl::PointerAxis { dy: n(0) });
                 Response::ok(Value::Null)
             }
+            "wheel" => {
+                self.wl(Wl::PointerWheel { notches: n(0) as i32 });
+                Response::ok(Value::Null)
+            }
             "ui" => {
                 // forward a command to QML (e.g. "key Escape", "key space", "finish")
                 let cmd = a.join(" ");

@@ -276,6 +276,13 @@ impl State {
                     p.frame();
                 }
             }
+            Request::PointerWheel { notches } => {
+                if let Some((_, p)) = &self.vptr {
+                    p.axis_source(wl_pointer::AxisSource::Wheel);
+                    p.axis_discrete(now_ms(), wl_pointer::Axis::VerticalScroll, 15.0 * notches as f64, notches);
+                    p.frame();
+                }
+            }
             Request::PointerAxis { dy } => {
                 if let Some((_, p)) = &self.vptr {
                     p.axis_source(wl_pointer::AxisSource::Wheel);

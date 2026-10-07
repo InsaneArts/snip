@@ -70,6 +70,8 @@ pub enum Request {
     /// Linux button code: 0x110 left, 0x111 right, 0x112 middle
     PointerButton { down: bool, button: u32 },
     PointerAxis { dy: f64 },
+    /// Wheel notches, as a mouse wheel sends them (discrete steps): positive scrolls down
+    PointerWheel { notches: i32 },
     /// 1 px of real pointer motion and back: makes the compositor give pointer
     /// focus to a surface that just mapped under a pointer that hasn't moved.
     PointerNudge,
