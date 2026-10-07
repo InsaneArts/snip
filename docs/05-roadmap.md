@@ -116,7 +116,7 @@ Built: `snipd` (Rust core + Qt Quick UI in one process), `snip` CLI, `hypr/snip.
 
 | Area | Status | Notes |
 |---|---|---|
-| Editor window (ANN-01, 14, 15, 19) | ✅ first slice | CleanShot's layout ([docs/design/editor.md](design/editor.md)); zoom (fit, steps, Ctrl+scroll at the pointer), pan; undo/redo; Save, Copy, Drag Me; edits written back on their own. `snip edit FILE`; the card's pencil and double-click. |
+| Editor window (ANN-01, 14, 15, 19) | ✅ first slice | CleanShot's layout ([docs/design/editor.md](design/editor.md)); zoom (fit, steps, Ctrl+scroll at the pointer), pan; undo/redo; Save, Copy, Drag Me; edits written back on their own. `snip edit FILE`, `snip edit --clipboard` (an image, or a copied PNG file) and the `snip:edit-clipboard` shortcut; the card's pencil and double-click. |
 | Objects (ANN-02, 03, 04, 05, 08) | ✅ first slice | Arrow (drag its middle to bend it), rectangle, text, counter; move, handles, nudge, delete; colour and size apply to the selection. Still to add: ellipse, line, filled shapes, text styles, Alt-duplicate, copy/paste of objects. |
 | Pixelate / Blur / Black out (ANN-06, D26) | ✅ | Pixelate is the default. Tiles come only from pixels outside the region plus seeded noise (`snip-core/redact.rs`): e2e exports two images that differ only in the hidden text and gets identical bytes; the hidden text also leaves the history search. Intensity control and "natural blur" still to add. |
 | Crop (ANN-11) | ✅ first slice | Crop tool with handles, move, Reset, Done; exported exactly. Ratios, snapping, outward crop and resize still to add. |
