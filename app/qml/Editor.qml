@@ -1589,7 +1589,16 @@ Window {
     // My Colors (ANN-13): up to ten, kept across sessions
     property var savedColors: { try { return JSON.parse(Engine.savedColors() || "[]") } catch (e) { return [] } }
     function saveColor(c) {
-        const list = [c].concat(savedColors.filter(x => x.toLowerCase() !== c.toLowerCase())).slice(0, 10)
+        setSavedColors([c].concat(savedColors.filter(x => x.toLowerCase() !== c.toLowerCase())).slice(0, 10))
+    }
+    // as in CleanShot, My Colors can go again and be reordered
+    function removeColor(i) { setSavedColors(savedColors.filter((x, j) => j !== i)) }
+    function moveColor(from, to) {
+        const list = savedColors.slice(), c = list.splice(from, 1)[0]
+        list.splice(Math.max(0, Math.min(list.length, to)), 0, c)
+        setSavedColors(list)
+    }
+    function setSavedColors(list) {
         savedColors = list
         Engine.setSavedColors(JSON.stringify(list))
     }
@@ -1626,7 +1635,28 @@ Window {
                 spacing: 4
                 Repeater { model: Ed.palette; delegate: Swatch {} }
                 Rectangle { visible: ed.savedColors.length > 0; width: 30; height: 1; color: Theme.hairline }
-                Repeater { model: ed.savedColors; delegate: Swatch {} }
+                Repeater {
+                    model: ed.savedColors
+                    // right-click removes it, a drag up or down moves it
+                    delegate: Swatch {
+                        id: saved
+                        required property int index
+                        MouseArea {
+                            anchors.fill: parent
+                            acceptedButtons: Qt.LeftButton | Qt.RightButton
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            property real pressY: 0
+                            onPressed: (m) => pressY = m.y
+                            onReleased: (m) => {
+                                const steps = Math.round((m.y - pressY) / saved.height)
+                                if (m.button === Qt.RightButton) ed.removeColor(saved.index)
+                                else if (steps !== 0) ed.moveColor(saved.index, saved.index + steps)
+                                else { ed.setColor(saved.modelData); ed.openedMenu = null }
+                            }
+                        }
+                    }
+                }
                 Rectangle { width: 30; height: 1; color: Theme.hairline }
                 // the rainbow: the custom panel
                 Item {
@@ -2088,6 +2118,8 @@ Window {
         case "eyedropper": pickColor(a[1] || "ink"); break
         case "add-image": addImageFile(Engine.editorImportImage(basePath, a.slice(1).join(" "))); break
         case "paste-image": pasteImage(); break
+        case "remove-color": removeColor(n(1)); break
+        case "move-color": moveColor(n(1), n(2)); break
         case "save-color": saveColor(a[1]); break
         case "counter-start": setCounterStart(n(1)); break
         case "text": addItem({ kind: "text", x: n(1), y: n(2), text: a.slice(3).join(" "), color: ink, size: sizeFor("text"), style: textStyle }); break
