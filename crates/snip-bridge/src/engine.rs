@@ -271,7 +271,8 @@ impl Inner {
         }
     }
 
-    fn shortcut(self: &Arc<Self>, id: &str) {
+    /// An action by its shortcut id ("area", "settings"…), as its key runs it.
+    pub fn shortcut(self: &Arc<Self>, id: &str) {
         match id {
             "area" | "fullscreen" | "window" | "previous" | "text" | "all-in-one" | "area-pin" | "scroll" => self.begin(id, None, None, None, 0),
             "scroll-go" => self.scroll_go(),

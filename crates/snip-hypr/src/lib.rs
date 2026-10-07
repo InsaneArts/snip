@@ -44,6 +44,8 @@ pub struct Monitor {
     pub scale: f64,
     pub focused: bool,
     pub active_workspace: i64,
+    /// Space bars keep for themselves (logical px): left, top, right, bottom
+    pub reserved: [i32; 4],
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -85,6 +87,7 @@ pub fn monitors() -> Vec<Monitor> {
                     scale: m["scale"].as_f64().unwrap_or(1.0),
                     focused: m["focused"].as_bool().unwrap_or(false),
                     active_workspace: m["activeWorkspace"]["id"].as_i64().unwrap_or(0),
+                    reserved: [0, 1, 2, 3].map(|k| i(&m["reserved"][k])),
                 })
                 .collect()
         })
