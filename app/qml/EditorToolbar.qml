@@ -82,6 +82,21 @@ Rectangle {
                 onClicked: bar.ed.openMenuNamed("size", sizeButton)
             }
         }
+        Capsule {
+            visible: bar.ed.sizeKind === "arrow" && bar.ed.tool !== "crop"
+            ToolButton {
+                id: arrowStyleButton
+                tip: "Arrow style"
+                chevron: true
+                leftPad: 26
+                EditorItem {
+                    x: 7; y: 4
+                    o: Ed.withArrowStyle({ kind: "arrow", x1: 2, y1: 15, x2: 22, y2: 2, cx: 12, cy: 8.5, color: Theme.text.toString(), size: 2 },
+                                         bar.ed.selectedObj && bar.ed.selectedObj.kind === "arrow" ? (bar.ed.selectedObj.style || "standard") : bar.ed.arrowStyle)
+                }
+                onClicked: bar.ed.openMenuNamed("arrow", arrowStyleButton)
+            }
+        }
     }
 
     Row {
