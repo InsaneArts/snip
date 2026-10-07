@@ -1132,6 +1132,24 @@ impl Inner {
         });
     }
 
+    /// Word boxes for the editor's highlighter (ANN-10), in the main OCR language.
+    pub fn text_words(self: &Arc<Self>, path: String) {
+        let me = self.clone();
+        std::thread::spawn(move || {
+            let t0 = trace::now_ns();
+            let words = crate::edits::decoded(&path)
+                .and_then(|img| {
+                    let langs = me.ocr_languages();
+                    let lang = langs.split('+').next().unwrap_or("eng").to_string();
+                    ocr::words(&img.data, img.width, img.height, img.bpp, 1.0, &lang).ok()
+                })
+                .unwrap_or_default();
+            trace::trace("editor_words", &format!("\"n\":{},\"ms\":{:.0}", words.len(), trace::ms_since(t0)));
+            let j = serde_json::to_string(&words).unwrap_or_else(|_| "[]".into());
+            me.ui(move |e| e.editor_words(&QString::from(path.as_str()), &QString::from(j.as_str())));
+        });
+    }
+
     fn ocr_languages(&self) -> String {
         let configured = self.cfg().ocr.languages;
         if !configured.trim().is_empty() {
