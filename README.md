@@ -23,6 +23,7 @@ CleanShot X's screenshot workflow for [Omarchy](https://omarchy.org) and Hyprlan
 - **History search:** `snip search connection refused` finds captures by the text in them.
 - **Scrolling capture:** `snip scroll` (or bind `snip:scroll`). Choose the area, then press Enter and scroll the page yourself, or let Auto-Scroll do it; Enter again finishes. You get one tall capture, stitched by Snip's own stitcher.
 - **History window:** `snip history` (or bind `snip:history`) shows past captures across the top of the screen. Type to search their text, Enter restores one to Quick Access, double-click annotates it, drag it out.
+- **In the bar:** Snip's icon sits in Omarchy's bar. A click opens its menu: every capture with its key, History, Settings…, Quit.
 - **Settings:** `snip settings` (or bind `snip:settings`) opens CleanShot's settings tabs. They write `~/.config/snip/config.toml` and keep your comments; editing the file by hand works too, live. Shortcuts records keys for every action and binds them in Hyprland.
 - **Formats:** PNG, JPG and WebP.
 
