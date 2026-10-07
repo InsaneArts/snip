@@ -19,7 +19,7 @@ CleanShot X's screenshot workflow for [Omarchy](https://omarchy.org) and Hyprlan
   - drag out, context menu, preview, auto-close;
   - CleanShot's motion, measured from its demos.
 - **Capture lifecycle:** a capture goes to Snip's history only. Copy puts it on the clipboard. Save writes it to your folder and also copies it. Snip's own UI is never in a capture.
-- **Editor:** arrows (drag the middle to bend), rectangles, text, counters, Pixelate/Blur/Black out that really hide what is under them, and crop; with undo, zoom, Copy, Save and Drag Me. Open it from a card (pencil or double-click), with `snip edit FILE`, or on whatever image is on the clipboard with `snip edit --clipboard`. Edits go back to the capture and stay editable.
+- **Editor:** CleanShot's Annotate tools: arrows (four styles; drag the middle to bend), rectangles, ellipses, lines, text in seven styles with emoji, counters, pencil, a highlighter that snaps to text lines, spotlight, Pixelate/Text shape/Blur/Black out that really hide what is under them, crop and resize, added images and the Background tool; with undo, zoom, Copy, Save, Save As and Drag Me. Open it from a card (pencil or double-click), with `snip edit FILE`, or on whatever image is on the clipboard with `snip edit --clipboard`. Edits go back to the capture and stay editable.
 - **History search:** `snip search connection refused` finds captures by the text in them.
 - **Formats:** PNG, JPG and WebP. Live config in `~/.config/snip/config.toml`.
 
