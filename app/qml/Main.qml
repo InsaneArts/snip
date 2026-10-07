@@ -154,6 +154,7 @@ QtObject {
         function onDebugCommand(cmd) { root.debug(cmd) }
         function onEditorOpen(json) { root.openEditor(JSON.parse(json)) }
         function onPinOpen(json) { root.openPin(JSON.parse(json)) }
+        function onHistoryOpen(output) { root.history.open(output) }
         function onBackgroundAuto(json) {
             const r = root.renderComponent.createObject(null, { capture: JSON.parse(json), token: root.nextToken() })
             r.done.connect(() => r.destroy())
@@ -175,6 +176,7 @@ QtObject {
         if (a[0] === "cancel-dialogs") { Platform.closeFileDialogs(); return }
         if (a[0] === "close-editors") { for (const e of Object.values(editors)) e.closeEditor(); return }
         if (a[0] === "close-pins") { closePins(); return }
+        if (a[0] === "history") { history.debug(a.slice(1)); return }
         if (a[0] === "pin") {
             const p = pins[pins.length - 1]
             if (p) p.debug(a.slice(1))
@@ -236,6 +238,7 @@ QtObject {
     property Toast toast: Toast {}
     property Countdown countdown: Countdown {}
     property Preview preview: Preview {}
+    property History history: History { controller: root }
 
     // Editors, one per capture: opening one again brings it forward.
     property var editors: ({})
