@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QQuickItem>
 #include <QScreen>
+#include <QSize>
 #include <QVariantList>
 #include <QQuickWindow>
 #include <QWindow>
@@ -74,6 +75,11 @@ public:
   // xdg-desktop-portal FileChooser. Answers with fileChosen(token, path);
   // the path is empty when cancelled or when there is no portal.
   Q_INVOKABLE void saveFileDialog(int token, const QString& title, const QString& name, const QString& folder);
+  // Add image (ANN-12): the desktop's open dialog for images. Answers with
+  // fileChosen(token, path) like saveFileDialog.
+  Q_INVOKABLE void openImageDialog(int token, const QString& title);
+  // An image file's size without decoding it ({width, height}; 0 x 0 if unreadable).
+  Q_INVOKABLE QSize imageSize(const QString& path) const;
   // Tests: cancel every open dialog (portal Request.Close).
   Q_INVOKABLE void closeFileDialogs();
 
