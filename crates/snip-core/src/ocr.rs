@@ -109,11 +109,17 @@ fn upscale2(src: &[u8], w: usize, h: usize) -> Vec<u8> {
     out
 }
 
+/// How much `preprocess` enlarges an image (small text reads better at 2×).
+fn upscale_factor(w: u32, h: u32, scale: f64) -> usize {
+    if scale <= 1.25 && (w as usize) * (h as usize) < 8_000_000 { 2 } else { 1 }
+}
+
 /// Preprocess into a PGM (P5) that tesseract reads from stdin.
 pub fn preprocess(data: &[u8], w: u32, h: u32, bpp: usize, scale: f64) -> Vec<u8> {
+    let factor = upscale_factor(w, h, scale);
     let (mut w, mut h) = (w as usize, h as usize);
     let mut g = grey(data, w, h, bpp);
-    if scale <= 1.25 && w * h < 8_000_000 {
+    if factor == 2 {
         g = upscale2(&g, w, h);
         w *= 2;
         h *= 2;
@@ -226,6 +232,44 @@ pub fn recognize(data: &[u8], w: u32, h: u32, bpp: usize, scale: f64, langs: &st
     recognize_with(data, w, h, bpp, scale, langs, false)
 }
 
+/// A recognised word's box in image px, and the line it sits on.
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+pub struct WordBox {
+    pub line: u32,
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+}
+
+/// Word boxes from Tesseract's TSV, back in image px: `pad` and `factor`
+/// undo `preprocess`. Lines are numbered in reading order.
+pub fn word_boxes(tsv: &str, pad: f64, factor: f64) -> Vec<WordBox> {
+    let mut lines: Vec<(i32, i32, i32)> = vec![];
+    let mut out = vec![];
+    for row in tsv.lines().skip(1) {
+        let f: Vec<&str> = row.split('\t').collect();
+        if f.len() < 12 || f[0] != "5" || f[11].trim().is_empty() {
+            continue;
+        }
+        let n = |i: usize| f[i].parse::<i32>().unwrap_or(0);
+        let key = (n(2), n(3), n(4));
+        let line = lines.iter().position(|k| *k == key).unwrap_or_else(|| {
+            lines.push(key);
+            lines.len() - 1
+        });
+        let at = |v: i32| (v as f64 - pad) / factor;
+        out.push(WordBox { line: line as u32, x: at(n(6)), y: at(n(7)), w: n(8) as f64 / factor, h: n(9) as f64 / factor });
+    }
+    out
+}
+
+/// Every word's box (the editor's highlighter snaps to them, ANN-10).
+pub fn words(data: &[u8], w: u32, h: u32, bpp: usize, scale: f64, lang: &str) -> std::io::Result<Vec<WordBox>> {
+    let tsv = run_tesseract(&preprocess(data, w, h, bpp, scale), lang, false)?;
+    Ok(word_boxes(&tsv, PAD as f64, upscale_factor(w, h, scale) as f64))
+}
+
 /// `background`: run Tesseract at the lowest CPU priority (history indexing).
 pub fn recognize_with(data: &[u8], w: u32, h: u32, bpp: usize, scale: f64, langs: &str, background: bool) -> std::io::Result<String> {
     let pgm = preprocess(data, w, h, bpp, scale);
@@ -284,6 +328,20 @@ mod tests {
 5\t1\t1\t1\t2\t1\t50\t30\t60\t12\t88\treturn\n\
 5\t1\t1\t1\t3\t1\t10\t50\t10\t12\t12\t~\n";
         assert_eq!(text_from_tsv(tsv), "fn main()\n    return");
+    }
+
+    #[test]
+    fn word_boxes_return_to_image_px() {
+        let tsv = "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n\
+4\t1\t1\t1\t1\t0\t24\t24\t200\t30\t-1\t\n\
+5\t1\t1\t1\t1\t1\t44\t64\t60\t30\t91\thello\n\
+5\t1\t1\t1\t1\t2\t124\t64\t40\t30\t88\tyou\n\
+5\t1\t1\t1\t2\t1\t44\t124\t80\t30\t90\tthere\n";
+        let b = word_boxes(tsv, 24.0, 2.0);
+        assert_eq!(b.len(), 3);
+        assert_eq!(b[0], WordBox { line: 0, x: 10.0, y: 20.0, w: 30.0, h: 15.0 });
+        assert_eq!((b[1].line, b[1].x), (0, 50.0));
+        assert_eq!((b[2].line, b[2].y), (1, 50.0));
     }
 
     #[test]
