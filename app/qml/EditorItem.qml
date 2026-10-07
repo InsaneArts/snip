@@ -253,4 +253,29 @@ Item {
             border.color: root.haloColor
         }
     }
+
+    Loader {
+        active: root.kind === "image"
+        sourceComponent: Item {
+            readonly property var im: root.o
+            readonly property real grow: root.halo ? root.pad : 0
+            x: im.x - grow; y: im.y - grow
+            width: im.w + grow * 2; height: im.h + grow * 2
+            Image {
+                visible: !root.halo
+                anchors.fill: parent
+                source: "file://" + root.base.replace(/[^/]*$/, "") + parent.im.src
+                smooth: true
+                mipmap: true
+                fillMode: Image.Stretch
+            }
+            Rectangle {
+                visible: root.halo
+                anchors.fill: parent
+                color: "transparent"
+                border.width: root.pad * 2
+                border.color: root.haloColor
+            }
+        }
+    }
 }
