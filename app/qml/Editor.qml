@@ -652,6 +652,41 @@ Window {
             if (path) ed.addImageFile(Engine.editorImportImage(ed.basePath, path))
         }
     }
+    // Drop zones (ANN-12, CleanShot's "combine images"): an image dropped
+    // near an edge of the canvas joins it on that side, as wide (above,
+    // below) or as tall (left, right) as the canvas, and the canvas grows to
+    // hold it; dropped further in, it lands on top where it was dropped.
+    function dropSide(vx, vy) {
+        const a = toView(shown.x, shown.y), b = toView(shown.x + shown.w, shown.y + shown.h)
+        const u = (vx - a.x) / Math.max(1, b.x - a.x), v = (vy - a.y) / Math.max(1, b.y - a.y)
+        const d = { left: u, right: 1 - u, top: v, bottom: 1 - v }
+        const side = Object.keys(d).reduce((m, k) => d[k] < d[m] ? k : m, "left")
+        return d[side] < 0.25 ? side : ""
+    }
+    function appendImage(file, side) {
+        if (!file) return false
+        const sz = Platform.imageSize(basePath.replace(/[^/]*$/, "") + file)
+        if (!(sz.width > 0)) return false
+        const c = innerRect, across = side === "top" || side === "bottom"
+        const w = across ? c.w : sz.width * c.h / sz.height, h = across ? sz.height * c.w / sz.width : c.h
+        const x = side === "left" ? c.x - w : side === "right" ? c.x + c.w : c.x
+        const y = side === "top" ? c.y - h : side === "bottom" ? c.y + c.h : c.y
+        const x0 = Math.floor(Math.min(c.x, x)), y0 = Math.floor(Math.min(c.y, y))
+        const crop = { x: x0, y: y0, w: Math.ceil(Math.max(c.x + c.w, x + w)) - x0, h: Math.ceil(Math.max(c.y + c.h, y + h)) - y0 }
+        commit(Object.assign({}, doc, { items: doc.items.concat([{ kind: "image", x: x, y: y, w: w, h: h, src: file }]), crop: crop,
+                                        fill: doc.fill || edgeFill || Engine.edgeColor(basePath) }))
+        selected = doc.items.length - 1
+        return true
+    }
+    function dropFiles(paths, vx, vy) {
+        const side = dropSide(vx, vy)
+        for (const path of paths) {
+            const file = Engine.editorImportImage(basePath, path)
+            if (side) appendImage(file, side)
+            else addImageFile(file, toImage(vx, vy))
+        }
+    }
+
     function chooseImage() {
         imageToken = controller.nextToken()
         Platform.openImageDialog(imageToken, "Add Image")
@@ -1013,16 +1048,30 @@ Window {
 
         // drop image files onto the canvas
         DropArea {
+            id: dropArea
             anchors.fill: parent
             keys: ["text/uri-list"]
+            property string side: ""
+            onPositionChanged: (d) => side = ed.dropSide(d.x, d.y)
+            onExited: side = ""
             onDropped: (drop) => {
-                const p = ed.toImage(drop.x, drop.y)
-                for (const u of drop.urls) {
-                    const path = decodeURIComponent(String(u).replace(/^file:\/\//, ""))
-                    ed.addImageFile(Engine.editorImportImage(ed.basePath, path), p)
-                }
+                side = ""
+                ed.dropFiles(drop.urls.map(u => decodeURIComponent(String(u).replace(/^file:\/\//, ""))), drop.x, drop.y)
                 drop.accept()
             }
+        }
+        // where a drop would join the canvas: its edge, lit
+        Rectangle {
+            visible: dropArea.containsDrag && dropArea.side !== ""
+            readonly property var a: ed.toView(ed.shown.x, ed.shown.y)
+            readonly property var b: ed.toView(ed.shown.x + ed.shown.w, ed.shown.y + ed.shown.h)
+            readonly property bool across: dropArea.side === "top" || dropArea.side === "bottom"
+            x: dropArea.side === "right" ? b.x - 2 : a.x - (across ? 0 : 2)
+            y: dropArea.side === "bottom" ? b.y - 2 : a.y - (across ? 2 : 0)
+            width: across ? b.x - a.x : 4
+            height: across ? 4 : b.y - a.y
+            radius: 2
+            color: Theme.accent
         }
 
         MouseArea {
@@ -1886,6 +1935,7 @@ Window {
         case "bg-preset-delete": deleteBgPreset(a.slice(1).join(" ")); break
         case "bg-previous": applyPreviousBg(); break
         case "take-screenshot": takeScreenshot(); break
+        case "drop": { const v = toView(n(2), n(3)); dropFiles([a[1]], v.x, v.y); break }   // at image px
         case "add-wallpaper": bgPanel.addWallpaper(a.slice(1).join(" ")); break
         case "remove-wallpaper": bgPanel.removeWallpaper(a.slice(1).join(" ")); break
         case "color": setColor(a[1]); break
