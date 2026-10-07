@@ -478,6 +478,42 @@ def window_capture(s, env):
 
 
 @case
+def window_with_desktop(s, env):
+    """Capture Window "With the desktop" (product owner, 2026-10-08): the window as it is on
+    screen with 48 px of the desktop around it (wallpaper, other windows, the bar), opaque,
+    instead of the clean window on transparency. Shift when clicking gives the clean one."""
+    from PIL import Image
+    cfg = s.tmp / "cfg/snip/config.toml"
+    before = cfg.read_text()
+    cfg.write_text(before + "\n[capture]\nwindow_desktop = true\n")
+    try:
+        time.sleep(0.8)                                                  # the config watcher reloads it
+        w, mon = env.win, env.monitor()
+        lx, ly = w["at"][0] - mon["x"], w["at"][1] - mon["y"]
+        sc, m = mon["scale"], round(48 * mon["scale"])
+        x0, y0 = round(lx * sc), round(ly * sc)
+        x1, y1 = x0 + round(w["size"][0] * sc), y0 + round(w["size"][1] * sc)
+        want = (min(mon["width"], x1 + m) - max(0, x0 - m), min(mon["height"], y1 + m) - max(0, y0 - m))
+
+        p = s.bg("window"); time.sleep(0.5)
+        s.move(lx + 50, ly + 50); s.click()
+        r, code = finish(p)
+        assert code == 0 and r["result"]["kind"] == "window", r
+        img = Image.open(r["result"]["source"])
+        assert abs(img.size[0] - want[0]) <= 3 and abs(img.size[1] - want[1]) <= 3, ("the window and 48 px around it", img.size, want)
+        assert img.mode == "RGB", ("as on screen: opaque", img.mode)
+
+        p = s.bg("window"); time.sleep(0.5)                              # Shift: the clean window
+        s.move(lx + 50, ly + 50); s.key("Shift", "keydown"); s.click()
+        r, code = finish(p)
+        s.key("Shift", "keyup")
+        assert code == 0 and Image.open(r["result"]["source"]).mode == "RGBA", "Shift gives the clean window"
+    finally:
+        cfg.write_text(before)
+        time.sleep(0.8)
+
+
+@case
 def ocr_text(s, env):
     """Capture Text over known text (CAP-09)."""
     w = env.win
