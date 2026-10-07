@@ -158,7 +158,7 @@ class Snip:
     def bg(self, *args):
         """Start a blocking CLI call (a capture waiting for the selection)."""
         # overlays only on the test output: the user's monitors stay untouched
-        if args and args[0] in ("area", "window", "text") and "--monitor" not in args:
+        if args and args[0] in ("area", "window", "text", "area-pin") and "--monitor" not in args:
             args = (*args, "--monitor", OUT)
         return subprocess.Popen(
             [str(self.build / "snip"), "--json", *args], env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
@@ -757,6 +757,30 @@ def pins(s, env):
     assert wait_for(lambda: pin_windows(), 3)
     s.json("pins", "close")
     assert wait_for(lambda: not pin_windows(), 3), "snip pins close"
+
+
+@case
+def capture_area_and_pin(s, env):
+    """PIN-01: Capture Area & Pin pins the area right where it was, at its own size, with
+    no card; `snip pin FILE` pins an image file."""
+    from PIL import Image
+    cards = len(s.json("status")["result"]["cards"])
+    p = s.bg("area-pin")
+    time.sleep(0.5)
+    s.drag(100, 100, 300, 250)
+    r, code = finish(p)
+    assert code == 0 and r["ok"], r
+    assert wait_for(lambda: pin_windows(), 3), "a pin opens"
+    w, mon, st = pin_windows()[0], env.monitor(), pin_state(s)
+    assert wait_for(lambda: pin_windows()[0]["at"] == [mon["x"] + 100 - 16, mon["y"] + 100 - 16], 2), (pin_windows()[0]["at"], mon)
+    assert st["zoom"] == 1 and abs(st["baseW"] - 200) < 1, st
+    assert len(s.json("status")["result"]["cards"]) == cards, "no card"
+    s.json("pins", "close")
+    png = s.tmp / "pinfile.png"
+    noise_png(png, 120, 80, seed=2)
+    assert s.json("pin", str(png))["ok"]
+    assert wait_for(lambda: pin_windows(), 3), "a file pins too"
+    s.json("pins", "close")
 
 
 @case
