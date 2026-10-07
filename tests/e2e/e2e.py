@@ -1066,6 +1066,72 @@ def numbered_lines(png):
     return [n for n, _ in out]
 
 
+def scroll_page(s, env, lines):
+    """A foot window showing `lines` numbered lines (LINES_PY), scrolled to the first."""
+    (s.tmp / "lines.py").write_text(LINES_PY)
+    cmd = f"foot --title=scrollpage --app-id=snip-e2e-scroll sh -c 'python3 {s.tmp / 'lines.py'} {lines}; sleep 3600'"
+    hypr_eval(f'hl.dispatch(hl.dsp.exec_cmd([[{cmd}]]))')
+    assert wait_for(lambda: [c for c in hypr_json("clients") if c["class"] == "snip-e2e-scroll"], 5), "the page opens"
+    time.sleep(0.8)
+    c = next(c for c in hypr_json("clients") if c["class"] == "snip-e2e-scroll")
+    mon = env.monitor()
+    s.move(c["at"][0] - mon["x"] + c["size"][0] // 2, c["at"][1] - mon["y"] + c["size"][1] // 2)
+    s.debug("scroll", -20000)
+    time.sleep(0.5)
+    return c
+
+
+def scroll_hud(s):
+    n = len(s.traces("scroll_hud"))
+    s.debug("ui", "scroll", "state")
+    assert wait_for(lambda: len(s.traces("scroll_hud")) > n, 2), "no scroll_hud"
+    return s.traces("scroll_hud")[-1]
+
+
+@case
+def scrolling_capture_auto(s, env):
+    """SCR-02: Auto-Scroll turns the wheel itself, pauses while the pointer is out of the
+    frame, and ends at the bottom of the page on its own: every line from the frame's first
+    down, once. natural_scroll is on: a virtual pointer's wheel bypasses libinput, so it
+    must not be flipped."""
+    hypr_eval('hl.config({ input = { natural_scroll = true } })')
+    c = scroll_page(s, env, 120)
+    try:
+        mon = env.monitor()
+        lx, ly, lw, lh = c["at"][0] - mon["x"], c["at"][1] - mon["y"], c["size"][0], c["size"][1]
+        p = s.bg("scroll"); time.sleep(0.5)
+        s.drag(lx + 30, ly + 60, lx + lw - 30, ly + lh - 120)
+        assert wait_for(lambda: scroll_hud(s)["open"], 3), "the frame and panel show"
+
+        def click(name):
+            n = len(s.traces("scroll_where"))
+            s.debug("ui", "scroll", "where", name)
+            assert wait_for(lambda: len(s.traces("scroll_where")) > n, 2)
+            b = s.traces("scroll_where")[-1]
+            assert b["x"] >= 0, (name, "isn't shown")
+            s.move(b["x"], b["y"]); s.click()
+
+        assert scroll_hud(s)["tips"], "SCR-05: tips the first time"
+        click("scroll-tips-ok")
+        assert wait_for(lambda: not scroll_hud(s)["tips"], 2), "Got it"
+        click("scroll-auto")                                           # Auto-Scroll: Snip moves the pointer in
+        assert wait_for(lambda: scroll_hud(s)["auto"], 3), "auto-scrolling"
+        s.move(lx + lw + 300, ly + lh - 40)                             # out of the frame: it waits
+        assert wait_for(lambda: scroll_hud(s)["paused"], 3), "paused"
+        h = scroll_hud(s)["height"]
+        time.sleep(0.5)
+        assert scroll_hud(s)["height"] == h, "nothing scrolls while paused"
+        s.move(lx + lw // 2, ly + lh // 2)                              # back: on it goes, to the end
+        r, code = finish(p)
+        assert code == 0 and r["result"]["kind"] == "scroll", r
+        lines = numbered_lines(r["result"]["source"])
+        assert lines == list(range(lines[0], lines[0] + len(lines))), ("every line once, in order", lines)
+        assert lines[0] <= 3 and lines[-1] >= 110, (lines[0], lines[-1])
+    finally:
+        os.kill(c["pid"], 15)
+        hypr_eval('hl.config({ input = { natural_scroll = false } })')
+
+
 @case
 def scrolling_capture(s, env):
     """SCR-01/03: choose an area inside a window, Start (Enter), scroll by hand, Done (Enter):
