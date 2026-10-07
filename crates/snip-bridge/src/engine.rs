@@ -1370,6 +1370,7 @@ impl Inner {
             },
             "capture": c.capture,
             "annotate": c.annotate,
+            "pins": c.pins,
             "sounds": c.general.sounds,
             "saveAlsoCopies": c.general.save_also_copies,
         })
