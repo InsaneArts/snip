@@ -653,6 +653,30 @@ def editor_round_trip(s, env):
 
 
 @case
+def editor_from_card(s, env):
+    """QAO-11: double-clicking a card opens Snip's editor on that capture, and the edit
+    reaches the card's capture."""
+    from PIL import Image
+    s.cli("close-all"); time.sleep(0.3)
+    png = s.tmp / "card-edit.png"
+    Image.new("RGB", (500, 300), "white").save(png)
+    rec = open_card(s, png); time.sleep(0.6)
+    mon = env.monitor()
+    H = mon["height"] / mon["scale"]
+    cw, ch = 280, round(280 * 0.705)
+    s.move(24 + cw / 2, H - 24 - ch / 2); time.sleep(0.3)
+    s.click(); time.sleep(0.05); s.click()
+    assert wait_for(lambda: editor_window(), 5), "double-click did not open the editor"
+    assert editor_state(s)["id"] == rec["id"]
+    s.debug("ui", "editor", "rect", 100, 100, 200, 100)
+    editor_flush(s)
+    source = next(r for r in s.json("list", "-n", "20")["result"] if r["id"] == rec["id"])["source"]
+    assert Image.open(source).convert("RGB").getpixel((100, 150))[1] < 120, "the edit did not reach the capture"
+    assert rec["id"] in s.status()["cards"], "the card should stay"
+    close_editor(s)
+
+
+@case
 def editor_draws_with_pointer(s, env):
     """Drawing an arrow and moving it with the pointer; Copy writes back, copies and closes."""
     from PIL import Image
