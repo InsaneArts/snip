@@ -100,6 +100,12 @@ pub mod qobject {
         #[qinvokable]
         fn finish_pick(self: &Engine, color: QString);
 
+        /// What the editor remembers between sessions (the last tool): JSON
+        #[qinvokable]
+        fn editor_prefs(self: &Engine) -> QString;
+        #[qinvokable]
+        fn set_editor_prefs(self: &Engine, json: QString);
+
         /// "My Colors" (ANN-13): up to ten, kept across sessions (JSON array)
         #[qinvokable]
         fn saved_colors(self: &Engine) -> QString;
@@ -513,6 +519,17 @@ impl qobject::Engine {
                 }
             });
         }
+    }
+
+    fn editor_prefs(&self) -> QString {
+        let j = std::fs::read_to_string(snip_core::paths::data_dir().join("editor.json")).unwrap_or_else(|_| "{}".into());
+        QString::from(j.as_str())
+    }
+
+    fn set_editor_prefs(&self, json: QString) {
+        let dir = snip_core::paths::data_dir();
+        let _ = std::fs::create_dir_all(&dir);
+        let _ = snip_core::store::atomic_write(&dir.join("editor.json"), json.to_string().as_bytes());
     }
 
     fn saved_colors(&self) -> QString {
