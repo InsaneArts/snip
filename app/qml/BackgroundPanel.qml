@@ -31,6 +31,7 @@ Rectangle {
         function onFileChosen(token, path) { if (token === panel.wallToken && path !== "") panel.addWallpaper(path) }
     }
     property bool allGradients: true
+    property Item firstTile: null            // the first gradient's tile (tests look at its edge)
     // a slider let go (or a typed value committed): one undo step, and the
     // editor's keys work again
     function release(patch) {
@@ -153,6 +154,7 @@ Rectangle {
                     delegate: Tile {
                         id: gradTile
                         required property int index
+                        Component.onCompleted: if (index === 0) panel.firstTile = gradTile
                         current: !!panel.bg && panel.bg.kind === "gradient" && panel.bg.value === index
                         BackgroundLayer {
                             bg: ({ kind: "gradient", value: gradTile.index, padding: 0, inset: 0, radius: 0, shadow: 0 })
