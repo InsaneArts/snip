@@ -8,6 +8,7 @@
 #include <QFile>
 #include <QGuiApplication>
 #include <QImage>
+#include <QImageReader>
 #include <QKeyEvent>
 #include <QKeySequence>
 #include <QMimeData>
@@ -214,8 +215,8 @@ Platform::sendKeys(QWindow* w, const QString& keys)
   }
 }
 
-void
-Platform::saveFileDialog(int token, const QString& title, const QString& name, const QString& folder)
+static void
+portalFileRequest(Platform* self, int token, const QString& method, const QString& title, const QVariantMap& extra)
 {
   QDBusConnection bus = QDBusConnection::sessionBus();
   const QString service = QStringLiteral("org.freedesktop.portal.Desktop");
@@ -223,33 +224,54 @@ Platform::saveFileDialog(int token, const QString& title, const QString& name, c
   // Listen on the request path before asking, so the answer can't be missed.
   QString sender = bus.baseService().mid(1);
   sender.replace(QLatin1Char('.'), QLatin1Char('_'));
-  auto* req = new PortalRequest(this);
+  auto* req = new PortalRequest(self);
   req->path = QStringLiteral("/org/freedesktop/portal/desktop/request/%1/%2").arg(sender, handle);
   bus.connect(service, req->path, QStringLiteral("org.freedesktop.portal.Request"), QStringLiteral("Response"), req,
               SLOT(response(uint, QVariantMap)));
-  connect(req, &PortalRequest::done, this, [this, req, token](uint code, const QVariantMap& results) {
+  QObject::connect(req, &PortalRequest::done, self, [self, req, token](uint code, const QVariantMap& results) {
     const QStringList uris = results.value(QStringLiteral("uris")).toStringList();
     const QString path = code == 0 && !uris.isEmpty() ? QUrl(uris.first()).toLocalFile() : QString();
     req->deleteLater();
-    Q_EMIT fileChosen(token, path);
+    Q_EMIT self->fileChosen(token, path);
   });
 
-  QVariantMap opts;
+  QVariantMap opts = extra;
   opts[QStringLiteral("handle_token")] = handle;
-  opts[QStringLiteral("current_name")] = name;
   opts[QStringLiteral("modal")] = true;
-  QByteArray dir = QFile::encodeName(folder);
-  dir.append('\0');
-  opts[QStringLiteral("current_folder")] = dir;
   QDBusMessage call = QDBusMessage::createMethodCall(service, QStringLiteral("/org/freedesktop/portal/desktop"),
-                                                     QStringLiteral("org.freedesktop.portal.FileChooser"),
-                                                     QStringLiteral("SaveFile"));
+                                                     QStringLiteral("org.freedesktop.portal.FileChooser"), method);
   call << QString() << title << opts;
   const QDBusMessage reply = bus.call(call, QDBus::Block, 5000);
   if (reply.type() == QDBusMessage::ErrorMessage) {
     req->deleteLater();
-    Q_EMIT fileChosen(token, QString());
+    Q_EMIT self->fileChosen(token, QString());
   }
+}
+
+void
+Platform::saveFileDialog(int token, const QString& title, const QString& name, const QString& folder)
+{
+  QVariantMap opts;
+  opts[QStringLiteral("current_name")] = name;
+  QByteArray dir = QFile::encodeName(folder);
+  dir.append('\0');
+  opts[QStringLiteral("current_folder")] = dir;
+  portalFileRequest(this, token, QStringLiteral("SaveFile"), title, opts);
+}
+
+void
+Platform::openImageDialog(int token, const QString& title)
+{
+  QVariantMap opts;
+  opts[QStringLiteral("multiple")] = false;
+  portalFileRequest(this, token, QStringLiteral("OpenFile"), title, opts);
+}
+
+QSize
+Platform::imageSize(const QString& path) const
+{
+  QImageReader r(path);
+  return r.size().isValid() ? r.size() : QSize(0, 0);
 }
 
 void
