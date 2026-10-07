@@ -9,7 +9,7 @@ import "editor.js" as Ed
 Item {
     id: root
     property var o: null
-    property int number: 1            // counters: their place in the document
+    property string label: "1"        // counters: their number, as the document labels it
     property bool halo: false
     property real pad: 4
     property string base: ""          // the image file, for Pixelate / Blur tiles
@@ -167,10 +167,10 @@ Item {
             Text {
                 visible: !root.halo
                 anchors.centerIn: parent
-                text: root.number
+                text: root.label
                 color: Qt.colorEqual(parent.c.color, "#ffffff") || Qt.colorEqual(parent.c.color, "#ffcc00") ? "#1d1d1f" : "white"
                 font.family: Theme.fontUi
-                font.pixelSize: parent.c.size * 0.56
+                font.pixelSize: parent.c.size * (root.label.length <= 1 ? 0.56 : root.label.length === 2 ? 0.46 : 0.36)
                 font.weight: Font.Bold
                 font.features: { "tnum": 1 }
             }

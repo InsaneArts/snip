@@ -62,7 +62,7 @@ Window {
         selected = -1
         changed()
     }
-    function setItems(items) { commit({ v: 1, items: items, crop: doc.crop }) }
+    function setItems(items) { commit(Object.assign({}, doc, { items: items })) }
     function addItem(o) {
         setItems(doc.items.concat([o]))
         selected = doc.items.length - 1
@@ -90,6 +90,7 @@ Window {
     property string redactStyle: "pixelate"   // CleanShot's default (D26)
     property string arrowStyle: "standard"
     property string textStyle: "standard"
+    property string counterStyle: "num"
     property string spotShape: "rect"
     property real spotDim: 0.55
     property string toolBeforeCrop: "arrow"
@@ -99,6 +100,15 @@ Window {
         if (t === "crop" && tool !== "crop") toolBeforeCrop = tool
         tool = t
         if (t !== "select") selected = -1
+    }
+    function setCounterStyle(st) {
+        counterStyle = st
+        if (selectedObj && selectedObj.kind === "counter" && (selectedObj.style || "num") !== st)
+            replaceItem(selected, Object.assign(Ed.copy(selectedObj), { style: st }))
+    }
+    function setCounterStart(v) {
+        v = Math.max(0, Math.min(99, v))
+        if (v !== (doc.counterStart === undefined ? 1 : doc.counterStart)) commit(Object.assign({}, doc, { counterStart: v }))
     }
     // spotlight options apply to the selected spotlight too
     function setSpot(shape, dim) {
@@ -163,7 +173,7 @@ Window {
         r = Ed.clampRect(r, imgW, imgH)
         if (r.w < 4 || r.h < 4) return
         const c = r.x === 0 && r.y === 0 && r.w === imgW && r.h === imgH ? null : r
-        if (JSON.stringify(c) !== JSON.stringify(doc.crop)) commit({ v: 1, items: doc.items, crop: c })
+        if (JSON.stringify(c) !== JSON.stringify(doc.crop)) commit(Object.assign({}, doc, { crop: c }))
     }
     function cropDone() { setTool(toolBeforeCrop === "crop" ? "arrow" : toolBeforeCrop) }
     property real zoom: 1               // 1 = 100 %: one image px per device px
@@ -315,7 +325,7 @@ Window {
 
     Component.onCompleted: {
         const d = capture.doc
-        if (d && d.items) doc = { v: 1, items: d.items, crop: d.crop || null }
+        if (d && d.items) doc = { v: 1, items: d.items, crop: d.crop || null, counterStart: d.counterStart === undefined ? 1 : d.counterStart }
         const scr = Platform.screen(capture.output || "")
         const aw = scr ? scr.availableGeometry.width : 1600, ah = scr ? scr.availableGeometry.height : 1000
         const s = capture.scale || 1
@@ -475,7 +485,8 @@ Window {
                             required property int index
                             o: modelData
                             base: ed.capture.image || ""
-                            number: Ed.counterNumber(ed.doc.items, index)
+                            label: Ed.counterLabel(ed.doc, Ed.counterNumber(ed.doc.items, index), modelData.style)
+                            z: modelData.kind === "counter" ? 1 : 0    // counters stay on top (CleanShot)
                             visible: index !== ed.draftIndex
                         }
                     }
@@ -483,8 +494,10 @@ Window {
                         o: ed.draft
                         base: ed.capture.image || ""
                         visible: ed.draft !== null && !ed.editingText
-                        number: ed.draft && ed.draft.kind === "counter"
-                                ? (ed.draftIndex >= 0 ? Ed.counterNumber(ed.doc.items, ed.draftIndex) : Ed.counterNumber(ed.doc.items, ed.doc.items.length - 1) + 1) : 1
+                        z: 2
+                        label: ed.draft && ed.draft.kind === "counter"
+                               ? Ed.counterLabel(ed.doc, ed.draftIndex >= 0 ? Ed.counterNumber(ed.doc.items, ed.draftIndex)
+                                                                           : Ed.counterNumber(ed.doc.items, ed.doc.items.length, ed.draft.style), ed.draft.style) : "1"
                     }
                 }
             }
@@ -509,7 +522,7 @@ Window {
                     visible: ed.shownSelection !== null && !ed.editingText && ed.shownSelection.kind !== "text"
                     o: ed.shownSelection
                     base: ed.capture.image || ""
-                    number: ed.selected >= 0 ? Ed.counterNumber(ed.doc.items, ed.selected) : 1
+                    label: ed.selected >= 0 && ed.shownSelection ? Ed.counterLabel(ed.doc, Ed.counterNumber(ed.doc.items, ed.selected), ed.shownSelection.style) : "1"
                 }
                 // text being typed, exactly where it will be drawn
                 Rectangle {
@@ -736,7 +749,7 @@ Window {
                                  seed: Math.floor(Math.random() * 1e9) }
                     gesture = "draw"; break
                 case "counter":
-                    ed.draft = { kind: "counter", x: p.x, y: p.y, color: c, size: ed.sizeFor("counter") }
+                    ed.draft = { kind: "counter", x: p.x, y: p.y, color: c, size: ed.sizeFor("counter"), style: ed.counterStyle }
                     pressObj = ed.draft
                     gesture = "place"; break
                 case "text":
@@ -896,7 +909,8 @@ Window {
 
     // ---------------------------------------------------------------- dropdowns
     function openMenuNamed(name, anchorItem) {
-        openMenu({ color: colorMenu, size: sizeMenu, style: styleMenu, zoom: zoomMenu, arrow: arrowMenu, text: textMenu, dim: dimMenu }[name], anchorItem)
+        openMenu({ color: colorMenu, size: sizeMenu, style: styleMenu, zoom: zoomMenu, arrow: arrowMenu, text: textMenu, dim: dimMenu,
+                   counter: counterMenu }[name], anchorItem)
     }
     property Item openedMenu: null
     function openMenu(menu, anchorItem) {
@@ -1001,6 +1015,38 @@ Window {
     }
 
     Menu {
+        id: counterMenu
+        Repeater {
+            model: Ed.counterStyles
+            delegate: Rectangle {
+                required property var modelData
+                readonly property string current: ed.selectedObj && ed.selectedObj.kind === "counter" ? (ed.selectedObj.style || "num") : ed.counterStyle
+                width: 150; height: 30; radius: 8
+                color: current === modelData.id ? Theme.controlPressed : csMa.containsMouse ? Theme.controlHover : "transparent"
+                Text { x: 14; anchors.verticalCenter: parent.verticalCenter; text: parent.modelData.label; color: Theme.text
+                       font.family: Theme.fontUi; font.pixelSize: 13 }
+                MouseArea { id: csMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                            onClicked: { ed.setCounterStyle(parent.modelData.id); ed.openedMenu = null } }
+            }
+        }
+        Rectangle { width: 150; height: 1; color: Theme.hairline }
+        Item {
+            // where numbering starts (0 or higher)
+            width: 150; height: 32
+            readonly property int start: ed.doc.counterStart === undefined ? 1 : ed.doc.counterStart
+            Text { x: 14; anchors.verticalCenter: parent.verticalCenter; text: "Start at"; color: Theme.text; font.family: Theme.fontUi; font.pixelSize: 13 }
+            Row {
+                anchors { right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
+                spacing: 2
+                ToolButton { label: "−"; implicitWidth: 24; onClicked: ed.setCounterStart(parent.parent.start - 1) }
+                Text { width: 22; horizontalAlignment: Text.AlignHCenter; anchors.verticalCenter: parent.verticalCenter
+                       text: parent.parent.start; color: Theme.text; font.family: Theme.fontUi; font.pixelSize: 13; font.features: { "tnum": 1 } }
+                ToolButton { label: "+"; implicitWidth: 24; onClicked: ed.setCounterStart(parent.parent.start + 1) }
+            }
+        }
+    }
+
+    Menu {
         id: dimMenu
         Repeater {
             model: Ed.spotlightDims
@@ -1088,7 +1134,9 @@ Window {
         case "frect": addItem({ kind: "rect", x: n(1), y: n(2), w: n(3), h: n(4), color: ink, size: sizeFor("rect"), filled: true }); break
         case "ellipse": addItem({ kind: "ellipse", x: n(1), y: n(2), w: n(3), h: n(4), color: ink, size: sizeFor("ellipse") }); break
         case "line": addItem({ kind: "line", x1: n(1), y1: n(2), x2: n(3), y2: n(4), color: ink, size: sizeFor("line") }); break
-        case "counter": addItem({ kind: "counter", x: n(1), y: n(2), color: ink, size: sizeFor("counter") }); break
+        case "counter": addItem({ kind: "counter", x: n(1), y: n(2), color: ink, size: sizeFor("counter"), style: a[3] || counterStyle }); break
+        case "counter-style": setCounterStyle(a[1]); break
+        case "counter-start": setCounterStart(n(1)); break
         case "text": addItem({ kind: "text", x: n(1), y: n(2), text: a.slice(3).join(" "), color: ink, size: sizeFor("text"), style: textStyle }); break
         case "text-style": setTextStyle(a[1]); break
         case "spotlight": addItem({ kind: "spotlight", x: n(1), y: n(2), w: n(3), h: n(4), shape: a[5] || spotShape, dim: a[6] ? n(6) : spotDim }); break
@@ -1113,7 +1161,8 @@ Window {
                 // where image px (0,0) is, in window-logical px, and logical px per image px
                 originX: originX, originY: originY + view.y, k: k, winW: width, winH: height,
                 ready: base.status === Image.Ready, editingText: editingText, typed: textEdit.text, active: ed.active,
-                selectionBox: { x: selectionBox.x, y: selectionBox.y, w: selectionBox.width, h: selectionBox.height }
+                selectionBox: { x: selectionBox.x, y: selectionBox.y, w: selectionBox.width, h: selectionBox.height },
+                counterLabels: doc.items.map((o, i) => o.kind === "counter" ? Ed.counterLabel(doc, Ed.counterNumber(doc.items, i), o.style) : null).filter(l => l !== null)
             }).slice(1, -1))
             break
         }
