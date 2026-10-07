@@ -69,9 +69,10 @@ QtObject {
     // closing resets the overlay's selection.
     function finishArea(win, phys, kind) {
         const out = win.outputName, x = phys.x, y = phys.y, w = phys.width, h = phys.height
+        const skip = shiftHeld          // D32: Shift at the release skips an auto-applied preset
         lastOutput = out
         closeOverlay()
-        Engine.finishArea(out, x, y, w, h, kind)
+        Engine.finishArea(out, x, y, w, h, kind, skip)
     }
 
     // the eyedropper (ANN-13): the colour under the pointer
@@ -100,7 +101,7 @@ QtObject {
         const w = activeOverlay || from
         setMods(e)
         switch (e.key) {
-        case Qt.Key_Control: ctrlHeld = true; break
+        case Qt.Key_Control: ctrlHeld = true; if (w.dragging) w.recompute(); break
         case Qt.Key_Shift: shiftHeld = true; if (w.dragging) w.recompute(); break
         case Qt.Key_Alt: altHeld = true; if (w.dragging) w.recompute(); break
         case Qt.Key_Escape: cancel(); break
@@ -126,7 +127,7 @@ QtObject {
 
     function keyReleased(e, from) {
         const w = activeOverlay || from
-        if (e.key === Qt.Key_Control) ctrlHeld = false
+        if (e.key === Qt.Key_Control) { ctrlHeld = false; if (w.dragging) w.recompute() }
         else if (e.key === Qt.Key_Shift) { shiftHeld = false; if (w.dragging) w.recompute() }
         else if (e.key === Qt.Key_Alt) { altHeld = false; if (w.dragging) w.recompute() }
         else if (e.key === Qt.Key_Space && !e.isAutoRepeat) { w.moving = false; spaceHeld = false }

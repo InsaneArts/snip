@@ -149,12 +149,12 @@ Window {
             return
         }
         let dx = mouse.x - p0.x, dy = mouse.y - p0.y
-        if (c.shiftHeld) {   // square
+        if (c.altHeld) {     // square (CleanShot's Alt, D32)
             const m = Math.max(Math.abs(dx), Math.abs(dy))
             dx = (dx < 0 ? -1 : 1) * m
             dy = (dy < 0 ? -1 : 1) * m
         }
-        let r = c.altHeld   // from the centre
+        let r = c.ctrlHeld  // from the centre
             ? Qt.rect(p0.x - Math.abs(dx), p0.y - Math.abs(dy), 2 * Math.abs(dx), 2 * Math.abs(dy))
             : Qt.rect(Math.min(p0.x, p0.x + dx), Math.min(p0.y, p0.y + dy), Math.abs(dx), Math.abs(dy))
         const x0 = Math.max(0, r.x), y0 = Math.max(0, r.y)
