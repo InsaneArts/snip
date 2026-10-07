@@ -784,6 +784,43 @@ def capture_area_and_pin(s, env):
 
 
 @case
+def pin_look(s, env):
+    """PIN-08: [pins] sets the corners, the shadow and the border; square corners show the
+    image's own corner pixel."""
+    from PIL import Image
+    png = s.tmp / "look.png"
+    Image.new("RGB", (300, 200), (230, 40, 40)).save(png)
+    rec = s.json("open", str(png))["result"]
+    s.cli("close-all")
+
+    def corner():
+        s.json("pin", rec["id"])
+        assert wait_for(lambda: pin_windows(), 3)
+        time.sleep(0.4)
+        w, mon, scale = pin_windows()[0], env.monitor(), env.monitor()["scale"]
+        shot = s.tmp / "pin-look.png"
+        sh("grim", "-o", OUT, str(shot))
+        x, y = round((w["at"][0] - mon["x"] + 16) * scale), round((w["at"][1] - mon["y"] + 16) * scale)
+        px, st = Image.open(shot).convert("RGB").getpixel((x + 1, y + 1)), pin_state(s)
+        s.json("pins", "close")
+        assert wait_for(lambda: not pin_windows(), 3)
+        return px, st
+
+    px, st = corner()
+    assert st["radius"] == 10 and st["shadow"] and px[0] < 200, ("rounded by default: the corner is not the image", px)
+    cfg = s.tmp / "cfg/snip/config.toml"
+    cfg.write_text(cfg.read_text() + "\n[pins]\ncorner_radius = 0\nshadow = false\nborder = false\n")
+    try:
+        time.sleep(0.8)                                          # the config watcher reloads it
+        px, st = corner()
+        assert st["radius"] == 0 and not st["shadow"], st
+        assert abs(px[0] - 230) < 6 and px[1] < 50, ("square: the image's own corner", px)
+    finally:
+        cfg.write_text(cfg.read_text().replace("\n[pins]\ncorner_radius = 0\nshadow = false\nborder = false\n", ""))
+        time.sleep(0.8)
+
+
+@case
 def pin_lock(s, env):
     """PIN-05: a locked pin lets clicks through to what is under it (an editor draws through
     it), fades under the pointer, and `snip pins unlock` brings it back where it was."""
