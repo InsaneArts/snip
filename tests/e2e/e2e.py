@@ -762,7 +762,8 @@ def editor_from_card(s, env):
 
 @case
 def editor_draws_with_pointer(s, env):
-    """Drawing an arrow and moving it with the pointer; Copy writes back, copies and closes."""
+    """Drawing an arrow, moving it and bending a curved one with the pointer; Copy writes back,
+    copies and closes."""
     from PIL import Image
     png = s.tmp / "white.png"
     Image.new("RGB", (400, 260), "white").save(png)
@@ -785,7 +786,10 @@ def editor_draws_with_pointer(s, env):
     time.sleep(0.2)
     b = editor_state(s)["items"][0]
     assert len(editor_state(s)["items"]) == 1 and abs((b["y1"] - a["y1"]) - 50) <= 3 and abs(b["cy"] - a["cy"] - 50) <= 3, (a, b)
-    s.drag(*at(180, 180), *at(180, 230), steps=4)     # its middle is the bend handle
+    s.debug("ui", "editor", "arrow-style", "curved")   # only Curved arrows bend (CleanShot)
+    b = editor_state(s)["items"][0]
+    mx, my = (b["x1"] + 2 * b["cx"] + b["x2"]) / 4, (b["y1"] + 2 * b["cy"] + b["y2"]) / 4
+    s.drag(*at(mx, my), *at(mx, my + 50), steps=4)     # its middle is the bend handle
     c = editor_state(s)["items"][0]
     assert abs(c["y1"] - b["y1"]) < 1 and c["cy"] - b["cy"] > 80, (b, c)
     n = len(s.traces("copied"))
@@ -839,6 +843,31 @@ def editor_shapes(s, env):
     assert red(out.getpixel((round(e["x"] + e["w"] / 2), round(e["y"] + e["size"] / 2)))), "the ellipse's top edge"
     assert not red(out.getpixel((round(e["x"] + e["w"] / 2), round(e["y"] + e["h"] / 2)))), "an ellipse is not filled"
     assert red(out.getpixel((490, 100))), "the line's middle"
+    close_editor(s)
+
+
+@case
+def editor_arrow_styles(s, env):
+    """ANN-04: Standard, Fancy, Curved and Double arrows, and changing a selected arrow's style."""
+    from PIL import Image
+    png = s.tmp / "arrows.png"
+    Image.new("RGB", (560, 340), "white").save(png)
+    rec = s.json("edit", str(png))["result"]
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    for args in ((40, 50, 260, 50, "standard"), (40, 150, 260, 150, "double"), (40, 250, 260, 250, "fancy"), (300, 250, 520, 250, "curved")):
+        s.debug("ui", "editor", "arrow", *args)
+    s.debug("ui", "editor", "arrow", 300, 60, 520, 60, "standard")
+    s.debug("ui", "editor", "arrow-style", "curved")             # applies to the selected (last) arrow
+    items = editor_state(s)["items"]
+    assert [i["style"] for i in items] == ["standard", "double", "fancy", "curved", "curved"], items
+    assert abs(items[4]["cy"] - 60) > 20, "a curved arrow starts bent"
+    editor_flush(s)
+    out = Image.open(rec["source"]).convert("RGB")
+    red = lambda x, y: (lambda p: p[0] > 200 and p[1] < 90)(out.getpixel((round(x), round(y))))
+    size = items[0]["size"]; head = size * 3.2 + 4
+    assert red(40 + head * 0.6, 150 - head * 0.25) and not red(40 + head * 0.6, 50 - head * 0.25), "Double has a head at its start"
+    assert red(200, 250 - size * 0.75) and not red(200, 50 - size * 0.75), "Fancy is wider than Standard near the head"
+    assert not red(410, 250) and not red(410, 60), "Curved arrows bend away from their chord"
     close_editor(s)
 
 
