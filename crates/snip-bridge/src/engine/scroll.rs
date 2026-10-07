@@ -24,6 +24,7 @@ use snip_wayland::{Request as Wl, Source};
 
 use super::{cancelled, reply, Inner, Pending, Waiter};
 use cxx_qt_lib::QString;
+use snip_ipc::Response;
 
 const READY: u8 = 0;
 const RUNNING: u8 = 1;
@@ -79,7 +80,18 @@ impl Inner {
             _ => return,
         };
         let me = self.clone();
-        std::thread::Builder::new().name("snip-scroll".into()).spawn(move || me.scroll_run(state)).ok();
+        std::thread::Builder::new()
+            .name("snip-scroll".into())
+            .spawn(move || {
+                // a bug must not leave the frame, the panel and Enter/Esc behind
+                if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| me.clone().scroll_run(state))).is_err() {
+                    if let Some(s) = me.scroll_close() {
+                        reply(s.waiter, Response::err("scrolling capture failed"));
+                    }
+                    me.toast("Scrolling capture failed");
+                }
+            })
+            .ok();
     }
 
     /// Auto-Scroll: Snip scrolls the page until it stops moving.
@@ -252,7 +264,7 @@ fn preview_path(n: u32) -> std::path::PathBuf {
 fn scroll_preview(st: &Stitcher, n: u32) -> Option<std::path::PathBuf> {
     let (w, h, rgba) = st.image();
     let rows = h.min(w * 2);
-    let tail = &rgba[((h - rows) * w * 4) as usize..];
+    let tail = &rgba[(h - rows) as usize * w as usize * 4..];
     let nw = w.min(440);
     let nh = (rows as u64 * nw as u64 / w as u64).max(1) as u32;
     let small = encode::resize(tail, w, rows, 4, nw, nh);
