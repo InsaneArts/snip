@@ -671,6 +671,75 @@ def editor_draws_with_pointer(s, env):
 
 
 @case
+def editor_redaction_is_secure(s, env):
+    """ANN-06 / D26: Pixelate, Blur and Black out never carry the hidden content. Two
+    images that differ only inside the regions export identically, and the hidden text
+    leaves the history search."""
+    from PIL import Image, ImageDraw, ImageFont
+    try:
+        font = ImageFont.truetype("/usr/share/fonts/noto/NotoSans-Regular.ttf", 26)
+    except OSError:
+        font = ImageFont.load_default(26)
+    regions = [(40, 40, 360, 50, "pixelate"), (40, 120, 360, 50, "blur"), (40, 200, 360, 50, "black")]
+    outs = []
+    for secret in ("hunter2 swordfish", "Q7XK9 mangosteen"):
+        im = Image.new("RGB", (480, 300), (236, 240, 247))
+        d = ImageDraw.Draw(im)
+        d.text((14, 8), "visible header", fill=(30, 30, 30), font=font)
+        for (x, y, w, h, _) in regions:
+            d.text((x + 8, y + 10), secret, fill=(10, 10, 10), font=font)
+        png = s.tmp / f"secret-{len(outs)}.png"
+        im.save(png)
+        rec = s.json("edit", str(png))["result"]
+        assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+        if not outs:
+            assert wait_for(lambda: s.json("search", "swordfish")["result"], 8), "the secret should be searchable first"
+        for (x, y, w, h, style) in regions:
+            s.debug("ui", "editor", "redact", x, y, w, h, style, 42)
+        editor_flush(s)
+        close_editor(s)
+        outs.append(rec)
+    a, b = (Image.open(r["source"]).convert("RGB") for r in outs)
+    assert a.tobytes() == b.tobytes(), "the hidden content changed the redacted image"
+    px = [a.getpixel((x + w // 2, y + h // 2)) for (x, y, w, h, _) in regions]
+    assert px[2] == (0, 0, 0) and all(abs(c - 238) < 40 for c in px[0]), px   # black out; tiles from the light surroundings
+    assert wait_for(lambda: not s.json("search", "swordfish")["result"], 8), "redacted text is still searchable"
+
+
+@case
+def editor_crop(s, env):
+    """ANN-11: a crop exports exactly that part of the image; resetting brings back all of it."""
+    from PIL import Image
+    png = s.tmp / "crop.png"
+    noise_png(png, 301, 203, seed=3)
+    rec = s.json("edit", str(png))["result"]
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    s.debug("ui", "editor", "crop", 51, 37, 199, 101)
+    s.debug("ui", "editor", "rect", 60, 50, 40, 30)
+    editor_flush(s)
+    orig = Image.open(png).convert("RGB")
+    out = Image.open(rec["source"]).convert("RGB")
+    assert out.size == (199, 101), out.size
+    assert out.getpixel((150, 80)) == orig.getpixel((201, 117)), "cropped pixels must be exact"
+    assert out.getpixel((9 + 20, 13)) != orig.getpixel((60 + 20, 50)), "the rectangle is drawn in the crop"
+    s.debug("ui", "editor", "crop", "reset")
+    s.debug("ui", "editor", "delete", 0)
+    editor_flush(s)
+    assert Image.open(rec["source"]).convert("RGB").tobytes() == orig.tobytes()
+
+    # with the pointer: the crop tool's bottom-right handle, dragged in by 100 x 50
+    s.debug("ui", "editor", "tool", "crop")
+    time.sleep(0.3)
+    w, mon, st = editor_window(), env.monitor(), editor_state(s)
+    at = lambda ix, iy: (w["at"][0] - mon["x"] + st["originX"] + ix * st["k"], w["at"][1] - mon["y"] + st["originY"] + iy * st["k"])
+    s.drag(*at(301, 203), *at(201, 153), steps=5)
+    time.sleep(0.2)
+    c = editor_state(s)["crop"]
+    assert c and c["x"] == 0 and c["y"] == 0 and abs(c["w"] - 201) <= 2 and abs(c["h"] - 153) <= 2, c
+    close_editor(s)
+
+
+@case
 def self_timer(s, env):
     """CAP-06: --delay counts down on screen, then captures live; the countdown is
     never in the capture; the capture hotkey cancels a running countdown."""
