@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Window
 import QtQuick.Effects
+import QtQuick.Shapes
 import Snip.Core
 import "editor.js" as Ed
 
@@ -688,7 +689,8 @@ Window {
             anchors.fill: parent
             hoverEnabled: true
             acceptedButtons: Qt.LeftButton | Qt.MiddleButton
-            cursorShape: gesture === "pan" || keys.spaceHeld ? Qt.ClosedHandCursor
+            cursorShape: ed.picking ? Qt.CrossCursor
+                       : gesture === "pan" || keys.spaceHeld ? Qt.ClosedHandCursor
                        : ed.tool === "crop" ? Qt.CrossCursor
                        : hoverHandle !== "" ? Qt.SizeAllCursor
                        : hoverItem >= 0 ? Qt.OpenHandCursor
@@ -733,6 +735,11 @@ Window {
             onPressed: (m) => {
                 keys.forceActiveFocus()
                 pressVX = m.x; pressVY = m.y
+                if (ed.picking) {
+                    const ip = ed.toImage(m.x, m.y)
+                    ed.pickAt(ip.x, ip.y)
+                    return
+                }
                 if (keys.spaceHeld || m.button === Qt.MiddleButton) {
                     gesture = "pan"; pressPanX = ed.panX; pressPanY = ed.panY
                     return
@@ -1014,31 +1021,90 @@ Window {
         Column { id: menuCol; anchors.centerIn: parent; spacing: 4 }
     }
 
+    component Swatch: Item {
+        required property string modelData
+        width: 30; height: 30
+        Rectangle {
+            anchors.centerIn: parent
+            width: 30; height: 30; radius: 15
+            color: "transparent"
+            border.width: 2
+            border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.6)
+            visible: Qt.colorEqual(ed.toolInk, parent.modelData)
+        }
+        Rectangle {
+            anchors.centerIn: parent
+            width: 22; height: 22; radius: 11
+            color: parent.modelData
+            border.width: 1; border.color: Qt.rgba(0, 0, 0, 0.15)
+            scale: swMa.containsMouse ? 1.12 : 1
+            Behavior on scale { NumberAnimation { duration: 90 } }
+        }
+        MouseArea { id: swMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                    onClicked: { ed.setColor(parent.modelData); ed.openedMenu = null } }
+    }
+
+    // My Colors (ANN-13): up to ten, kept across sessions
+    property var savedColors: { try { return JSON.parse(Engine.savedColors() || "[]") } catch (e) { return [] } }
+    function saveColor(c) {
+        const list = [c].concat(savedColors.filter(x => x.toLowerCase() !== c.toLowerCase())).slice(0, 10)
+        savedColors = list
+        Engine.setSavedColors(JSON.stringify(list))
+    }
+    property bool customOpen: false
+    // the eyedropper: the next click on the image picks its colour
+    property bool picking: false
+    function pickAt(ix, iy) {
+        picking = false
+        const c = Engine.pixelColor(capture.image || "", Math.floor(ix), Math.floor(iy))
+        if (c) setColor(c)
+    }
+
     Menu {
         id: colorMenu
-        Repeater {
-            model: Ed.palette
-            delegate: Item {
-                required property string modelData
-                width: 30; height: 30
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: 30; height: 30; radius: 15
-                    color: "transparent"
-                    border.width: 2
-                    border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.6)
-                    visible: Qt.colorEqual(ed.toolInk, parent.modelData)
+        onVisibleChanged: if (!visible) ed.customOpen = false
+        Row {
+            spacing: 10
+            Column {
+                spacing: 4
+                Repeater { model: Ed.palette; delegate: Swatch {} }
+                Rectangle { visible: ed.savedColors.length > 0; width: 30; height: 1; color: Theme.hairline }
+                Repeater { model: ed.savedColors; delegate: Swatch {} }
+                Rectangle { width: 30; height: 1; color: Theme.hairline }
+                // the rainbow: the custom panel
+                Item {
+                    width: 30; height: 30
+                    Shape {
+                        anchors.centerIn: parent
+                        width: 22; height: 22
+                        scale: rbMa.containsMouse || ed.customOpen ? 1.12 : 1
+                        preferredRendererType: Shape.CurveRenderer
+                        ShapePath {
+                            strokeColor: "transparent"
+                            fillGradient: ConicalGradient {
+                                centerX: 11; centerY: 11
+                                GradientStop { position: 0.0; color: "#ff0000" }
+                                GradientStop { position: 0.17; color: "#ff00ff" }
+                                GradientStop { position: 0.33; color: "#0000ff" }
+                                GradientStop { position: 0.5; color: "#00ffff" }
+                                GradientStop { position: 0.67; color: "#00ff00" }
+                                GradientStop { position: 0.83; color: "#ffff00" }
+                                GradientStop { position: 1.0; color: "#ff0000" }
+                            }
+                            PathAngleArc { centerX: 11; centerY: 11; radiusX: 11; radiusY: 11; sweepAngle: 360 }
+                        }
+                    }
+                    MouseArea { id: rbMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                                onClicked: ed.customOpen = !ed.customOpen }
                 }
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: 22; height: 22; radius: 11
-                    color: parent.modelData
-                    border.width: 1; border.color: Qt.rgba(0, 0, 0, 0.15)
-                    scale: swMa.containsMouse ? 1.12 : 1
-                    Behavior on scale { NumberAnimation { duration: 90 } }
-                }
-                MouseArea { id: swMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                            onClicked: { ed.setColor(parent.modelData); ed.openedMenu = null } }
+            }
+            ColorPanel {
+                id: colorPanel
+                visible: ed.customOpen
+                value: ed.toolInk
+                onPicked: (c) => ed.setColor(c)
+                onSave: ed.saveColor(current)
+                onEyedropper: { ed.picking = true; ed.openedMenu = null }
             }
         }
     }
@@ -1226,6 +1292,8 @@ Window {
         case "counter": addItem({ kind: "counter", x: n(1), y: n(2), color: ink, size: sizeFor("counter"), style: a[3] || counterStyle }); break
         case "counter-style": setCounterStyle(a[1]); break
         case "words": Engine.requestWords(capture.image || ""); break
+        case "eyedropper": picking = true; break
+        case "save-color": saveColor(a[1]); break
         case "counter-start": setCounterStart(n(1)); break
         case "text": addItem({ kind: "text", x: n(1), y: n(2), text: a.slice(3).join(" "), color: ink, size: sizeFor("text"), style: textStyle }); break
         case "text-style": setTextStyle(a[1]); break
@@ -1252,7 +1320,7 @@ Window {
                 originX: originX, originY: originY + view.y, k: k, winW: width, winH: height,
                 ready: base.status === Image.Ready, editingText: editingText, typed: textEdit.text, active: ed.active,
                 selectionBox: { x: selectionBox.x, y: selectionBox.y, w: selectionBox.width, h: selectionBox.height },
-                words: words ? words.length : -1,
+                words: words ? words.length : -1, ink: ink, savedColors: savedColors, picking: picking,
                 counterLabels: doc.items.map((o, i) => o.kind === "counter" ? Ed.counterLabel(doc, Ed.counterNumber(doc.items, i), o.style) : null).filter(l => l !== null)
             }).slice(1, -1))
             break
