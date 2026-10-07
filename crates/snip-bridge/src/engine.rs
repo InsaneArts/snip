@@ -877,6 +877,17 @@ impl Inner {
         self.ui(move |e| e.card_add(&QString::from(j.as_str())));
     }
 
+    /// An editor closed: its capture is in Quick Access again if its card had
+    /// gone (closed, or timed out while you annotated), to drag, save or copy.
+    pub fn editor_closed(&self, id: &str) {
+        if self.cards.lock().unwrap().iter().any(|(i, _)| i == id) {
+            return;
+        }
+        let Ok(rec) = self.store.get(id) else { return };
+        let output = self.cursor_output().unwrap_or_default();
+        self.show_card(&rec, &output);
+    }
+
     pub fn card_closed(&self, id: &str) {
         self.cards.lock().unwrap().retain(|(i, _)| i != id);
         let mut c = self.closed.lock().unwrap();

@@ -223,6 +223,9 @@ pub mod qobject {
         /// `action`: "" | "copy" | "save". Answers with editor_done.
         #[qinvokable]
         fn editor_commit(self: Pin<&mut Engine>, id: QString, token: i32, doc: QString, action: QString);
+        /// An editor closed: its capture gets its card back if it had none
+        #[qinvokable]
+        fn editor_closed(self: Pin<&mut Engine>, id: QString);
 
 
         /// rotate-left | flip-horizontal
@@ -768,6 +771,12 @@ impl qobject::Engine {
     fn edit(self: Pin<&mut Self>, id: QString) {
         if let Some(i) = self.inner() {
             i.edit(&id.to_string());
+        }
+    }
+
+    fn editor_closed(self: Pin<&mut Self>, id: QString) {
+        if let Some(i) = self.inner() {
+            i.editor_closed(&id.to_string());
         }
     }
 
