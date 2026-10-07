@@ -8,7 +8,7 @@ use std::time::Duration;
 const USAGE: &str = "usage: snip [--json] <command>
 
 capture
-  area | fullscreen | window | previous | text | all-in-one [--monitor NAME] [--cursor | --no-cursor]
+  area | fullscreen | window | previous | text | all-in-one | area-pin [--monitor NAME] [--cursor | --no-cursor]
   area | fullscreen --delay N   self-timer: N seconds of countdown, then the capture
   open FILE        add an image as a capture, with a Quick Access card
   edit FILE        open an image in Snip's editor (as a new capture)
@@ -16,7 +16,7 @@ capture
 captures (default: the most recent)
   copy [ID]        put a capture on the clipboard
   save [ID]        save to the export folder (and copy)
-  pin [ID]         float it above every window (drag to move, scroll: opacity, Ctrl+scroll: size)
+  pin [ID|FILE]    float it above every window (drag to move, scroll: opacity, Ctrl+scroll: size)
   pins toggle|close|unlock  hide or show every pin, close them all, or unlock locked ones
   list [-n N]      recent captures from history
   search TEXT [-n N]  find captures by the text in them (and window title/app)
@@ -45,7 +45,7 @@ fn main() -> ExitCode {
     };
     let arg1 = args.get(1).cloned();
     let (req, timeout) = match cmd.as_str() {
-        "area" | "fullscreen" | "window" | "previous" | "text" | "all-in-one" => {
+        "area" | "fullscreen" | "window" | "previous" | "text" | "all-in-one" | "area-pin" => {
             let monitor = flag(&mut args, "--monitor");
             let cursor = if args.iter().any(|a| a == "--cursor") {
                 Some(true)
@@ -69,7 +69,11 @@ fn main() -> ExitCode {
         }
         "copy" => (Request::Copy { id: arg1 }, Duration::from_secs(10)),
         "save" => (Request::Save { id: arg1 }, Duration::from_secs(10)),
-        "pin" => (Request::Pin { id: arg1 }, Duration::from_secs(5)),
+        "pin" => {
+            // a file to pin, or a capture's id
+            let file = arg1.as_deref().filter(|a| std::path::Path::new(a).is_file()).map(|a| std::fs::canonicalize(a).unwrap_or_else(|_| a.into()).to_string_lossy().into_owned());
+            (if file.is_some() { Request::Pin { id: None, path: file } } else { Request::Pin { id: arg1, path: None } }, Duration::from_secs(5))
+        }
         "pins" => (Request::Pins { action: arg1.unwrap_or_else(|| "toggle".into()) }, Duration::from_secs(5)),
         "search" => {
             let n = flag(&mut args, "-n").and_then(|v| v.parse().ok()).unwrap_or(10);
