@@ -3,7 +3,8 @@
 // The editor's objects: plain JSON in image pixels, so the document is
 // saved as-is (edit.json) and undo is a list of snapshots.
 //
-//   arrow   {kind, x1, y1, x2, y2, cx, cy, color, size}  (cx, cy) bends it
+//   arrow   {kind, x1, y1, x2, y2, cx, cy, color, size, style}
+//           style: standard | fancy | curved | double; only curved bends at (cx, cy)
 //   rect    {kind, x, y, w, h, color, size, filled}
 //   ellipse {kind, x, y, w, h, color, size}
 //   line    {kind, x1, y1, x2, y2, color, size}
@@ -70,11 +71,66 @@ function moved(o, dx, dy) {
     return n
 }
 
+var arrowStyles = [{ id: "standard", label: "Standard" }, { id: "fancy", label: "Fancy" },
+                   { id: "curved", label: "Curved" }, { id: "double", label: "Double" }]
+
+// A curved arrow starts with a gentle bend; the others are straight.
+function withArrowStyle(o, style) {
+    var n = copy(o)
+    n.style = style
+    var mx = (n.x1 + n.x2) / 2, my = (n.y1 + n.y2) / 2
+    if (style === "curved") {
+        if (dist(n.cx, n.cy, mx, my) < 1) {
+            var l = dist(n.x1, n.y1, n.x2, n.y2)
+            var px = -(n.y2 - n.y1) / (l || 1), py = (n.x2 - n.x1) / (l || 1)
+            n.cx = mx + px * l * 0.35; n.cy = my + py * l * 0.35
+        }
+    } else {
+        n.cx = mx; n.cy = my
+    }
+    return n
+}
+
+function headPath(tx, ty, ang, len, half) {
+    var c = Math.cos(ang), s = Math.sin(ang)
+    return "M " + tx + " " + ty
+         + " L " + (tx - c * len + s * half) + " " + (ty - s * len - c * half)
+         + " L " + (tx - c * len - s * half) + " " + (ty - s * len + c * half) + " Z"
+}
+
+// An arrow as SVG paths: the shaft (stroked), the heads (filled) and, for
+// Fancy, a tapered body (filled) instead of a shaft.
+function arrowGeometry(o) {
+    var style = o.style || "standard", s = o.size
+    var len = s * 3.2 + 4, half = len * 0.62
+    if (style === "fancy") {
+        var a = Math.atan2(o.y2 - o.y1, o.x2 - o.x1), c = Math.cos(a), sn = Math.sin(a)
+        var flen = s * 4.2 + 6, fhalf = flen * 0.62
+        var bx = o.x2 - c * flen * 0.75, by = o.y2 - sn * flen * 0.75
+        var w0 = s * 0.18, w1 = s * 0.95
+        var pts = [[o.x1 - sn * w0, o.y1 + c * w0], [bx - sn * w1, by + c * w1], [bx - sn * fhalf, by + c * fhalf], [o.x2, o.y2],
+                   [bx + sn * fhalf, by - c * fhalf], [bx + sn * w1, by - c * w1], [o.x1 + sn * w0, o.y1 - c * w0]]
+        return { shaft: "", heads: "", body: "M " + pts.map(function (p) { return p[0] + " " + p[1] }).join(" L ") + " Z" }
+    }
+    // heads follow the curve's direction at each end
+    var endA = dist(o.cx, o.cy, o.x2, o.y2) > 0.5 ? Math.atan2(o.y2 - o.cy, o.x2 - o.cx) : Math.atan2(o.y2 - o.y1, o.x2 - o.x1)
+    var startA = dist(o.cx, o.cy, o.x1, o.y1) > 0.5 ? Math.atan2(o.y1 - o.cy, o.x1 - o.cx) : Math.atan2(o.y1 - o.y2, o.x1 - o.x2)
+    var ex = o.x2 - Math.cos(endA) * len * 0.8, ey = o.y2 - Math.sin(endA) * len * 0.8
+    var sx = o.x1, sy = o.y1, heads = headPath(o.x2, o.y2, endA, len, half)
+    if (style === "double") {
+        sx = o.x1 - Math.cos(startA) * len * 0.8; sy = o.y1 - Math.sin(startA) * len * 0.8
+        heads += " " + headPath(o.x1, o.y1, startA, len, half)
+    }
+    return { shaft: "M " + sx + " " + sy + " Q " + o.cx + " " + o.cy + " " + ex + " " + ey, heads: heads, body: "" }
+}
+
 // Handles of a selected object, in image px.
 function handles(o) {
     if (o.kind === "arrow") {
+        var ends = [{ name: "start", x: o.x1, y: o.y1 }, { name: "end", x: o.x2, y: o.y2 }]
+        if (o.style !== "curved") return ends
         var m = arrowAt(o, 0.5)
-        return [{ name: "start", x: o.x1, y: o.y1 }, { name: "end", x: o.x2, y: o.y2 }, { name: "mid", x: m.x, y: m.y }]
+        return ends.concat([{ name: "mid", x: m.x, y: m.y }])
     }
     if (o.kind === "line")
         return [{ name: "start", x: o.x1, y: o.y1 }, { name: "end", x: o.x2, y: o.y2 }]

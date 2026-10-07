@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Shapes
 import QtQuick.Effects
+import "editor.js" as Ed
 
 // One editor object (editor.js), drawn in image pixels. The same item draws
 // the selection halo (`halo`), a pale outline `pad` px around the shape,
@@ -21,36 +22,22 @@ Item {
         active: root.kind === "arrow"
         sourceComponent: Shape {
             id: arrow
-            readonly property var a: root.o
-            readonly property real w: a.size + (root.halo ? root.pad * 2 : 0)
-            // the head follows the curve's direction at its end
-            readonly property real ang: {
-                const dx = a.x2 - a.cx, dy = a.y2 - a.cy
-                return Math.hypot(dx, dy) > 0.5 ? Math.atan2(dy, dx) : Math.atan2(a.y2 - a.y1, a.x2 - a.x1)
-            }
-            readonly property real len: a.size * 3.2 + 4
-            readonly property real half: len * 0.62
-            readonly property real bx: a.x2 - Math.cos(ang) * len * 0.8
-            readonly property real by: a.y2 - Math.sin(ang) * len * 0.8
-            readonly property color ink: root.halo ? root.haloColor : a.color
+            readonly property var g: Ed.arrowGeometry(root.o)
+            readonly property real s: root.o.size
+            readonly property real grow: root.halo ? root.pad * 2 : 0
+            readonly property color ink: root.halo ? root.haloColor : root.o.color
             width: 1; height: 1
             preferredRendererType: Shape.CurveRenderer
             ShapePath {
-                strokeColor: arrow.ink; strokeWidth: arrow.w; fillColor: "transparent"
+                strokeColor: arrow.ink; strokeWidth: arrow.s + arrow.grow; fillColor: "transparent"
                 capStyle: ShapePath.RoundCap; joinStyle: ShapePath.RoundJoin
-                startX: arrow.a.x1; startY: arrow.a.y1
-                PathQuad { x: arrow.bx; y: arrow.by; controlX: arrow.a.cx; controlY: arrow.a.cy }
+                PathSvg { path: arrow.g.shaft }
             }
             ShapePath {
-                // the head, its corners softened by a round-joined stroke
-                strokeColor: arrow.ink; strokeWidth: root.halo ? root.pad * 2 + arrow.a.size * 0.5 : arrow.a.size * 0.5
+                // heads and Fancy's body, their corners softened by a round-joined stroke
+                strokeColor: arrow.ink; strokeWidth: arrow.s * 0.5 + arrow.grow
                 fillColor: arrow.ink; joinStyle: ShapePath.RoundJoin
-                startX: arrow.a.x2; startY: arrow.a.y2
-                PathLine { x: arrow.a.x2 - Math.cos(arrow.ang) * arrow.len + Math.sin(arrow.ang) * arrow.half
-                           y: arrow.a.y2 - Math.sin(arrow.ang) * arrow.len - Math.cos(arrow.ang) * arrow.half }
-                PathLine { x: arrow.a.x2 - Math.cos(arrow.ang) * arrow.len - Math.sin(arrow.ang) * arrow.half
-                           y: arrow.a.y2 - Math.sin(arrow.ang) * arrow.len + Math.cos(arrow.ang) * arrow.half }
-                PathLine { x: arrow.a.x2; y: arrow.a.y2 }
+                PathSvg { path: arrow.g.heads + " " + arrow.g.body }
             }
         }
     }

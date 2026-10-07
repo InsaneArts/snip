@@ -88,6 +88,7 @@ Window {
                                      : !selectedObj ? "arrow" : selectedObj.filled ? "frect" : selectedObj.kind
     function sizeFor(kind) { return Math.round(Ed.sizes[kind][sizeIndex[kind]] * unit) }
     property string redactStyle: "pixelate"   // CleanShot's default (D26)
+    property string arrowStyle: "standard"
     property string toolBeforeCrop: "arrow"
 
     function setTool(t) {
@@ -95,6 +96,11 @@ Window {
         if (t === "crop" && tool !== "crop") toolBeforeCrop = tool
         tool = t
         if (t !== "select") selected = -1
+    }
+    function setArrowStyle(st) {
+        arrowStyle = st
+        if (selectedObj && selectedObj.kind === "arrow" && (selectedObj.style || "standard") !== st)
+            replaceItem(selected, Ed.withArrowStyle(selectedObj, st))
     }
     function setRedactStyle(st) {
         redactStyle = st
@@ -678,7 +684,8 @@ Window {
                 const c = ed.ink
                 switch (ed.tool) {
                 case "arrow":
-                    ed.draft = { kind: "arrow", x1: p.x, y1: p.y, x2: p.x, y2: p.y, cx: p.x, cy: p.y, color: c, size: ed.sizeFor("arrow") }
+                    ed.draft = { kind: "arrow", x1: p.x, y1: p.y, x2: p.x, y2: p.y, cx: p.x, cy: p.y, color: c, size: ed.sizeFor("arrow"),
+                                 style: ed.arrowStyle }
                     gesture = "draw"; break
                 case "rect": case "frect":
                     ed.draft = { kind: "rect", x: p.x, y: p.y, w: 0, h: 0, color: c, size: ed.sizeFor("rect"), filled: ed.tool === "frect" }
@@ -739,7 +746,10 @@ Window {
                             x = pressAt.x + Math.cos(a) * r; y = pressAt.y + Math.sin(a) * r
                         }
                         d.x2 = x; d.y2 = y
-                        if (d.kind === "arrow") { d.cx = (d.x1 + x) / 2; d.cy = (d.y1 + y) / 2 }
+                        if (d.kind === "arrow") {
+                            d.cx = (d.x1 + x) / 2; d.cy = (d.y1 + y) / 2
+                            if (d.style === "curved") d = Ed.withArrowStyle(d, "curved")
+                        }
                     } else {
                         if (shift) {   // square
                             const s = Math.max(Math.abs(x - pressAt.x), Math.abs(y - pressAt.y))
@@ -766,6 +776,9 @@ Window {
                 ed.draftIndex = -1
                 if (!d) return
                 if (g === "draw") {
+                    // Alt while drawing points the arrow the other way (CleanShot)
+                    if (d.kind === "arrow" && (m.modifiers & Qt.AltModifier))
+                        Object.assign(d, { x1: d.x2, y1: d.y2, x2: d.x1, y2: d.y1 })
                     if (!Ed.tooSmall(d)) ed.addItem(d)
                 } else if (g === "place") {
                     ed.addItem(d)
@@ -848,7 +861,7 @@ Window {
 
     // ---------------------------------------------------------------- dropdowns
     function openMenuNamed(name, anchorItem) {
-        openMenu({ color: colorMenu, size: sizeMenu, style: styleMenu, zoom: zoomMenu }[name], anchorItem)
+        openMenu({ color: colorMenu, size: sizeMenu, style: styleMenu, zoom: zoomMenu, arrow: arrowMenu }[name], anchorItem)
     }
     property Item openedMenu: null
     function openMenu(menu, anchorItem) {
@@ -953,6 +966,27 @@ Window {
     }
 
     Menu {
+        id: arrowMenu
+        Repeater {
+            model: Ed.arrowStyles
+            delegate: Rectangle {
+                required property var modelData
+                readonly property bool current: (ed.selectedObj && ed.selectedObj.kind === "arrow" ? (ed.selectedObj.style || "standard") : ed.arrowStyle) === modelData.id
+                width: 132; height: 32; radius: 8
+                color: current ? Theme.controlPressed : arMa.containsMouse ? Theme.controlHover : "transparent"
+                EditorItem {
+                    x: 10; y: 4
+                    o: Ed.withArrowStyle({ kind: "arrow", x1: 2, y1: 21, x2: 34, y2: 4, cx: 18, cy: 12.5, color: Theme.text.toString(), size: 2.5 }, parent.modelData.id)
+                }
+                Text { x: 54; anchors.verticalCenter: parent.verticalCenter; text: parent.modelData.label; color: Theme.text
+                       font.family: Theme.fontUi; font.pixelSize: 13 }
+                MouseArea { id: arMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                            onClicked: { ed.setArrowStyle(parent.modelData.id); ed.openedMenu = null } }
+            }
+        }
+    }
+
+    Menu {
         id: zoomMenu
         Repeater {
             model: [{ t: "Fit", z: 0 }, { t: "50%", z: 0.5 }, { t: "100%", z: 1 }, { t: "200%", z: 2 }]
@@ -972,7 +1006,9 @@ Window {
     function debug(a) {
         const n = (i) => Number(a[i])
         switch (a[0]) {
-        case "arrow": addItem({ kind: "arrow", x1: n(1), y1: n(2), x2: n(3), y2: n(4), cx: (n(1) + n(3)) / 2, cy: (n(2) + n(4)) / 2, color: ink, size: sizeFor("arrow") }); break
+        case "arrow": addItem(Ed.withArrowStyle({ kind: "arrow", x1: n(1), y1: n(2), x2: n(3), y2: n(4), cx: (n(1) + n(3)) / 2, cy: (n(2) + n(4)) / 2,
+                                                  color: ink, size: sizeFor("arrow") }, a[5] || arrowStyle)); break
+        case "arrow-style": setArrowStyle(a[1]); break
         case "rect": addItem({ kind: "rect", x: n(1), y: n(2), w: n(3), h: n(4), color: ink, size: sizeFor("rect") }); break
         case "frect": addItem({ kind: "rect", x: n(1), y: n(2), w: n(3), h: n(4), color: ink, size: sizeFor("rect"), filled: true }); break
         case "ellipse": addItem({ kind: "ellipse", x: n(1), y: n(2), w: n(3), h: n(4), color: ink, size: sizeFor("ellipse") }); break
