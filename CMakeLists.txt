@@ -56,6 +56,10 @@ qt_add_qml_module(snipd
     app/qml/Countdown.qml
     app/qml/Preview.qml
     app/qml/Gallery.qml
+    app/qml/Editor.qml
+    app/qml/EditorItem.qml
+    app/qml/ToolButton.qml
+    app/qml/editor.js
   SOURCES
     app/src/frozenframe.cpp app/src/frozenframe.h
     app/src/loupe.cpp app/src/loupe.h
