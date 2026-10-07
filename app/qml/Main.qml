@@ -150,6 +150,11 @@ QtObject {
         function onDebugCommand(cmd) { root.debug(cmd) }
         function onEditorOpen(json) { root.openEditor(JSON.parse(json)) }
         function onPinOpen(json) { root.openPin(JSON.parse(json)) }
+        function onPinsCommand(cmd) {
+            if (cmd === "close") root.closePins()
+            else if (root.pins.some(p => p.visible)) for (const p of root.pins) p.hide()
+            else for (const p of root.pins) p.show()
+        }
     }
 
     // Test hooks (snip debug ui ...): keys the virtual pointer can't send.
