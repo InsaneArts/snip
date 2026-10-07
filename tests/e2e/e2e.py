@@ -913,6 +913,9 @@ def editor_from_clipboard(s, env):
         assert wait_for(lambda: editor_window(), 5), "no editor for the clipboard image"
         assert Image.open(rec["result"]["source"]).convert("RGB").tobytes() == Image.open(png).convert("RGB").tobytes()
         close_editor(s)
+        hypr_eval('hl.dispatch(hl.dsp.global("snip-e2e:edit-clipboard"))')   # SUPER+SHIFT+6 (D29)
+        assert wait_for(lambda: editor_window(), 5), "the edit-clipboard shortcut opened no editor"
+        close_editor(s)
 
         card = open_card(s, png)                      # Snip's own copy: it reads its own selection
         s.cli("copy", card["id"])
