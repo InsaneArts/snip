@@ -16,8 +16,11 @@ Window {
     readonly property bool active: c.overlayOpen && out !== undefined
     readonly property var wins: out ? out.windows : []
 
-    visible: active
-    color: frame.hasFrame && c.overlayShown ? "black" : "transparent"
+    // mapped once at start, transparent and without input, so the first
+    // session doesn't pay for the surface, the GL context and the pipelines
+    readonly property bool warming: c.warming && !active
+    visible: active || warming
+    color: frame.hasFrame && c.overlayShown && !warming ? "black" : "transparent"
     flags: Qt.FramelessWindowHint
     screen: modelData
     // the compositor configures the real size; start from it so the first
@@ -32,7 +35,15 @@ Window {
     LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorBottom
                                | LayerShell.Window.AnchorLeft | LayerShell.Window.AnchorRight
     LayerShell.Window.exclusionZone: -1
-    LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityExclusive
+    LayerShell.Window.keyboardInteractivity: warming ? LayerShell.Window.KeyboardInteractivityNone : LayerShell.Window.KeyboardInteractivityExclusive
+    onWarmingChanged: {
+        if (warming) {
+            Platform.setInputRects(win, [])
+            Platform.notifyNextFrame(win)
+        } else {
+            Platform.clearInputRects(win)
+        }
+    }
 
     // ---------------------------------------------------------------- state
     property point mouse: Qt.point(-1, -1)        // logical, window coordinates
@@ -96,7 +107,9 @@ Window {
     Connections {
         target: Platform
         function onFramePresented(w) {
-            if (w === win && win.awaitRefocus) { win.awaitRefocus = false; win.c.refocusPointer() }
+            if (w !== win) return
+            if (win.warming) win.c.warmed(win)
+            if (win.awaitRefocus) { win.awaitRefocus = false; win.c.refocusPointer() }
         }
     }
 

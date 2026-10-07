@@ -173,9 +173,20 @@ QtObject {
         if (a[0] !== "keydown") keyReleased(ev, w)
     }
 
+    // Pre-warm (SEL-01): every overlay maps once at start, invisibly, so the
+    // first capture is as quick as the rest.
+    property bool warming: false
+    property int warmedCount: 0
+    function warmed(w) {
+        warmedCount++
+        if (warmedCount >= overlays.count) warming = false
+    }
+    property Timer warmTimeout: Timer { interval: 1500; onTriggered: root.warming = false }
+
     Component.onCompleted: {
         Engine.start(mode === "interactive" ? "interactive" : "test")
         if (mode === "gallery") gallery = galleryComponent.createObject(null)
+        else { warming = true; warmTimeout.start() }
     }
 
     // ---------------------------------------------------------------- surfaces
