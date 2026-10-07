@@ -831,12 +831,12 @@ def pin_lock(s, env):
     Image.new("RGB", (600, 400), "white").save(under)
     noise_png(pinned, 300, 200, seed=6)
     s.json("edit", str(under))
-    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3), "the editor opens"
     s.debug("ui", "editor", "tool", "rect")
     rec = s.json("open", str(pinned))["result"]
     s.cli("close-all")
     s.json("pin", rec["id"])
-    assert wait_for(lambda: pin_windows(), 3)
+    assert wait_for(lambda: pin_windows(), 3), "the pin opens"
     at = pin_windows()[0]["at"]
     s.debug("ui", "pin", "act", "lock")
     assert wait_for(lambda: not pin_windows(), 3), "locked: the window gives way to a layer"
@@ -848,10 +848,10 @@ def pin_lock(s, env):
     assert wait_for(lambda: [i for i in editor_state(s)["items"] if i["kind"] == "rect"], 2), "the editor under it got the drag"
     assert wait_for(lambda: pin_state(s)["lockHover"], 2), "it fades under the pointer"
     s.move(5, 5)
-    assert wait_for(lambda: not pin_state(s)["lockHover"], 2)
-    assert s.json("pins", "unlock")["ok"]
+    assert wait_for(lambda: not pin_state(s)["lockHover"], 2), "it comes back when the pointer leaves"
+    assert s.json("pins", "unlock")["ok"], "unlock"
     assert wait_for(lambda: pin_windows() and pin_windows()[0]["at"] == at, 3), (at, pin_windows())
-    assert not [l for m in hypr_json("layers").values() for lv in m["levels"].values() for l in lv if l["namespace"] == "snip-pin"]
+    assert not [l for m in hypr_json("layers").values() for lv in m["levels"].values() for l in lv if l["namespace"] == "snip-pin"], "the layer goes"
     close_editor(s)
 
 
