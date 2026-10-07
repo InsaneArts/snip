@@ -47,6 +47,10 @@ scripts/dev.sh stop     # stop it and restore Hyprland's own bindings
 
 The `snip` CLI talks to the running daemon: `snip area`, `snip text`, `snip edit FILE`, `snip copy`, `snip save`, `snip list`, `snip search TEXT`, `snip --help`.
 
+## Releases
+
+Every merge to `main` is a release on GitHub (D33): the next patch version, notes made from the merged pull requests, and the source. `scripts/release.sh minor` (or the Release workflow run by hand) bumps the minor version instead. `snip --version` says which one you run.
+
 ## Docs
 
 - [docs/00-README.md](docs/00-README.md): start here (decision log, document map)
