@@ -149,7 +149,11 @@ Window {
     property real spotDim: 0.55
     property string toolBeforeCrop: "arrow"
 
+    // the last annotation tool, which the next editor starts with (crop and
+    // the Background tool are modes, not tools to come back to)
+    property string lastTool: "arrow"
     function setTool(t) {
+        if (t !== "crop" && t !== "background") lastTool = t
         finishText()
         if (t === "crop" && tool !== "crop") { toolBeforeCrop = tool; cropStart = { crop: doc.crop, fill: doc.fill } }
         tool = t
@@ -490,6 +494,7 @@ Window {
     Timer { id: pinTimer; interval: 150; onTriggered: Engine.pinWindow(ed.title) }
     function toast(t) { controller.toast.show(t, capture.output || Qt.application.screens[0].name) }
     function close_() {
+        Engine.setEditorPrefs(JSON.stringify(Object.assign(JSON.parse(Engine.editorPrefs() || "{}"), { tool: lastTool })))
         // "Remember if the Background tool was opened" (ANN-18)
         if (annotateCfg.remember_background_tool) storeBg({ toolOpen: tool === "background" })
         Engine.log("editor_closed", JSON.stringify({ id: captureId, revision: revision }).slice(1, -1))
@@ -514,6 +519,8 @@ Window {
         visible = true
         requestActivate()
         keys.forceActiveFocus()
+        const prefs = JSON.parse(Engine.editorPrefs() || "{}")
+        if (prefs.tool) setTool(prefs.tool)
         if (annotateCfg.remember_background_tool && bgStore.toolOpen) setTool("background")
         if (annotateCfg.always_on_top) pinTimer.start()      // "Always on top" (ANN-18): once Hyprland has it
         Engine.log("editor_shown", JSON.stringify({ id: captureId, w: imgW, h: imgH, winW: width, winH: height, aw: aw, ah: ah, s: s }).slice(1, -1))
