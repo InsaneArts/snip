@@ -159,7 +159,7 @@ class Snip:
     def bg(self, *args):
         """Start a blocking CLI call (a capture waiting for the selection)."""
         # overlays only on the test output: the user's monitors stay untouched
-        if args and args[0] in ("area", "window", "text", "area-pin") and "--monitor" not in args:
+        if args and args[0] in ("area", "window", "text", "area-pin", "scroll") and "--monitor" not in args:
             args = (*args, "--monitor", OUT)
         return subprocess.Popen(
             [str(self.build / "snip"), "--json", *args], env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
@@ -1037,6 +1037,83 @@ def shortcut_recorder(s, env):
         hypr_eval('pcall(hl.unbind, "SUPER + SHIFT + code:13") pcall(hl.unbind, "SUPER + SHIFT + code:12") '
                   'pcall(hl.unbind, "SUPER + ALT + code:32") snip_bind_defaults = nil')
         time.sleep(0.8)
+
+
+LINES_PY = """import sys
+for i in range(int(sys.argv[1])):
+    cells = "".join(f"\\x1b[48;2;{20 * b};{0 if (i >> b) & 1 else 255};{255 if (i >> b) & 1 else 0}m  " for b in range(12))
+    sys.stdout.write(cells + f"\\x1b[0m line {i}\\n")
+"""
+
+
+def numbered_lines(png):
+    """The numbers of the lines in an image of `LINES_PY`'s output, top to bottom, one per
+    line: each line's cells carry its bits as colours, (20b, 0, 255) set and (20b, 255, 0)
+    clear, so no font metrics are needed."""
+    from PIL import Image
+    img = Image.open(png).convert("RGB")
+    w, h = img.size
+    px = img.load()
+    out = []
+    for y in range(h):
+        cols = {px[x, y] for x in range(min(w, 400))}
+        known = [b for b in range(12) if (20 * b, 0, 255) in cols or (20 * b, 255, 0) in cols]
+        n = sum(1 << b for b in range(12) if (20 * b, 0, 255) in cols) if len(known) == 12 else None
+        if n is not None and (not out or out[-1][1] != y - 1 or out[-1][0] != n):
+            out.append((n, y))
+        elif n is not None:
+            out[-1] = (n, y)
+    return [n for n, _ in out]
+
+
+@case
+def scrolling_capture(s, env):
+    """SCR-01/03: choose an area inside a window, Start (Enter), scroll by hand, Done (Enter):
+    one tall capture with every line once, in order, from the window's own buffer. Enter
+    and Esc are bound only while it runs."""
+    (s.tmp / "lines.py").write_text(LINES_PY)
+    cmd = f"foot --title=scrollpage --app-id=snip-e2e-scroll sh -c 'python3 {s.tmp / 'lines.py'} 200; sleep 3600'"
+    hypr_eval(f'hl.dispatch(hl.dsp.exec_cmd([[{cmd}]]))')
+    assert wait_for(lambda: [c for c in hypr_json("clients") if c["class"] == "snip-e2e-scroll"], 5), "the page opens"
+    time.sleep(0.8)
+    c = next(c for c in hypr_json("clients") if c["class"] == "snip-e2e-scroll")
+    try:
+        mon = env.monitor()
+        lx, ly, lw, lh = c["at"][0] - mon["x"], c["at"][1] - mon["y"], c["size"][0], c["size"][1]
+        s.move(lx + lw // 2, ly + lh // 2)
+        s.debug("scroll", -20000)                                      # to the first line
+        time.sleep(0.5)
+
+        p = s.bg("scroll"); time.sleep(0.5)
+        s.drag(lx + 30, ly + 60, lx + lw - 30, ly + lh - 120)
+        hud = lambda: (s.debug("ui", "scroll", "state"), wait_for(lambda: s.traces("scroll_hud"), 2), s.traces("scroll_hud")[-1])[2]
+        assert wait_for(lambda: hud()["open"] and hud()["phase"] == "ready", 3), "the frame and panel show"
+        assert "Return" in sh("hyprctl", "binds").stdout, "Enter is bound for the session"
+        hypr_eval('hl.dispatch(hl.dsp.global("snip-e2e:scroll-go"))')    # Enter: Start Capture
+        assert wait_for(lambda: hud()["phase"] == "capturing", 3), "capturing"
+
+        s.move(lx + lw // 2, ly + lh // 2)
+        for _ in range(24):                                            # ~9 lines a step, as a hand scrolls
+            s.debug("scroll", 15)
+            time.sleep(0.25)
+        time.sleep(0.4)
+        hypr_eval('hl.dispatch(hl.dsp.global("snip-e2e:scroll-go"))')    # Enter: Done
+        r, code = finish(p)
+        assert code == 0 and r["result"]["kind"] == "scroll", r
+        lines = numbered_lines(r["result"]["source"])
+        assert lines == list(range(lines[0], lines[0] + len(lines))), ("every line once, in order", lines)
+        assert lines[0] <= 3 and len(lines) > 150, (lines[0], len(lines))
+        assert "Return" not in sh("hyprctl", "binds").stdout, "Enter is the page's again"
+        assert wait_for(lambda: not hud()["open"], 2), "the frame and panel are gone"
+
+        p = s.bg("scroll"); time.sleep(0.5)                            # Esc cancels
+        s.drag(lx + 30, ly + 60, lx + lw - 30, ly + lh - 120)
+        assert wait_for(lambda: hud()["open"], 3)
+        hypr_eval('hl.dispatch(hl.dsp.global("snip-e2e:scroll-cancel"))')
+        r, code = finish(p)
+        assert code == 1 and "Return" not in sh("hyprctl", "binds").stdout, (r, code)
+    finally:
+        os.kill(c["pid"], 15)
 
 
 @case
