@@ -728,10 +728,15 @@ def pins(s, env):
     s.move(cx, cy); time.sleep(0.2)
     s.debug("scroll", "30")                                      # wheel down: fade
     assert wait_for(lambda: pin_state(s)["fade"] < 1, 2), pin_state(s)
+    s.debug("down"); s.debug("up"); time.sleep(0.3)             # a click gives it the keyboard
     s.debug("ui", "pin", "keys", "{ctrl+=}")                     # zoom in
     st = pin_state(s)
     assert abs(st["zoom"] - 1.1) < 0.01, st
     assert wait_for(lambda: tuple(pin_windows()[0]["size"]) == (st["w"], st["h"]), 2), (pin_windows()[0]["size"], st)
+    at = pin_windows()[0]["at"]
+    s.drag(cx, cy, cx - 120, cy - 60, steps=10)                  # a drag moves it (Hyprland picks it up a step late)
+    assert wait_for(lambda: pin_windows()[0]["at"][0] < at[0] - 40 and pin_windows()[0]["at"][1] < at[1] - 15, 2), (at, pin_windows()[0]["at"])
+    s.move(cx - 121, cy - 61); s.move(cx - 120, cy - 60); time.sleep(0.2)   # a real motion: the pin has the pointer again
     s.debug("mdown"); s.debug("mup")                             # middle-click closes
     assert wait_for(lambda: not pin_windows(), 3), "middle-click closes the pin"
     for _ in range(2):
