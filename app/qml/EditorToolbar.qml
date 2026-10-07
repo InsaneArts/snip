@@ -49,6 +49,8 @@ Rectangle {
             Tool { name: "counter"; icon: "counter"; tip: "Counter (C)" }
             Sep {}
             Tool { name: "pencil"; icon: "pencil"; tip: "Pencil (D)" }
+            Sep {}
+            Tool { name: "highlight"; icon: "highlighter"; tip: "Highlighter (M)" }
         }
         Capsule {
             // Spotlight: its shape, and how dark the rest gets
@@ -78,7 +80,7 @@ Rectangle {
                 Rectangle {
                     x: 9; anchors.verticalCenter: parent.verticalCenter
                     width: 16; height: 16; radius: 8
-                    color: bar.ed.ink
+                    color: bar.ed.toolInk
                     border.width: 1; border.color: Qt.rgba(0, 0, 0, 0.2)
                 }
                 leftPad: 22
@@ -120,6 +122,16 @@ Rectangle {
                     o: ({ kind: "text", x: 0, y: 0, text: "A", color: Theme.text.toString(), size: 15, style: textStyleButton.style })
                 }
                 onClicked: bar.ed.openMenuNamed("text", textStyleButton)
+            }
+        }
+        Capsule {
+            visible: bar.ed.sizeKind === "highlight"
+            ToolButton {
+                id: opacityButton
+                tip: "Opacity"
+                label: Math.round((bar.ed.selectedObj && bar.ed.selectedObj.kind === "highlight" ? bar.ed.selectedObj.opacity : bar.ed.highlightOpacity) * 100) + "%"
+                chevron: true
+                onClicked: bar.ed.openMenuNamed("opacity", opacityButton)
             }
         }
         Capsule {

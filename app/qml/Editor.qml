@@ -91,6 +91,18 @@ Window {
     property string arrowStyle: "standard"
     property string textStyle: "standard"
     property string counterStyle: "num"
+    // the highlighter keeps its own colour (yellow) and opacity
+    property string highlightInk: "#ffcc00"
+    property real highlightOpacity: 0.35
+    readonly property string toolInk: sizeKind === "highlight" ? highlightInk : ink
+    // OCR word boxes for the highlighter, fetched once it is first used
+    property var words: null
+    readonly property var textLines: words ? Ed.textLines(words) : []
+    onToolChanged: if (tool === "highlight" && words === null) { words = []; Engine.requestWords(capture.image || "") }
+    Connections {
+        target: Engine
+        function onEditorWords(path, json) { if (path === (ed.capture.image || "")) ed.words = JSON.parse(json) }
+    }
     property string spotShape: "rect"
     property real spotDim: 0.55
     property string toolBeforeCrop: "arrow"
@@ -100,6 +112,11 @@ Window {
         if (t === "crop" && tool !== "crop") toolBeforeCrop = tool
         tool = t
         if (t !== "select") selected = -1
+    }
+    function setHighlightOpacity(v) {
+        highlightOpacity = v
+        if (selectedObj && selectedObj.kind === "highlight" && selectedObj.opacity !== v)
+            replaceItem(selected, Object.assign(Ed.copy(selectedObj), { opacity: v }))
     }
     function setCounterStyle(st) {
         counterStyle = st
@@ -136,7 +153,7 @@ Window {
     }
     // colour and size apply to the selection too, as in CleanShot
     function setColor(c) {
-        ink = c
+        if (sizeKind === "highlight") highlightInk = c; else ink = c
         if (selectedObj && selectedObj.color !== c) {
             const o = Ed.copy(selectedObj); o.color = c; replaceItem(selected, o)
         }
@@ -411,6 +428,7 @@ Window {
             case Qt.Key_L: ed.setTool("line"); break
             case Qt.Key_H: ed.setTool("spotlight"); break
             case Qt.Key_D: ed.setTool("pencil"); break
+            case Qt.Key_M: ed.setTool("highlight"); break
             case Qt.Key_T: ed.setTool("text"); break
             case Qt.Key_C: ed.setTool("counter"); break
             case Qt.Key_P: ed.setTool("redact"); break
@@ -736,6 +754,13 @@ Window {
                 case "rect": case "frect":
                     ed.draft = { kind: "rect", x: p.x, y: p.y, w: 0, h: 0, color: c, size: ed.sizeFor("rect"), filled: ed.tool === "frect" }
                     gesture = "draw"; break
+                case "highlight": {
+                    const sh = Ed.snapHighlight(ed.textLines, p.x, p.y, p.x, 4)
+                    const hh = ed.sizeFor("highlight")
+                    ed.draft = Object.assign({ kind: "highlight", color: ed.highlightInk, opacity: ed.highlightOpacity, snapped: !!sh },
+                                             sh || { x: p.x, y: p.y - hh / 2, w: 1, h: hh })
+                    gesture = "highlight"; break
+                }
                 case "pencil":
                     ed.draft = { kind: "pencil", pts: [[p.x, p.y]], color: c, size: ed.sizeFor("pencil") }
                     gesture = "draw"; break
@@ -788,6 +813,10 @@ Window {
                     ed.draft = Ed.moved(pressObj, p.x - pressAt.x, p.y - pressAt.y)
                 } else if (gesture === "handle") {
                     ed.draft = Ed.withHandle(pressObj, handle, p.x, p.y, pressBox)
+                } else if (gesture === "highlight") {
+                    const d = ed.draft, hh = ed.sizeFor("highlight")
+                    const sh = d.snapped ? Ed.snapHighlight(ed.textLines, pressAt.x, pressAt.y, p.x, 4) : null
+                    ed.draft = Object.assign(Ed.copy(d), sh || { x: Math.min(pressAt.x, p.x), y: pressAt.y - hh / 2, w: Math.abs(p.x - pressAt.x), h: hh })
                 } else if (gesture === "draw" && ed.draft.kind === "pencil") {
                     const last = ed.draft.pts[ed.draft.pts.length - 1]
                     if (Math.hypot(p.x - last[0], p.y - last[1]) * ed.k >= 2)       // a point every 2 view px
@@ -831,7 +860,10 @@ Window {
                 ed.draft = null
                 ed.draftIndex = -1
                 if (!d) return
-                if (g === "draw") {
+                if (g === "highlight") {
+                    delete d.snapped
+                    if (d.w >= 3) ed.addItem(d)
+                } else if (g === "draw") {
                     // Alt while drawing points the arrow the other way (CleanShot)
                     if (d.kind === "arrow" && (m.modifiers & Qt.AltModifier))
                         Object.assign(d, { x1: d.x2, y1: d.y2, x2: d.x1, y2: d.y1 })
@@ -919,7 +951,7 @@ Window {
     // ---------------------------------------------------------------- dropdowns
     function openMenuNamed(name, anchorItem) {
         openMenu({ color: colorMenu, size: sizeMenu, style: styleMenu, zoom: zoomMenu, arrow: arrowMenu, text: textMenu, dim: dimMenu,
-                   counter: counterMenu }[name], anchorItem)
+                   counter: counterMenu, opacity: opacityMenu }[name], anchorItem)
     }
     property Item openedMenu: null
     function openMenu(menu, anchorItem) {
@@ -966,7 +998,7 @@ Window {
                     color: "transparent"
                     border.width: 2
                     border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.6)
-                    visible: Qt.colorEqual(ed.ink, parent.modelData)
+                    visible: Qt.colorEqual(ed.toolInk, parent.modelData)
                 }
                 Rectangle {
                     anchors.centerIn: parent
@@ -1019,6 +1051,25 @@ Window {
                 Text { anchors.centerIn: parent; text: parent.modelData.label; color: Theme.text; font.family: Theme.fontUi; font.pixelSize: 13 }
                 MouseArea { id: stMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
                             onClicked: { ed.setRedactStyle(parent.modelData.id); ed.openedMenu = null } }
+            }
+        }
+    }
+
+    Menu {
+        id: opacityMenu
+        Repeater {
+            model: Ed.highlightOpacities
+            delegate: Rectangle {
+                required property real modelData
+                readonly property real current: ed.selectedObj && ed.selectedObj.kind === "highlight" ? ed.selectedObj.opacity : ed.highlightOpacity
+                width: 92; height: 30; radius: 8
+                color: Math.abs(current - modelData) < 0.01 ? Theme.controlPressed : opMa.containsMouse ? Theme.controlHover : "transparent"
+                Rectangle { x: 10; anchors.verticalCenter: parent.verticalCenter; width: 16; height: 16; radius: 4
+                            color: Qt.rgba(Qt.color(ed.highlightInk).r, Qt.color(ed.highlightInk).g, Qt.color(ed.highlightInk).b, parent.modelData) }
+                Text { x: 36; anchors.verticalCenter: parent.verticalCenter; text: Math.round(parent.modelData * 100) + "%"; color: Theme.text
+                       font.family: Theme.fontUi; font.pixelSize: 13 }
+                MouseArea { id: opMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                            onClicked: { ed.setHighlightOpacity(parent.modelData); ed.openedMenu = null } }
             }
         }
     }
@@ -1145,6 +1196,7 @@ Window {
         case "line": addItem({ kind: "line", x1: n(1), y1: n(2), x2: n(3), y2: n(4), color: ink, size: sizeFor("line") }); break
         case "counter": addItem({ kind: "counter", x: n(1), y: n(2), color: ink, size: sizeFor("counter"), style: a[3] || counterStyle }); break
         case "counter-style": setCounterStyle(a[1]); break
+        case "words": Engine.requestWords(capture.image || ""); break
         case "counter-start": setCounterStart(n(1)); break
         case "text": addItem({ kind: "text", x: n(1), y: n(2), text: a.slice(3).join(" "), color: ink, size: sizeFor("text"), style: textStyle }); break
         case "text-style": setTextStyle(a[1]); break
@@ -1171,6 +1223,7 @@ Window {
                 originX: originX, originY: originY + view.y, k: k, winW: width, winH: height,
                 ready: base.status === Image.Ready, editingText: editingText, typed: textEdit.text, active: ed.active,
                 selectionBox: { x: selectionBox.x, y: selectionBox.y, w: selectionBox.width, h: selectionBox.height },
+                words: words ? words.length : -1,
                 counterLabels: doc.items.map((o, i) => o.kind === "counter" ? Ed.counterLabel(doc, Ed.counterNumber(doc.items, i), o.style) : null).filter(l => l !== null)
             }).slice(1, -1))
             break
