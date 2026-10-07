@@ -258,7 +258,7 @@ impl Inner {
 
     fn shortcut(self: &Arc<Self>, id: &str) {
         match id {
-            "area" | "fullscreen" | "window" | "previous" | "text" | "all-in-one" => self.begin(id, None, None, None, 0),
+            "area" | "fullscreen" | "window" | "previous" | "text" | "all-in-one" | "area-pin" => self.begin(id, None, None, None, 0),
             "timer-area" | "timer-fullscreen" => {
                 let delay = self.cfg().capture.timer_seconds;
                 self.begin(&id["timer-".len()..], None, None, None, delay)
@@ -298,7 +298,7 @@ impl Inner {
             return;
         }
         match mode {
-            "area" | "window" | "text" | "all-in-one" | "insert" | "pick" => {
+            "area" | "window" | "text" | "all-in-one" | "insert" | "pick" | "area-pin" => {
                 // SEL-09: the capture hotkey while the overlay is up cancels it.
                 if let Some(s) = self.session.lock().unwrap().take() {
                     reply(s.waiter, cancelled());
@@ -517,8 +517,9 @@ impl Inner {
     pub fn finish_area(self: &Arc<Self>, output: String, rect: Rect, kind: String) {
         trace::trace("finish_area", &format!("\"output\":{},\"rect\":[{},{},{},{}],\"kind\":{}", js(&output), rect.x, rect.y, rect.w, rect.h, js(&kind)));
         let Some(s) = self.session.lock().unwrap().take() else { return };
-        let kind = if s.mode == "text" || s.mode == "insert" { s.mode.clone() } else { kind };
-        if kind == "area" {
+        // Capture Area & Pin (PIN-01): an area, pinned where it was
+        let kind = if s.mode == "text" || s.mode == "insert" || (s.mode == "area-pin" && kind == "area") { s.mode.clone() } else { kind };
+        if kind == "area" || kind == "area-pin" {
             *self.last_area.lock().unwrap() = Some((output.clone(), rect));
             save_last_area(&output, rect);
         }
@@ -685,7 +686,30 @@ impl Inner {
             &format!("\"w\":{},\"h\":{},\"crop_ms\":{:.2},\"encode_ms\":{:.2},\"bytes\":{}", e.width, e.height, e.crop_ms, e.encode_ms, e.png.len()),
         );
         let (app, title) = self.window_meta_at(output, rect, frame.scale);
-        self.ingest(e.png, e.width, e.height, CaptureMeta { kind: kind.into(), output: output.into(), app, title }, output, waiter);
+        let meta = CaptureMeta { kind: kind.trim_end_matches("-pin").into(), output: output.into(), app, title };
+        if kind == "area-pin" {
+            // where the area was, in layout px: the pin goes right there
+            let origin = self.outputs.lock().unwrap().iter().find(|o| o.name == output).map(|o| (o.logical.x, o.logical.y)).unwrap_or((0, 0));
+            let at = (origin.0 + (rect.x as f64 / frame.scale).round() as i32, origin.1 + (rect.y as f64 / frame.scale).round() as i32);
+            return self.ingest_and_pin(e.png, e.width, e.height, meta, at, waiter);
+        }
+        self.ingest(e.png, e.width, e.height, meta, output, waiter);
+    }
+
+    /// Capture Area & Pin: the capture goes to history and straight into a
+    /// pin at `at`, with no card.
+    fn ingest_and_pin(self: &Arc<Self>, png: Vec<u8>, w: u32, h: u32, meta: CaptureMeta, at: (i32, i32), waiter: Option<Waiter>) {
+        match self.store.ingest(png, w, h, meta, now_secs()) {
+            Ok(rec) => {
+                self.wake_indexer();
+                let r = match self.pin_at(&rec.id, Some(at)) {
+                    Ok(j) => Response::ok(j),
+                    Err(e) => Response::err(e),
+                };
+                reply(waiter, r);
+            }
+            Err(e) => reply(waiter, Response::err(e.to_string())),
+        }
     }
 
     fn finish_window_frame(self: &Arc<Self>, f: &Frame, client: &Client, output: &str, shadow: bool, waiter: Option<Waiter>) {
@@ -1042,12 +1066,20 @@ impl Inner {
     /// Pin a capture to the screen (PIN-01): its image floats above every
     /// window, on every workspace of its monitor, at its own size.
     pub fn pin(&self, id: &str) -> Result<Value, String> {
+        self.pin_at(id, None)
+    }
+
+    /// A pin whose image's corner goes at `at` (layout px), or centred.
+    fn pin_at(&self, id: &str, at: Option<(i32, i32)>) -> Result<Value, String> {
         let rec = self.store.get(id).map_err(|e| e.to_string())?;
         let monitors = snip_hypr::monitors();
         let here = self.cursor_output();
         let scale = monitors.iter().find(|m| m.name == rec.output).or_else(|| monitors.iter().find(|m| Some(&m.name) == here.as_ref())).map(|m| m.scale).unwrap_or(1.0);
         let mut j = card_json(&rec, &rec.output);
         j["scale"] = json!(scale);
+        if let Some((x, y)) = at {
+            j["at"] = json!([x, y]);
+        }
         let s = j.to_string();
         trace::trace("pin_open", &format!("\"id\":\"{id}\""));
         self.ui(move |e| e.pin_open(&QString::from(s.as_str())));
@@ -1393,7 +1425,9 @@ impl Inner {
             Ctl::EditClipboard => ok_or(self.edit_clipboard()),
             Ctl::Copy { id } => ok_or(self.resolve_id(id).and_then(|id| self.copy(&id).map(|_| json!(id)))),
             Ctl::Save { id } => ok_or(self.resolve_id(id).and_then(|id| self.save(&id).map(|p| json!(p)))),
-            Ctl::Pin { id } => ok_or(self.resolve_id(id).and_then(|id| self.pin(&id))),
+            // Pin File… (PIN-01): the file becomes a capture first
+            Ctl::Pin { id, path: Some(path) } if id.is_none() => ok_or(self.import(&path).and_then(|rec| self.pin(&rec.id))),
+            Ctl::Pin { id, .. } => ok_or(self.resolve_id(id).and_then(|id| self.pin(&id))),
             Ctl::Pins { action } => match action.as_str() {
                 "toggle" | "close" | "unlock" => {
                     self.ui(move |e| e.pins_command(&QString::from(action.as_str())));

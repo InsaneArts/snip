@@ -33,10 +33,13 @@ pub enum Request {
         #[serde(default)]
         id: Option<String>,
     },
-    /// Pin a capture (default: the most recent) above every window (PIN-01)
+    /// Pin a capture (default: the most recent), or an image file, above
+    /// every window (PIN-01)
     Pin {
         #[serde(default)]
         id: Option<String>,
+        #[serde(default)]
+        path: Option<String>,
     },
     /// Every pin at once (PIN-05, 07): "toggle" hides or shows them, "close",
     /// "unlock" (a locked pin takes no input)

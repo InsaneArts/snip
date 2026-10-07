@@ -387,6 +387,7 @@ impl qobject::Engine {
                 ("timer-fullscreen", "Self-timer: fullscreen"),
                 ("close-all", "Close all Quick Access cards"),
                 ("edit-clipboard", "Edit the image on the clipboard"),
+                ("area-pin", "Capture area and pin it"),
                 ("pins-toggle", "Hide or show all pins"),
                 ("pins-close", "Close all pins"),
                 ("pins-unlock", "Unlock all pins"),
