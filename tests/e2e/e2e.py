@@ -1248,6 +1248,40 @@ def editor_crop_outward_and_ratios(s, env):
 
 
 @case
+def editor_rotate_flip_resize(s, env):
+    """ANN-11: rotate, flip and resize the image with its objects; undo puts it back."""
+    from PIL import Image
+    im = Image.new("RGB", (300, 200), "white")
+    im.paste((230, 20, 20), (0, 0, 30, 30))                      # a red marker, top-left
+    png = s.tmp / "turn.png"
+    im.save(png)
+    rec = s.json("edit", str(png))["result"]
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    s.debug("ui", "editor", "color", "#0a7cff")
+    s.debug("ui", "editor", "rect", 200, 20, 60, 40)
+    s.debug("ui", "editor", "transform", "rotate-right")
+    st = editor_state(s)
+    assert (st["imgW"], st["imgH"]) == (200, 300) and st["base"], st
+    r = st["items"][0]
+    assert (r["x"], r["y"], r["w"], r["h"]) == (140, 200, 40, 60), ("the rectangle turns with the image", r)
+    editor_flush(s)
+    out = Image.open(rec["source"]).convert("RGB")
+    assert out.size == (200, 300) and out.getpixel((195, 5))[0] > 200, "the marker is now top-right"
+    s.debug("ui", "editor", "undo")
+    assert (editor_state(s)["imgW"], editor_state(s)["base"]) == (300, ""), "undo brings the image back"
+    s.debug("ui", "editor", "transform", "flip-vertical")
+    assert editor_state(s)["items"][0]["y"] == 200 - 60, editor_state(s)["items"][0]
+    s.debug("ui", "editor", "undo")
+    s.debug("ui", "editor", "transform", "resize", 150, 100)
+    st = editor_state(s)
+    r = st["items"][0]
+    assert (st["imgW"], st["imgH"]) == (150, 100) and (r["x"], r["w"]) == (100, 30), (st["imgW"], r)
+    editor_flush(s)
+    assert Image.open(rec["source"]).size == (150, 100)
+    close_editor(s)
+
+
+@case
 def editor_from_clipboard(s, env):
     """ANN-19: snip edit --clipboard opens the clipboard's image (from another app), or a
     copied PNG file, in the editor; text alone is a clean error."""
