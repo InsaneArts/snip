@@ -265,6 +265,10 @@ def stray_layers(pid):
 CASES = []
 
 
+class Skip(Exception):
+    """The environment can't run this case right now (said why); not a failure."""
+
+
 def case(fn):
     CASES.append(fn)
     return fn
@@ -515,6 +519,12 @@ def cursor_toggle(s, env):
         t.start()
         lx, ly = real["width"] / real["scale"] / 2, real["height"] / real["scale"] / 2
         t.debug("move", real["name"], int(lx), int(ly)); time.sleep(0.4)
+        # Hyprland sometimes paints no pointer into any capture while a headless
+        # output exists (grim -c neither): then there is nothing of Snip's to test.
+        g0, g1 = t.tmp / "g0.png", t.tmp / "g1.png"
+        sh("grim", "-o", real["name"], str(g0)); sh("grim", "-c", "-o", real["name"], str(g1))
+        if ImageChops.difference(Image.open(g0).convert("RGB"), Image.open(g1).convert("RGB")).getbbox() is None:
+            raise Skip("Hyprland paints no pointer into captures right now (grim -c shows none either)")
         a = t.json("fullscreen", "--monitor", real["name"], "--no-cursor")["result"]
         b = t.json("fullscreen", "--monitor", real["name"], "--cursor")["result"]
         assert t.status()["cards"] == [], "no card may appear on the user's monitor"
@@ -935,7 +945,7 @@ def main():
 
     env = Env()
     s = Snip(a.build)
-    failed = []
+    failed, skipped = [], []
     try:
         env.add_output()
         env.win = env.spawn_window("snip-e2e-target", "Snip window capture test\\nfn main() {}\\n")
@@ -948,6 +958,9 @@ def main():
             try:
                 fn(s, env)
                 print(f"  PASS {fn.__name__} ({time.time() - t0:.1f}s)")
+            except Skip as e:
+                skipped.append(fn.__name__)
+                print(f"  SKIP {fn.__name__}: {e}")
             except Exception as e:
                 failed.append(fn.__name__)
                 print(f"  FAIL {fn.__name__}: {e}")
@@ -967,7 +980,7 @@ def main():
             print(f"  logs: {s.tmp}")
         else:
             shutil.rmtree(s.tmp, ignore_errors=True)
-    print(f"{len(failed)} failed" if failed else "all passed")
+    print((f"{len(failed)} failed" if failed else "all passed") + (f" ({len(skipped)} skipped: {', '.join(skipped)})" if skipped else ""))
     return 1 if failed else 0
 
 
