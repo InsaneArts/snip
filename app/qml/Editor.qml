@@ -292,9 +292,13 @@ Window {
         bgPreset = name
     }
     function deleteBgPreset(name) {
-        storeBg({ presets: (JSON.parse(Engine.backgrounds() || "{}").presets || []).filter(p => p.name !== name) })
+        const patch = { presets: (JSON.parse(Engine.backgrounds() || "{}").presets || []).filter(p => p.name !== name) }
+        if (bgStore.auto === name) patch.auto = null
+        storeBg(patch)
         if (bgPreset === name) bgPreset = ""
     }
+    // "Automatically apply preset to all screenshots" (BG-03): one preset or none
+    function toggleAutoPreset(name) { storeBg({ auto: bgStore.auto === name ? null : name }) }
     function previewBg(patch) {
         if (!doc.bg) setBg({})
         bgPreview = Object.assign({}, bgPreview || {}, patch)
@@ -1924,7 +1928,7 @@ Window {
             model: ed.bgPresets
             delegate: MenuRow {
                 required property var modelData
-                text: modelData.name
+                text: modelData.name + (ed.bgStore.auto === modelData.name ? "  · Auto" : "")
                 onActivated: { ed.applyBgPreset(modelData.name); ed.openedMenu = null }
                 Icon { visible: ed.bgPreset === parent.modelData.name; anchors { right: parent.right; rightMargin: 36; verticalCenter: parent.verticalCenter }
                        name: "check"; size: 14; color: Theme.accent }
@@ -1933,6 +1937,13 @@ Window {
             }
         }
         Rectangle { width: 270; height: 1; color: Theme.hairline }
+        MenuRow {
+            visible: ed.bgPreset !== ""
+            text: "Apply to New Screenshots"
+            onActivated: { ed.toggleAutoPreset(ed.bgPreset); ed.openedMenu = null }
+            Icon { visible: ed.bgStore.auto === ed.bgPreset; anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
+                   name: "check"; size: 14; color: Theme.accent }
+        }
         MenuRow { visible: ed.bgPresetChanged; text: "Save Changes to “" + ed.bgPreset + "”"
                   onActivated: { ed.saveBgPreset(ed.bgPreset); ed.openedMenu = null } }
         MenuRow { text: "Add New Preset…"; onActivated: { ed.openedMenu = null; bgPanel.naming = true } }
@@ -2082,6 +2093,7 @@ Window {
         case "bg-preset-save": saveBgPreset(a.slice(1).join(" ")); break
         case "bg-preset-delete": deleteBgPreset(a.slice(1).join(" ")); break
         case "bg-previous": applyPreviousBg(); break
+        case "bg-auto": toggleAutoPreset(a.slice(1).join(" ")); break
         case "take-screenshot": takeScreenshot(); break
         case "drop": { const v = toView(n(2), n(3)); dropFiles([a[1]], v.x, v.y); break }   // at image px
         case "add-wallpaper": bgPanel.addWallpaper(a.slice(1).join(" ")); break
@@ -2110,7 +2122,7 @@ Window {
                 selectionBox: { x: selectionBox.x, y: selectionBox.y, w: selectionBox.width, h: selectionBox.height },
                 words: words ? words.length : -1, fill: doc.fill || "", shownX: shown.x, shownY: shown.y,
                 imgW: imgW, imgH: imgH, base: doc.base || "", bg: doc.bg || null, exportRect: exportRect, balance: balance, guides: guides, paddingValue: bgPanel.visible ? bgPanel.paddingSlider.valueBox.mapToItem(null, 14, 9) : null,
-                bgPresets: bgPresets.map(p => p.name), bgPreset: bgPreset, bgPresetChanged: bgPresetChanged, ownWalls: bgPanel.ownWalls,
+                bgPresets: bgPresets.map(p => p.name), bgPreset: bgPreset, bgPresetChanged: bgPresetChanged, bgAuto: bgStore.auto || "", ownWalls: bgPanel.ownWalls,
                 shadows: annotateCfg.object_shadows !== false, ink: ink, savedColors: savedColors, picking: pickToken !== 0,
                 counterLabels: doc.items.map((o, i) => o.kind === "counter" ? Ed.counterLabel(doc, Ed.counterNumber(doc.items, i), o.style) : null).filter(l => l !== null)
             }).slice(1, -1))
