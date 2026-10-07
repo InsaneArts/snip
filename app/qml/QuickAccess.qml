@@ -326,7 +326,7 @@ Window {
                 // window, and frames rendered before that would eat the motion.
                 Component.onCompleted: {
                     if (qa.presented) enterAnim.start()
-                    else qa.whenPresented(() => enterAnim.start())
+                    else qa.whenPresented(() => { if (enterAnim) enterAnim.start() })   // the card may be gone by then
                 }
                 // SNIP_TRACE: the rendered motion, one line per frame (docs/design/qao-motion.md)
                 FrameAnimation {
