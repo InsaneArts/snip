@@ -213,6 +213,13 @@ pub mod qobject {
         /// Restore Defaults: "" when done, else why not
         #[qinvokable]
         fn restore_shortcuts(self: Pin<&mut Engine>) -> QString;
+        /// Scrolling capture: Start Capture, Done, Cancel
+        #[qinvokable]
+        fn scroll_start(self: Pin<&mut Engine>);
+        #[qinvokable]
+        fn scroll_done(self: Pin<&mut Engine>);
+        #[qinvokable]
+        fn scroll_cancel(self: Pin<&mut Engine>);
 
         #[qinvokable]
         fn annotate(self: Pin<&mut Engine>, id: QString);
@@ -335,6 +342,15 @@ pub mod qobject {
         #[qsignal]
         fn settings_open(self: Pin<&mut Engine>, tab: &QString);
 
+        /// Scrolling capture (SCR-01): the area is chosen ({output, x, y, w, h}
+        /// logical), how it's going ({phase, height, step, preview}), it ended
+        #[qsignal]
+        fn scroll_open(self: Pin<&mut Engine>, json: &QString);
+        #[qsignal]
+        fn scroll_status(self: Pin<&mut Engine>, json: &QString);
+        #[qsignal]
+        fn scroll_close(self: Pin<&mut Engine>);
+
         /// Every pin at once (PIN-07): toggle (hide or show) | close
         #[qsignal]
         fn pins_command(self: Pin<&mut Engine>, command: &QString);
@@ -435,7 +451,7 @@ impl qobject::Engine {
             // Only the user's daemon owns the shortcuts (a test instance must
             // not react to their key presses). Bound in hypr/snip.lua as
             // hl.dsp.global("snip:<id>").
-            for (id, d) in snip_hypr::keys::ACTIONS {
+            for (id, d) in snip_hypr::keys::ACTIONS.iter().chain(snip_hypr::keys::SESSION_KEYS) {
                 wl.send(snip_wayland::Request::RegisterShortcut { id: id.to_string(), description: d.to_string() });
             }
         }
@@ -769,6 +785,24 @@ impl qobject::Engine {
 
     fn record_keys(&self, on: bool) {
         let _ = snip_hypr::eval(snip_hypr::keys::record_lua(on));
+    }
+
+    fn scroll_start(self: Pin<&mut Self>) {
+        if let Some(i) = self.inner() {
+            i.scroll_start();
+        }
+    }
+
+    fn scroll_done(self: Pin<&mut Self>) {
+        if let Some(i) = self.inner() {
+            i.scroll_done();
+        }
+    }
+
+    fn scroll_cancel(self: Pin<&mut Self>) {
+        if let Some(i) = self.inner() {
+            i.scroll_cancel();
+        }
     }
 
     fn restore_shortcuts(self: Pin<&mut Self>) -> QString {
