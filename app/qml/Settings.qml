@@ -5,8 +5,7 @@ import Snip.Core
 // Snip's settings (SET-02), CleanShot's Settings window: a tab bar and a
 // form for each tab. Every change goes straight into config.toml with the
 // file's comments kept (SET-01), and the form shows the file as it is, so a
-// hand edit shows up here at once. Shortcuts get their tab with the
-// recorder (SET-08), Recording with M4.
+// hand edit shows up here at once. Recording gets its tab with M4.
 Window {
     id: win
     property var controller: null
@@ -26,6 +25,7 @@ Window {
 
     readonly property var tabs: [
         { id: "general", label: "General", icon: "settings" },
+        { id: "shortcuts", label: "Shortcuts", icon: "keyboard" },
         { id: "quick-access", label: "Quick Access", icon: "layers" },
         { id: "screenshots", label: "Screenshots", icon: "camera" },
         { id: "annotate", label: "Annotate", icon: "pencil" },
@@ -47,7 +47,83 @@ Window {
         raise()
         requestActivate()
     }
-    onTabChanged: { flick.contentY = 0; confirmClear = false; historyBytes = Engine.historyBytes() }
+    onTabChanged: {
+        flick.contentY = 0
+        confirmClear = false
+        historyBytes = Engine.historyBytes()
+        stopRecording()
+        pending = null
+        if (tab === "shortcuts") refreshShortcuts()
+    }
+    onCfgChanged: if (tab === "shortcuts") refreshShortcuts()
+    onVisibleChanged: if (!visible) stopRecording()
+    onActiveChanged: if (!active) stopRecording()
+
+    // Shortcuts (SET-08). Hyprland runs the bound keys, so a key is recorded
+    // with Hyprland's binds held off (Engine.recordKeys) and written as a
+    // keycode ("SUPER + SHIFT + code:13"), which works in every layout.
+    property var shortcutList: []                // [{id, name, keys: [label], custom}]
+    property string recording: ""                // the action whose key is being recorded
+    property string recordHint: ""
+    property var pending: null                   // {action, spec, label, takes}: a key that's someone else's
+    function refreshShortcuts() { shortcutList = JSON.parse(Engine.shortcuts() || "[]") }
+    function startRecording(action) {
+        pending = null
+        recordHint = ""
+        recording = action
+        Engine.recordKeys(true)
+        keyCatcher.forceActiveFocus()
+    }
+    function stopRecording() {
+        if (recording === "") return
+        recording = ""
+        Engine.recordKeys(false)
+    }
+    function setShortcut(action, spec) {
+        pending = null
+        set("shortcuts." + action, spec)
+        refreshShortcuts()
+    }
+    // Qt's modifiers and the key's xkb keycode
+    function recorded(mods, code) {
+        const parts = []
+        if (mods & Qt.MetaModifier) parts.push("SUPER")
+        if (mods & Qt.ControlModifier) parts.push("CTRL")
+        if (mods & Qt.AltModifier) parts.push("ALT")
+        if (mods & Qt.ShiftModifier) parts.push("SHIFT")
+        parts.push("code:" + code)
+        const spec = parts.join(" + ")
+        const action = recording
+        stopRecording()
+        const c = JSON.parse(Engine.shortcutConflict(action, spec))
+        if (c.takes) pending = { action: action, spec: spec, label: c.label, takes: c.takes }
+        else setShortcut(action, spec)
+    }
+    function restoreDefaults() {
+        const e = Engine.restoreShortcuts()
+        if (e) controller.toast.show("Settings: " + e, screen ? screen.name : "")
+        refreshShortcuts()
+    }
+    Item {
+        id: keyCatcher
+        Keys.onPressed: (e) => {
+            e.accepted = true
+            if (win.recording === "" || [Qt.Key_Shift, Qt.Key_Control, Qt.Key_Alt, Qt.Key_AltGr, Qt.Key_Meta, Qt.Key_Super_L,
+                                         Qt.Key_Super_R, Qt.Key_CapsLock].indexOf(e.key) >= 0) return
+            const mods = e.modifiers & (Qt.MetaModifier | Qt.ControlModifier | Qt.AltModifier | Qt.ShiftModifier)
+            if (!mods && e.key === Qt.Key_Escape) { win.stopRecording(); return }
+            if (!mods && (e.key === Qt.Key_Backspace || e.key === Qt.Key_Delete)) {
+                const a = win.recording
+                win.stopRecording()
+                win.setShortcut(a, "")
+                return
+            }
+            const alone = (e.key >= Qt.Key_F1 && e.key <= Qt.Key_F35) || e.key === Qt.Key_Print || e.key === Qt.Key_Pause
+            if (!mods && !alone) { win.recordHint = "Hold Super, Ctrl, Alt or Shift with the key."; return }
+            win.recorded(mods, e.nativeScanCode)
+        }
+        onActiveFocusChanged: if (!activeFocus) win.stopRecording()
+    }
 
     // "general.sounds" → its value in config.toml (or the default)
     function value(key) {
@@ -79,7 +155,7 @@ Window {
         historyBytes = Engine.historyBytes()
     }
 
-    Shortcut { sequences: ["Escape", StandardKey.Close]; onActivated: win.close() }
+    Shortcut { enabled: win.recording === ""; sequences: ["Escape", StandardKey.Close]; onActivated: win.close() }
 
     // ---------------------------------------------------------------- tab bar
     Rectangle {
@@ -199,6 +275,73 @@ Window {
                         }
                     }
                     Note { text: "Where Save writes. ~ is your home folder." }
+                }
+            }
+
+            // Shortcuts
+            Column {
+                visible: win.tab === "shortcuts"
+                spacing: 8
+                Repeater {
+                    model: win.shortcutList
+                    Column {
+                        required property var modelData
+                        spacing: 6
+                        Row {
+                            spacing: 16
+                            Text {
+                                width: 230
+                                height: 28
+                                horizontalAlignment: Text.AlignRight
+                                verticalAlignment: Text.AlignVCenter
+                                text: modelData.name + ":"
+                                color: Theme.text
+                                font.family: Theme.fontUi
+                                font.pixelSize: Theme.fontSize
+                            }
+                            KeyField { action: modelData.id; keys: modelData.keys }
+                        }
+                        Rectangle {
+                            readonly property var p: win.pending
+                            visible: p !== null && p.action === modelData.id
+                            x: 246
+                            width: 340
+                            height: takesText.implicitHeight + 50
+                            radius: Theme.radiusControl
+                            color: Qt.rgba(Theme.warning.r, Theme.warning.g, Theme.warning.b, 0.14)
+                            Text {
+                                id: takesText
+                                x: 10; y: 8; width: parent.width - 20
+                                wrapMode: Text.Wrap
+                                text: parent.p ? parent.p.label + " already runs “" + parent.p.takes + "”. Use it for this instead?" : ""
+                                color: Theme.text
+                                font.family: Theme.fontUi
+                                font.pixelSize: 12
+                            }
+                            Row {
+                                anchors.right: parent.right; anchors.rightMargin: 8
+                                anchors.bottom: parent.bottom; anchors.bottomMargin: 8
+                                spacing: 6
+                                TextButton { text: "Cancel"; implicitHeight: 26; onClicked: win.pending = null }
+                                TextButton {
+                                    objectName: "use-anyway"
+                                    text: "Use Anyway"; primary: true; implicitHeight: 26
+                                    onClicked: win.setShortcut(win.pending.action, win.pending.spec)
+                                }
+                            }
+                        }
+                    }
+                }
+                Item { width: 1; height: 8 }
+                Row {
+                    x: 246
+                    spacing: 12
+                    TextButton { objectName: "restore-defaults"; text: "Restore Defaults"; onClicked: win.restoreDefaults() }
+                    Note {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: win.recordHint || "Click a shortcut and press keys. Esc cancels, Backspace clears."
+                        color: win.recordHint ? Theme.warning : Theme.textSecondary
+                    }
                 }
             }
 
@@ -573,6 +716,52 @@ Window {
         Note { visible: num.suffix !== ""; anchors.verticalCenter: parent.verticalCenter; text: num.suffix; color: Theme.text; font.pixelSize: Theme.fontSize }
     }
 
+    // An action's keys, CleanShot's recorder: click, then press the keys.
+    component KeyField: Row {
+        id: kf
+        property string action: ""
+        property var keys: []
+        readonly property bool listening: win.recording === action
+        spacing: 4
+        Rectangle {
+            objectName: "keys:" + kf.action
+            width: 200
+            height: 28
+            radius: Theme.radiusControl
+            color: kf.listening ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.14)
+                                : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, keyHover.hovered ? 0.1 : 0.06)
+            border.width: 1
+            border.color: kf.listening ? Theme.accent : Theme.hairline
+            Text {
+                anchors.centerIn: parent
+                width: parent.width - 16
+                horizontalAlignment: Text.AlignHCenter
+                elide: Text.ElideRight
+                text: kf.listening ? "Type shortcut…" : kf.keys.length ? kf.keys.join(", ") : "Record Shortcut"
+                color: kf.listening || kf.keys.length ? Theme.text : Theme.textSecondary
+                font.family: Theme.fontUi
+                font.pixelSize: Theme.fontSize
+                font.weight: kf.keys.length && !kf.listening ? Font.DemiBold : Font.Normal
+            }
+            HoverHandler { id: keyHover; cursorShape: Qt.PointingHandCursor }
+            TapHandler { onTapped: kf.listening ? win.stopRecording() : win.startRecording(kf.action) }
+        }
+        Item {
+            objectName: "clear:" + kf.action
+            visible: kf.keys.length > 0 && !kf.listening
+            width: 24
+            height: 28
+            Icon {
+                anchors.centerIn: parent
+                name: "x"
+                size: 14
+                color: clearHover.hovered ? Theme.text : Theme.textSecondary
+            }
+            HoverHandler { id: clearHover; cursorShape: Qt.PointingHandCursor }
+            TapHandler { onTapped: win.setShortcut(kf.action, "") }
+        }
+    }
+
     // A line of text, written when Enter is pressed or it loses focus.
     component Field: Rectangle {
         id: fld
@@ -626,16 +815,29 @@ Window {
         case "tab": tab = a[1]; break
         case "keys": Platform.sendKeys(win, a.slice(1).join(" ")); break
         case "close": close(); break
+        case "record": startRecording(a[1]); break
+        case "press": recorded(parseInt(a[1]), parseInt(a[2])); break      // Qt modifiers, keycode
+        case "use": setShortcut(pending.action, pending.spec); break
+        case "restore": restoreDefaults(); break
         case "where": {
-            // the centre of a control in the window (logical px), for a click
+            // the centre of a control in the window (logical px), for a click;
+            // positioners lay out at the next frame: now, so it's where it'll be
             const it = find(contentItem, a[1])
+            for (let p = it; p; p = p.parent) if (p.forceLayout) p.forceLayout()
+            if (it) {
+                // scrolled into view, as a hand would
+                const top = it.mapToItem(flick.contentItem, 0, 0).y
+                if (top < flick.contentY || top + it.height > flick.contentY + flick.height)
+                    flick.contentY = Math.max(0, Math.min(flick.contentHeight - flick.height, top - flick.height / 2))
+            }
             const p = it ? it.mapToItem(contentItem, it.width / 2, it.height / 2) : null
             Engine.log("settings_where", JSON.stringify({ name: a[1], x: p ? p.x : -1, y: p ? p.y : -1 }).slice(1, -1))
             break
         }
         case "state":
             Engine.log("settings_state", JSON.stringify({ open: visible, tab: tab, error: cfgError, confirmClear: confirmClear,
-                                                         version: controller.settings.version, value: a[1] ? value(a[1]) : null }).slice(1, -1))
+                                                         version: controller.settings.version, value: a[1] ? value(a[1]) : null,
+                                                         recording: recording, pending: pending, shortcuts: shortcutList }).slice(1, -1))
             break
         }
     }
