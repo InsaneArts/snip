@@ -265,6 +265,8 @@ impl Inner {
             }
             "restore" => self.ui(|e| e.cards_command(&QString::from("restore"))),
             "close-all" => self.ui(|e| e.cards_command(&QString::from("close-all"))),
+            "pins-toggle" => self.ui(|e| e.pins_command(&QString::from("toggle"))),
+            "pins-close" => self.ui(|e| e.pins_command(&QString::from("close"))),
             "edit-clipboard" => {
                 let me = self.clone();
                 std::thread::spawn(move || {
@@ -1391,6 +1393,13 @@ impl Inner {
             Ctl::Copy { id } => ok_or(self.resolve_id(id).and_then(|id| self.copy(&id).map(|_| json!(id)))),
             Ctl::Save { id } => ok_or(self.resolve_id(id).and_then(|id| self.save(&id).map(|p| json!(p)))),
             Ctl::Pin { id } => ok_or(self.resolve_id(id).and_then(|id| self.pin(&id))),
+            Ctl::Pins { action } => match action.as_str() {
+                "toggle" | "close" => {
+                    self.ui(move |e| e.pins_command(&QString::from(action.as_str())));
+                    Response::ok(Value::Null)
+                }
+                _ => Response::err("pins: toggle or close"),
+            },
             Ctl::Search { query, n } => ok_or(
                 self.store
                     .search(&query, n)
