@@ -287,6 +287,17 @@ Platform::openImageDialog(int token, const QString& title)
   portalFileRequest(this, token, QStringLiteral("OpenFile"), title, opts);
 }
 
+void
+Platform::openFolderDialog(int token, const QString& title, const QString& folder)
+{
+  QVariantMap opts;
+  opts[QStringLiteral("directory")] = true;
+  QByteArray dir = QFile::encodeName(folder);
+  dir.append('\0');
+  opts[QStringLiteral("current_folder")] = dir;
+  portalFileRequest(this, token, QStringLiteral("OpenFile"), title, opts);
+}
+
 QSize
 Platform::imageSize(const QString& path) const
 {

@@ -15,6 +15,14 @@ Window {
     property string tab: "general"
     property bool confirmClear: false
     property real historyBytes: 0
+    property int folderToken: 0                 // the Export location chooser that's open
+
+    Connections {
+        target: Platform
+        function onFileChosen(token, path) {
+            if (token === win.folderToken && path) win.set("general.export_dir", path)
+        }
+    }
 
     readonly property var tabs: [
         { id: "general", label: "General", icon: "settings" },
@@ -178,7 +186,18 @@ Window {
                 }
                 Section {
                     label: "Export location"
-                    Field { key: "general.export_dir"; placeholder: "~/Pictures/Screenshots" }
+                    Row {
+                        spacing: 8
+                        Field { width: 300; key: "general.export_dir"; placeholder: "~/Pictures/Screenshots" }
+                        TextButton {
+                            text: "Choose…"
+                            implicitHeight: 26
+                            onClicked: {
+                                win.folderToken = controller.nextToken()
+                                Platform.openFolderDialog(win.folderToken, "Export location", win.value("general.export_dir") || "")
+                            }
+                        }
+                    }
                     Note { text: "Where Save writes. ~ is your home folder." }
                 }
             }
