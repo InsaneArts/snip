@@ -69,3 +69,45 @@ The look comes from the pixels around the region, never from what is under it:
 ![Before and after: Pixelate, Blur, Black out](editor/redaction-before-after.png)
 
 ![Pixelate in the editor](editor/pixelate.jpg) ![Crop](editor/crop.jpg)
+
+## Full parity (target, 2026-10-07)
+
+The product owner asked for CleanShot's Annotate with every feature and option, as accurately as possible. The sources are a dark-mode screenshot of CleanShot 5 on macOS (2034×1350 @2x) and the inventory (research doc §4).
+
+**Toolbar, left to right** (dark mode; sizes in points):
+- **Window controls**, then three single-button capsules:
+  - Crop & Resize (K)
+  - Add image (⌘I / ⇧⌘I)
+  - Background (B)
+- **One capsule with every tool:**
+  - Select (V), Rectangle (R), Filled rectangle (F), Ellipse (E), Line (L), Arrow (A), Text (T), Pixelate (P), Spotlight (H), Counter (C), Pencil (D), Highlighter (M).
+  - Hairline separators between tools.
+  - The selected tool is a **rounded rectangle** in the accent colour (about 35×23 pt, radius about 7), with a white glyph.
+- **Colour capsule:** a swatch dot and a chevron. **Size capsule:** a stroke glyph and a chevron.
+- **Right:** "Save as…" (a grey capsule), then **Done** (an accent capsule). Done writes the edits back and closes.
+
+**Colours measured** (dark): toolbar `#1a191d`; capsules `#313135`; accent `#e7584b` (that Mac's accent). Snip takes surface, capsule and accent from the Omarchy theme.
+
+**Bottom bar:**
+- Zoom capsule ("100%" and a chevron) on the left.
+- "Drag Me" capsule in the centre.
+- Round icon buttons on the right: share, pin, copy, cloud.
+- Snip has no cloud (decision D3); share and pin come with their features.
+
+**Tools and options to build** (spec ANN-01…18):
+
+| Tool | Options |
+|---|---|
+| Select | Handles; Shift locks an axis; Alt-drag duplicates; Ctrl+C/V objects (also between images); Ctrl+D; Delete |
+| Rectangle, Filled, Ellipse, Line | Colour, thickness, Shift for perfect shapes or straight lines, object shadow, corner roundness |
+| Arrow | Standard, Fancy, Curved, Double; thickness; Alt while drawing inverts the direction |
+| Text | Standard, Box, Rounded, Rounded Box, Outline, Monospaced, Monospaced Box; size; drag the corner to wrap; emoji |
+| Pixelate | Pixelate (secure), text-shaped blocks, Blur, Black out; intensity |
+| Spotlight | Rounded rectangle or ellipse; dim amount |
+| Counter | 1,2,3 / A,B,C / I,II,III; start number; size; renumbers itself; always on top |
+| Pencil | Smoothing |
+| Highlighter | Snaps to text lines (OCR boxes); opacity |
+| Crop & Resize | Ratios, snap to edges, outward crop grows the canvas, rotate, flip, resize in px or % |
+| Add image | File, paste, new screenshot; drop zones; the canvas grows |
+| Background | Presets, gradients, wallpapers (Omarchy themes), blurred, plain; padding, inset, auto-balance, shadow, corners, ratio, alignment |
+| Colours | 10 swatches, 10 saved colours, saturation/brightness square, hue, alpha, hex and RGB, eyedropper |
