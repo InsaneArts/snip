@@ -64,6 +64,8 @@ qt_add_qml_module(snipd
     app/qml/TextButton.qml
     app/qml/EditorToolbar.qml
     app/qml/editor.js
+  RESOURCES
+    app/fonts/Nunito.ttf
   SOURCES
     app/src/frozenframe.cpp app/src/frozenframe.h
     app/src/loupe.cpp app/src/loupe.h
