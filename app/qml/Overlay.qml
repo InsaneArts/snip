@@ -332,7 +332,7 @@ Window {
 
     // ---------------------------------------------------------------- mode hint (window / text / scroll modes)
     Rectangle {
-        readonly property string mode: win.c.session ? win.c.session.mode : ""
+        readonly property string mode: (win.c.session && win.c.session.mode) || ""
         visible: win.hovered && (win.c.windowMode || mode === "text" || mode === "scroll")
         anchors.horizontalCenter: parent.horizontalCenter
         y: 24
