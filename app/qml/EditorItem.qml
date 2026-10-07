@@ -211,4 +211,17 @@ Item {
             }
         }
     }
+
+    // a spotlight draws nothing itself (SpotlightLayer dims around it): only its halo
+    Loader {
+        active: root.kind === "spotlight" && root.halo
+        sourceComponent: Shape {
+            width: 1; height: 1
+            preferredRendererType: Shape.CurveRenderer
+            ShapePath {
+                strokeColor: root.haloColor; strokeWidth: root.pad * 2; fillColor: "transparent"
+                PathSvg { path: Ed.spotPath(root.o) }
+            }
+        }
+    }
 }

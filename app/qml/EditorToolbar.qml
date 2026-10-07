@@ -44,10 +44,31 @@ Rectangle {
             Sep {}
             Tool { name: "redact"; icon: "pixelate"; tip: "Pixelate (P)" }
             Sep {}
+            Tool { name: "spotlight"; icon: "spotlight"; tip: "Spotlight (H)" }
+            Sep {}
             Tool { name: "counter"; icon: "counter"; tip: "Counter (C)" }
         }
         Capsule {
-            visible: bar.ed.tool !== "crop" && bar.ed.sizeKind !== "redact"
+            // Spotlight: its shape, and how dark the rest gets
+            visible: bar.ed.sizeKind === "spotlight"
+            readonly property var spot: bar.ed.selectedObj && bar.ed.selectedObj.kind === "spotlight" ? bar.ed.selectedObj : null
+            ToolButton { icon: "square"; tip: "Rounded rectangle"; selected: (parent.parent.spot ? parent.parent.spot.shape : bar.ed.spotShape) === "rect"
+                         onClicked: bar.ed.setSpot("rect", parent.parent.spot ? parent.parent.spot.dim : bar.ed.spotDim) }
+            ToolButton { icon: "ellipse"; tip: "Ellipse"; selected: (parent.parent.spot ? parent.parent.spot.shape : bar.ed.spotShape) === "ellipse"
+                         onClicked: bar.ed.setSpot("ellipse", parent.parent.spot ? parent.parent.spot.dim : bar.ed.spotDim) }
+        }
+        Capsule {
+            visible: bar.ed.sizeKind === "spotlight"
+            ToolButton {
+                id: dimButton
+                tip: "Dim"
+                label: Math.round((bar.ed.selectedObj && bar.ed.selectedObj.kind === "spotlight" ? bar.ed.selectedObj.dim : bar.ed.spotDim) * 100) + "%"
+                chevron: true
+                onClicked: bar.ed.openMenuNamed("dim", dimButton)
+            }
+        }
+        Capsule {
+            visible: bar.ed.tool !== "crop" && bar.ed.sizeKind !== "redact" && bar.ed.sizeKind !== "spotlight"
             ToolButton {
                 id: swatch
                 tip: "Colour"

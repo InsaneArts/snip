@@ -90,6 +90,8 @@ Window {
     property string redactStyle: "pixelate"   // CleanShot's default (D26)
     property string arrowStyle: "standard"
     property string textStyle: "standard"
+    property string spotShape: "rect"
+    property real spotDim: 0.55
     property string toolBeforeCrop: "arrow"
 
     function setTool(t) {
@@ -97,6 +99,12 @@ Window {
         if (t === "crop" && tool !== "crop") toolBeforeCrop = tool
         tool = t
         if (t !== "select") selected = -1
+    }
+    // spotlight options apply to the selected spotlight too
+    function setSpot(shape, dim) {
+        spotShape = shape; spotDim = dim
+        if (selectedObj && selectedObj.kind === "spotlight" && (selectedObj.shape !== shape || selectedObj.dim !== dim))
+            replaceItem(selected, Object.assign(Ed.copy(selectedObj), { shape: shape, dim: dim }))
     }
     function setTextStyle(st) {
         textStyle = st
@@ -139,6 +147,9 @@ Window {
     property var draft: null
     property int draftIndex: -1
     readonly property var shownSelection: draft && draftIndex === selected ? draft : selectedObj
+    // the document as drawn right now, with the object being changed
+    readonly property var liveItems: !draft ? doc.items
+                                   : draftIndex >= 0 ? doc.items.map((o, i) => i === draftIndex ? draft : o) : doc.items.concat([draft])
     readonly property rect selectionBox: selectionHalo.box
 
     // ---------------------------------------------------------------- view
@@ -388,6 +399,7 @@ Window {
             case Qt.Key_F: ed.setTool("frect"); break
             case Qt.Key_E: ed.setTool("ellipse"); break
             case Qt.Key_L: ed.setTool("line"); break
+            case Qt.Key_H: ed.setTool("spotlight"); break
             case Qt.Key_T: ed.setTool("text"); break
             case Qt.Key_C: ed.setTool("counter"); break
             case Qt.Key_P: ed.setTool("redact"); break
@@ -450,6 +462,10 @@ Window {
                         smooth: true
                         mipmap: true
                         fillMode: Image.Stretch
+                    }
+                    SpotlightLayer {
+                        width: ed.imgW; height: ed.imgH
+                        items: ed.liveItems
                     }
                     Repeater {
                         id: objects
@@ -706,6 +722,9 @@ Window {
                 case "rect": case "frect":
                     ed.draft = { kind: "rect", x: p.x, y: p.y, w: 0, h: 0, color: c, size: ed.sizeFor("rect"), filled: ed.tool === "frect" }
                     gesture = "draw"; break
+                case "spotlight":
+                    ed.draft = { kind: "spotlight", x: p.x, y: p.y, w: 0, h: 0, shape: ed.spotShape, dim: ed.spotDim }
+                    gesture = "draw"; break
                 case "ellipse":
                     ed.draft = { kind: "ellipse", x: p.x, y: p.y, w: 0, h: 0, color: c, size: ed.sizeFor("ellipse") }
                     gesture = "draw"; break
@@ -877,7 +896,7 @@ Window {
 
     // ---------------------------------------------------------------- dropdowns
     function openMenuNamed(name, anchorItem) {
-        openMenu({ color: colorMenu, size: sizeMenu, style: styleMenu, zoom: zoomMenu, arrow: arrowMenu, text: textMenu }[name], anchorItem)
+        openMenu({ color: colorMenu, size: sizeMenu, style: styleMenu, zoom: zoomMenu, arrow: arrowMenu, text: textMenu, dim: dimMenu }[name], anchorItem)
     }
     property Item openedMenu: null
     function openMenu(menu, anchorItem) {
@@ -982,6 +1001,25 @@ Window {
     }
 
     Menu {
+        id: dimMenu
+        Repeater {
+            model: Ed.spotlightDims
+            delegate: Rectangle {
+                required property real modelData
+                readonly property real current: ed.selectedObj && ed.selectedObj.kind === "spotlight" ? ed.selectedObj.dim : ed.spotDim
+                width: 92; height: 30; radius: 8
+                color: Math.abs(current - modelData) < 0.01 ? Theme.controlPressed : dmMa.containsMouse ? Theme.controlHover : "transparent"
+                Rectangle { x: 10; anchors.verticalCenter: parent.verticalCenter; width: 16; height: 16; radius: 4
+                            color: Qt.rgba(0, 0, 0, parent.modelData); border.width: 1; border.color: Theme.hairline }
+                Text { x: 36; anchors.verticalCenter: parent.verticalCenter; text: Math.round(parent.modelData * 100) + "%"; color: Theme.text
+                       font.family: Theme.fontUi; font.pixelSize: 13 }
+                MouseArea { id: dmMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                            onClicked: { ed.setSpot(ed.spotShape, parent.modelData); ed.openedMenu = null } }
+            }
+        }
+    }
+
+    Menu {
         id: textMenu
         Repeater {
             model: Ed.textStyles
@@ -1053,6 +1091,7 @@ Window {
         case "counter": addItem({ kind: "counter", x: n(1), y: n(2), color: ink, size: sizeFor("counter") }); break
         case "text": addItem({ kind: "text", x: n(1), y: n(2), text: a.slice(3).join(" "), color: ink, size: sizeFor("text"), style: textStyle }); break
         case "text-style": setTextStyle(a[1]); break
+        case "spotlight": addItem({ kind: "spotlight", x: n(1), y: n(2), w: n(3), h: n(4), shape: a[5] || spotShape, dim: a[6] ? n(6) : spotDim }); break
         case "text-width": { const o = Ed.copy(selectedObj); o.w = n(1); replaceItem(selected, o); break }
         case "redact": addItem({ kind: "redact", x: n(1), y: n(2), w: n(3), h: n(4), style: a[5] || redactStyle, seed: a[6] ? n(6) : 1 }); break
         case "crop": a[1] === "reset" ? setCrop(full) : setCrop({ x: n(1), y: n(2), w: n(3), h: n(4) }); break
