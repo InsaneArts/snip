@@ -147,6 +147,12 @@ Built: `snipd` (Rust core + Qt Quick UI in one process), `snip` CLI, `hypr/snip.
 - Settings window (SET-02); shortcut recorder (SET-08)
 - Capture-menu entries and file handlers (OMA-03, OMA-07)
 
+### M3 status (2026-10-07; order from D34: history, settings, scrolling capture)
+
+| Area | Status | Notes |
+|---|---|---|
+| History window (HIS-01, 05) | ✅ first slice | `snip history`, `snip:history`: a band across the top of the screen with large thumbnails, newest first; ←/→ or the wheel, Enter or a click restores to Quick Access (the band stays), double-click or Ctrl+E annotates, Space previews, Ctrl+C copies, drag out; typing searches the text in captures; Esc clears the search, then closes. Still to add: delete with confirmation, Clear History, a menu (pin, Open With, Show in Files). |
+
 **Exit:**
 - **Every P0 item in the product spec is done.**
 - A feature-by-feature walk-through against the CleanShot inventory (screenshot areas) passes.
