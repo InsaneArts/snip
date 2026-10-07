@@ -196,6 +196,7 @@ Window {
         case "show": Engine.showInFiles(id); break
         case "annotate": Engine.annotate(id); break
         case "pin": Engine.pin(id); dismiss(card, outward); break
+        case "open-with": { const path = Engine.dragFile(id); Engine.log("open_with", JSON.stringify({ id: id, path: path }).slice(1, -1)); if (path) Platform.openWith(path); break }
         case "text": card.flash("text", 0); Engine.extractText(id); break   // the result arrives as cardStatus
         case "rotate-left": case "flip-horizontal": Engine.transformCapture(id, action); break
         case "preview": c.preview.open(card.data_); break
