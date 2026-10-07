@@ -22,7 +22,9 @@ Window {
     color: "transparent"
 
     readonly property real margin: 16       // room for the shadow
-    readonly property real radius: 10
+    // PIN-08: [pins] in the config
+    readonly property var look: (controller && controller.settings && controller.settings.pins) || ({})
+    readonly property real radius: look.corner_radius !== undefined ? look.corner_radius : 10
     readonly property real baseW: capture.width / (capture.scale || 1)
     readonly property real baseH: capture.height / (capture.scale || 1)
     property real zoom: 1
@@ -109,6 +111,8 @@ Window {
                 Behavior on opacity { NumberAnimation { duration: 120 } }
                 source: pin.imageUrl
                 radius: pin.radius
+                shadow: pin.look.shadow !== false
+                border: pin.look.border !== false
             }
         }
     }
@@ -148,7 +152,10 @@ Window {
         id: face
         property url source
         property real radius: 10
+        property bool shadow: true
+        property bool border: true
         RectangularShadow {
+            visible: face.shadow
             anchors.fill: parent
             radius: face.radius
             blur: 14; offset.y: 4
@@ -175,6 +182,7 @@ Window {
             maskSource: roundMask
         }
         Rectangle {
+            visible: face.border
             anchors.fill: parent
             radius: face.radius
             color: "transparent"
@@ -190,6 +198,8 @@ Window {
         opacity: pin.fade
         source: pin.imageUrl
         radius: pin.radius
+        shadow: pin.look.shadow !== false
+        border: pin.look.border !== false
     }
 
     MouseArea {
@@ -300,7 +310,8 @@ Window {
         case "state":
             Engine.log("pin_state", JSON.stringify({ id: capture.id, zoom: zoom, fade: fade, w: width, h: height,
                                                     baseW: baseW, baseH: baseH, margin: margin, menu: menuPopup.visible,
-                                                    locked: locked, lockHover: lockHover, shown: shown }).slice(1, -1))
+                                                    locked: locked, lockHover: lockHover, shown: shown, radius: radius,
+                                                    shadow: look.shadow !== false }).slice(1, -1))
             break
         }
     }
