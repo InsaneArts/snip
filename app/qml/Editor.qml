@@ -240,6 +240,13 @@ Window {
             toast(detail || "Couldn't save the edit")
             return
         }
+        if (pendingSaveAs !== "") {
+            Engine.saveAs(captureId, pendingSaveAs)
+            pendingSaveAs = ""
+            toast("Saved")
+            close_()
+            return
+        }
         const what = ran || action
         if (what === "copy" && !ran) Engine.copy(captureId)
         if (what === "save" && !ran) Engine.save(captureId)
@@ -248,6 +255,22 @@ Window {
             close_()
         } else if (action === "close") {
             close_()
+        }
+    }
+    // Save As (ANN-15): pick a path, write the edits back, then save there
+    property int saveAsToken: 0
+    property string pendingSaveAs: ""
+    function saveAsDialog() {
+        const sug = JSON.parse(Engine.saveAsSuggestion(captureId) || "{}")
+        saveAsToken = controller.nextToken()
+        Platform.saveFileDialog(saveAsToken, "Save As", sug.name || "", sug.folder || "")
+    }
+    Connections {
+        target: Platform
+        function onFileChosen(token, path) {
+            if (token !== ed.saveAsToken || path === "") return
+            ed.pendingSaveAs = path
+            ed.flush("")
         }
     }
     function toast(t) { controller.toast.show(t, capture.output || Qt.application.screens[0].name) }
@@ -319,7 +342,7 @@ Window {
                 switch (e.key) {
                 case Qt.Key_Z: shift ? ed.redo() : ed.undo(); break
                 case Qt.Key_Y: ed.redo(); break
-                case Qt.Key_S: ed.flush("save"); break
+                case Qt.Key_S: shift ? ed.saveAsDialog() : ed.flush("save"); break
                 case Qt.Key_C: ed.flush("copy"); break
                 case Qt.Key_0: ed.zoomFit(); break
                 case Qt.Key_1: ed.zoomTo(1); break
@@ -450,7 +473,9 @@ Window {
                 Text { id: saveLabel; anchors.centerIn: parent; text: "Save"; color: Theme.onAccent
                        font.family: Theme.fontUi; font.pixelSize: 13; font.weight: Font.DemiBold }
                 MouseArea { id: saveMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                            onClicked: ed.flush("save") }
+                            acceptedButtons: Qt.LeftButton | Qt.RightButton
+                            // right-click: Save As…
+                            onClicked: (m) => m.button === Qt.RightButton ? ed.saveAsDialog() : ed.flush("save") }
             }
         }
     }
@@ -1034,6 +1059,8 @@ Window {
         case "flush": flush(a[1] || ""); break
         case "keys": Platform.sendKeys(ed, a.slice(1).join(" ")); break
         case "close": closeEditor(); break
+        case "save-as": saveAsDialog(); break
+        case "cancel-dialogs": Platform.closeFileDialogs(); break
         case "state":
             Engine.log("editor_state", JSON.stringify({
                 id: captureId, items: doc.items, crop: doc.crop, selected: selected, tool: tool, zoom: zoom, dpr: dpr,
