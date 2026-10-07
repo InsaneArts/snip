@@ -298,6 +298,22 @@ def first_overlay_is_warm(s, env):
 
 
 @case
+def first_card_is_warm(s, env):
+    """The Quick Access window also maps once at start: the first card starts moving about
+    as soon as later ones do (it took ~90 ms without that)."""
+    assert not s.traces("qao_motion"), "run this case before any card"
+    png = s.tmp / "first-card.png"
+    make_text_png(png, ["first card"])
+    t0 = time.monotonic_ns()                        # the same clock as the traces
+    rec = open_card(s, png)
+    assert wait_for(lambda: [e for e in s.traces("qao_motion") if e["id"] == rec["id"]], 3)
+    ms = ([e for e in s.traces("qao_motion") if e["id"] == rec["id"]][0]["t_ns"] - t0) / 1e6
+    print(f"      first card moving after {ms:.1f} ms")
+    s.cli("close-all"); time.sleep(0.6)
+    assert ms < 60, ms
+
+
+@case
 def area_exact_size(s, env):
     """500x300 logical at 1.25 -> exactly 625x375 physical, file matches."""
     r, code = area(s, 100, 100, 600, 400)
