@@ -386,12 +386,12 @@ def area_exact_size(s, env):
 
 @case
 def modifiers(s, env):
-    """Shift = square, Alt = from centre, Space held = move (SEL-07)."""
-    r, _ = area(s, 100, 100, 300, 200, during=lambda: s.key("Shift", "keydown"))
-    s.key("Shift", "keyup")
-    assert (r["result"]["width"], r["result"]["height"]) == (250, 250), r
-    r, _ = area(s, 400, 400, 450, 430, during=lambda: s.key("Alt", "keydown"))
+    """CleanShot's keys (SEL-07, D32): Alt = square, Ctrl = from centre, Space held = move."""
+    r, _ = area(s, 100, 100, 300, 200, during=lambda: s.key("Alt", "keydown"))
     s.key("Alt", "keyup")
+    assert (r["result"]["width"], r["result"]["height"]) == (250, 250), r
+    r, _ = area(s, 400, 400, 450, 430, during=lambda: s.key("Control", "keydown"))
+    s.key("Control", "keyup")
     assert (r["result"]["width"], r["result"]["height"]) == (125, 75), r
     p = s.bg("area")
     time.sleep(0.5)
@@ -1748,6 +1748,38 @@ def background_auto_apply(s, env):
         if wait_for(lambda: editor_window(), 5):
             s.debug("ui", "editor", "bg-auto", "Green")          # off again for the cases after
             s.debug("ui", "editor", "bg-preset-delete", "Green")
+            close_editor(s)
+
+
+@case
+def shift_skips_preset(s, env):
+    """BG-03, D32: Shift held as the selection ends skips the auto-applied preset (and
+    doesn't square the selection any more); the next capture gets it again."""
+    from PIL import Image
+    png = s.tmp / "skip.png"
+    noise_png(png, 200, 120, seed=1)
+    s.json("edit", str(png))
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3), "the editor opens"
+    s.debug("ui", "editor", "bg", '{"kind":"color","value":"#10a050","padding":40,"inset":0,"radius":0,"shadow":0,"ratio":0,"align":"c"}')
+    s.debug("ui", "editor", "bg-preset-save", "Skip")
+    s.debug("ui", "editor", "bg-auto", "Skip")
+    close_editor(s)
+    try:
+        r, code = area(s, 100, 100, 300, 160, during=lambda: s.key("Shift", "keydown"))
+        s.key("Shift", "keyup")
+        assert code == 0 and r["ok"], r
+        rec = r["result"]
+        assert (rec["width"], rec["height"]) == (250, 75), ("Shift no longer squares", rec)
+        assert wait_for(lambda: rec["id"] in s.json("status")["result"]["cards"], 3), "its card"
+        assert not [e for e in s.traces("auto_background") if e["id"] == rec["id"]], "Shift skipped the preset"
+        assert Image.open(rec["source"]).size == (250, 75), "the plain shot"
+        r, _ = area(s, 100, 100, 300, 160)
+        assert wait_for(lambda: [e for e in s.traces("edited") if e["id"] == r["result"]["id"]], 5), "without Shift: the preset again"
+    finally:
+        s.json("edit", str(png))
+        if wait_for(lambda: editor_window(), 5):
+            s.debug("ui", "editor", "bg-auto", "Skip")
+            s.debug("ui", "editor", "bg-preset-delete", "Skip")
             close_editor(s)
 
 
