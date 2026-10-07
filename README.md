@@ -43,6 +43,7 @@ scripts/dev.sh stop     # stop it and restore Hyprland's own bindings
 | SUPER+SHIFT+3 | Capture fullscreen |
 | SUPER+SHIFT+4 | Capture area (hold Space for a window) |
 | SUPER+SHIFT+5 | All-In-One (area for now) |
+| SUPER+SHIFT+6 | Edit the image on the clipboard |
 
 The `snip` CLI talks to the running daemon: `snip area`, `snip text`, `snip edit FILE`, `snip copy`, `snip save`, `snip list`, `snip search TEXT`, `snip --help`.
 
