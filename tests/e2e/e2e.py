@@ -1617,6 +1617,38 @@ def editor_take_screenshot(s, env):
 
 
 @case
+def editor_drop_zones(s, env):
+    """ANN-12 combine images: a file dropped near an edge joins the canvas on that side,
+    scaled to its width (or height), and the canvas grows (one undo step); dropped in the
+    middle, it lands on top."""
+    from PIL import Image
+    base, other = s.tmp / "base.png", s.tmp / "other.png"
+    noise_png(base, 400, 300, seed=1)
+    Image.new("RGB", (200, 100), (200, 30, 160)).save(other)
+    rec = s.json("edit", str(base))["result"]
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    s.debug("ui", "editor", "drop", str(other), 150, 280)       # near the bottom edge
+    st = editor_state(s)
+    img = st["items"][-1]
+    assert (img["kind"], img["x"], img["y"], img["w"], img["h"]) == ("image", 0, 300, 400, 200), img
+    assert st["crop"] == {"x": 0, "y": 0, "w": 400, "h": 500}, st["crop"]
+    editor_flush(s)
+    out = Image.open(rec["source"]).convert("RGB")
+    assert out.size == (400, 500) and out.crop((0, 0, 400, 300)).tobytes() == Image.open(base).convert("RGB").tobytes()
+    assert out.getpixel((200, 400)) == (200, 30, 160), "the dropped image fills the new part"
+    s.debug("ui", "editor", "drop", str(other), 395, 150)       # the right edge: as tall as the canvas (500)
+    img = editor_state(s)["items"][-1]
+    assert (img["x"], img["y"], img["w"], img["h"]) == (400, 0, 1000, 500), img
+    assert editor_state(s)["crop"] == {"x": 0, "y": 0, "w": 1400, "h": 500}
+    s.debug("ui", "editor", "undo")
+    assert editor_state(s)["crop"] == {"x": 0, "y": 0, "w": 400, "h": 500}, "one undo takes back the image and the growth"
+    s.debug("ui", "editor", "drop", str(other), 200, 250)       # the middle: on top, the canvas stays
+    st = editor_state(s)
+    assert st["crop"] == {"x": 0, "y": 0, "w": 400, "h": 500} and st["items"][-1]["w"] <= 200, st["items"][-1]
+    close_editor(s)
+
+
+@case
 def editor_add_image(s, env):
     """ANN-12: add an image from a file and from the clipboard; it keeps its shape when
     resized from a corner, and is drawn into the export."""
