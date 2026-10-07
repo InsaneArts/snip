@@ -120,6 +120,11 @@ pub mod qobject {
         #[qinvokable]
         fn wallpapers(self: &Engine) -> QString;
 
+        /// Omarchy's emoji list for the Text tool's picker (ANN-05): a JSON
+        /// array of {e: emoji, k: keywords}, or "[]" without Omarchy
+        #[qinvokable]
+        fn emojis(self: &Engine) -> QString;
+
         /// The colour of pixel (x, y) of the image at `path`: "#rrggbb"
         #[qinvokable]
         fn pixel_color(self: &Engine, path: QString, x: i32, y: i32) -> QString;
@@ -485,6 +490,12 @@ impl qobject::Engine {
 
     fn wallpapers(&self) -> QString {
         QString::from(serde_json::to_string(&snip_core::theme::wallpapers(24)).unwrap_or_else(|_| "[]".into()).as_str())
+    }
+
+    fn emojis(&self) -> QString {
+        let root = std::env::var("OMARCHY_PATH").unwrap_or_else(|_| "/usr/share/omarchy".into());
+        let j = std::fs::read_to_string(format!("{root}/shell/plugins/emojis/emojis.json")).unwrap_or_else(|_| "[]".into());
+        QString::from(j.as_str())
     }
 
     fn edge_color(&self, path: QString) -> QString {
