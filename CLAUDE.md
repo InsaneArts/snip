@@ -65,6 +65,10 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 - **Simplicity** is the mindset for every change: the smallest diff that meets the goal, deep modules behind small interfaces.
 - **Commit** every fix and every feature as its own small, atomic commit (one logical change; it builds and its tests pass).
+- **Tests**:
+  - While developing, run the unit tests, plus only the e2e case you are checking (`--only CASE`).
+  - Run the full `tests/e2e/e2e.py` once: when a feature is finished, and before merging.
+  - Never run it in a loop or "just in case". Each run starts a nested Hyprland, Chromium and OCR, and it keeps the user's GPU and fans busy.
 - **Pull requests**: write every PR with the `/pr` skill. Split big tasks into several PRs, each reviewable and shippable on its own; one milestone is many PRs.
 - **Releases**: every merge to `main` publishes a GitHub release (`.github/workflows/release.yml` runs `scripts/release.sh`): PR titles become the release notes, so write them for users.
 - **Bugs**: use `/diagnosing-bugs` and get a red test or reproduction first. **New behaviour with tests**: `/tdd`.
