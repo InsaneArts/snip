@@ -33,6 +33,8 @@ pub type Waiter = mpsc::Sender<Response>;
 
 const SHUTTER: &[u8] = include_bytes!("../../../app/sounds/shutter.wav");
 const CLOSED_KEEP: usize = 50;
+/// How much desktop a "With the desktop" window capture keeps around the window (logical px)
+const WINDOW_DESKTOP_MARGIN: f64 = 48.0;
 
 #[derive(Default)]
 struct Snapshot {
@@ -629,12 +631,24 @@ impl Inner {
                 None => reply(s.waiter, Response::err("window not found")),
             };
         }
+        // With the desktop: the window as it is on screen and what's around it
+        if self.cfg().capture.window_desktop != invert {
+            if let Some(f) = frames::get(&output) {
+                frames::clear();
+                self.play("shutter");
+                let (m, (uw, uh)) = ((WINDOW_DESKTOP_MARGIN * f.scale).round() as i32, f.upright_size());
+                let around = Rect::new(rect.x - m, rect.y - m, rect.w + 2 * m, rect.h + 2 * m).intersect(&Rect::new(0, 0, uw, uh));
+                let me = self.clone();
+                std::thread::spawn(move || me.finish_from_frame(&f, around, "window", &output, s.waiter));
+                return;
+            }
+        }
         let Some(addr) = u64::from_str_radix(address.trim_start_matches("0x"), 16).ok() else { return };
         let client = s.clients.iter().find(|c| c.address == addr).cloned();
         self.play("shutter");
         let fallback = frames::get(&output);
         frames::clear();
-        let shadow = self.cfg().capture.window_shadow != invert;
+        let shadow = self.cfg().capture.window_shadow != (invert && !self.cfg().capture.window_desktop);
         match client {
             Some(client) if self.features.lock().unwrap().toplevel_capture => {
                 let req = self.next();
