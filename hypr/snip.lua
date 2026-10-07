@@ -39,10 +39,11 @@ end
 -- in the first frames of a recording). snipd re-applies this at runtime too.
 hl.layer_rule({ match = { namespace = "^snip-" }, no_anim = true, animation = "none" })
 
--- The editor is a floating window, centred, sized to the image.
--- (Hyprland 0.56: a rule matching class and title together, or a title
+-- The editor is a floating window, centred, sized to the image, above the
+-- tiled windows. (Hyprland 0.56: patterns match the whole title, "Snip
+-- Editor — <name>"; a rule matching class and title together, or a title
 -- pattern with non-ASCII characters, never matches.)
-hl.window_rule({ match = { title = "^Snip Editor" }, float = true, center = true, opacity = "1 1" })
+hl.window_rule({ match = { title = "^Snip Editor.*" }, float = true, center = true, opacity = "1 1", tag = "+snip-editor" })
 
 -- Pins float above every window, on every workspace of their monitor, and
 -- draw their own corners and shadow. (Rule patterns match the whole title.)
