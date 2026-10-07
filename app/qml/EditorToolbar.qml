@@ -26,8 +26,12 @@ Rectangle {
         anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
         spacing: 8
         Capsule {
-            ToolButton { icon: "crop"; tip: "Crop (K)"; selected: bar.ed.tool === "crop"
+            ToolButton { icon: "crop"; tip: "Crop & Resize (K)"; selected: bar.ed.tool === "crop"
                          onClicked: bar.ed.tool === "crop" ? bar.ed.cropDone() : bar.ed.setTool("crop") }
+        }
+        Capsule {
+            ToolButton { icon: "image"; tip: "Background (B)"; selected: bar.ed.tool === "background"
+                         onClicked: bar.ed.setTool(bar.ed.tool === "background" ? "select" : "background") }
         }
         Capsule {
             Tool { name: "select"; icon: "pointer"; tip: "Select (V)" }
@@ -72,7 +76,7 @@ Rectangle {
             }
         }
         Capsule {
-            visible: bar.ed.tool !== "crop" && bar.ed.sizeKind !== "redact" && bar.ed.sizeKind !== "spotlight"
+            visible: bar.ed.tool !== "crop" && bar.ed.tool !== "background" && bar.ed.sizeKind !== "redact" && bar.ed.sizeKind !== "spotlight"
             ToolButton {
                 id: swatch
                 tip: "Colour"
@@ -88,7 +92,7 @@ Rectangle {
             }
         }
         Capsule {
-            visible: bar.ed.tool !== "crop" && (bar.ed.sizeKind === "redact" || !!Ed.sizes[bar.ed.sizeKind])
+            visible: bar.ed.tool !== "crop" && bar.ed.tool !== "background" && (bar.ed.sizeKind === "redact" || !!Ed.sizes[bar.ed.sizeKind])
             ToolButton {
                 id: styleButton
                 visible: bar.ed.sizeKind === "redact"

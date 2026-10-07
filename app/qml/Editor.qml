@@ -200,14 +200,30 @@ Window {
     // ---------------------------------------------------------------- view
     readonly property var full: ({ x: 0, y: 0, w: imgW, h: imgH })
     // what is exported (the crop) and what is on screen (all of it while cropping)
-    readonly property var exportRect: doc.crop || full
+    // the image or its crop, and around it the Background tool's backdrop (BG-01…06)
+    readonly property var innerRect: doc.crop || full
+    property var bgPreview: null              // a slider being dragged: shown, not yet in the document
+    readonly property var bgLive: doc.bg ? Object.assign({}, doc.bg, bgPreview || {}) : null
+    readonly property bool framed: !!bgLive && tool !== "crop"
+    readonly property var exportRect: bgLive ? Ed.bgRect(bgLive, innerRect) : innerRect
+    function setBg(patch) {
+        bgPreview = null
+        const next = Object.assign({}, doc)
+        if (patch === null) delete next.bg
+        else next.bg = Object.assign({}, doc.bg || Ed.defaultBackground(unit), patch)
+        if (JSON.stringify(next) !== JSON.stringify(doc)) commit(next)
+    }
+    function previewBg(patch) {
+        if (!doc.bg) setBg({})
+        bgPreview = Object.assign({}, bgPreview || {}, patch)
+    }
     // cropping shows room around the image, to crop outward into
     readonly property var cropView: {
         const c = doc.crop || full, m = Math.max(imgW, imgH) * 0.12
         const x0 = Math.min(0, c.x) - m, y0 = Math.min(0, c.y) - m
         return { x: x0, y: y0, w: Math.max(imgW, c.x + c.w) + m - x0, h: Math.max(imgH, c.y + c.h) + m - y0 }
     }
-    readonly property var shown: tool === "crop" ? cropView : exportRect
+    readonly property var shown: tool === "crop" ? cropView : framed ? exportRect : innerRect
     property var cropDraft: null
     readonly property var cropShown: cropDraft || doc.crop || full
     // an outward crop grows the canvas, up to three times the image (ANN-11)
@@ -469,6 +485,7 @@ Window {
             case Qt.Key_H: ed.setTool("spotlight"); break
             case Qt.Key_D: ed.setTool("pencil"); break
             case Qt.Key_M: ed.setTool("highlight"); break
+            case Qt.Key_B: ed.setTool("background"); break
             case Qt.Key_T: ed.setTool("text"); break
             case Qt.Key_C: ed.setTool("counter"); break
             case Qt.Key_P: ed.setTool("redact"); break
@@ -515,7 +532,7 @@ Window {
     // ---------------------------------------------------------------- canvas
     Item {
         id: view
-        anchors { left: parent.left; right: parent.right; top: toolbar.bottom; bottom: bottomBar.top }
+        anchors { left: parent.left; right: bgPanel.visible ? bgPanel.left : parent.right; top: toolbar.bottom; bottom: bottomBar.top }
         clip: true
 
         RectangularShadow {
@@ -540,20 +557,53 @@ Window {
                 Item {
                     id: content
                     x: -ed.exportRect.x; y: -ed.exportRect.y
-                    Rectangle {
-                        // the grown canvas (outward crop)
-                        visible: !!(ed.doc.fill || (ed.tool === "crop" && ed.edgeFill))
-                        x: -ed.imgW; y: -ed.imgH; width: 3 * ed.imgW; height: 3 * ed.imgH
-                        color: ed.doc.fill || ed.edgeFill || "white"
+                    BackgroundLayer {
+                        visible: ed.framed
+                        bg: ed.bgLive
+                        rect: ed.exportRect
+                        inner: ed.innerRect
+                        imagePath: ed.basePath
                     }
-                    Image {
-                        id: base
-                        width: ed.imgW; height: ed.imgH
-                        source: ed.basePath ? "file://" + ed.basePath : ""
-                        cache: false
-                        smooth: true
-                        mipmap: true
-                        fillMode: Image.Stretch
+                    // the image (and a grown canvas), cut to rounded corners on a background;
+                    // one texel per image px, so its pixels stay exact
+                    Item {
+                        id: imageFrame
+                        readonly property var f: ({ x: Math.min(0, ed.innerRect.x), y: Math.min(0, ed.innerRect.y),
+                                                    w: Math.max(ed.imgW, ed.innerRect.x + ed.innerRect.w) - Math.min(0, ed.innerRect.x),
+                                                    h: Math.max(ed.imgH, ed.innerRect.y + ed.innerRect.h) - Math.min(0, ed.innerRect.y) })
+                        x: f.x; y: f.y; width: f.w; height: f.h
+                        layer.enabled: ed.framed
+                        layer.textureSize: Qt.size(Math.ceil(f.w), Math.ceil(f.h))
+                        layer.effect: MultiEffect { maskEnabled: true; maskSource: imageMask; maskThresholdMin: 0.5; maskSpreadAtMin: 1.0 }
+                        Rectangle {
+                            // the grown canvas (outward crop)
+                            visible: !!(ed.doc.fill || (ed.tool === "crop" && ed.edgeFill))
+                            x: -ed.imgW - imageFrame.f.x; y: -ed.imgH - imageFrame.f.y; width: 3 * ed.imgW; height: 3 * ed.imgH
+                            color: ed.doc.fill || ed.edgeFill || "white"
+                        }
+                        Image {
+                            id: base
+                            x: -imageFrame.f.x; y: -imageFrame.f.y
+                            width: ed.imgW; height: ed.imgH
+                            source: ed.basePath ? "file://" + ed.basePath : ""
+                            cache: false
+                            smooth: true
+                            mipmap: true
+                            fillMode: Image.Stretch
+                        }
+                    }
+                    Item {
+                        id: imageMask
+                        visible: false
+                        x: imageFrame.x; y: imageFrame.y; width: imageFrame.width; height: imageFrame.height
+                        layer.enabled: ed.framed
+                        layer.textureSize: Qt.size(Math.ceil(width), Math.ceil(height))
+                        Rectangle {
+                            x: ed.innerRect.x - imageFrame.f.x; y: ed.innerRect.y - imageFrame.f.y
+                            width: ed.innerRect.w; height: ed.innerRect.h
+                            radius: ed.bgLive ? ed.bgLive.radius : 0
+                            color: "white"
+                        }
                     }
                     SpotlightLayer {
                         width: ed.imgW; height: ed.imgH
@@ -990,6 +1040,15 @@ Window {
                 }
             }
         }
+    }
+
+    BackgroundPanel {
+        id: bgPanel
+        ed: ed
+        visible: ed.tool === "background"
+        z: 2
+        width: 300
+        anchors { right: parent.right; top: toolbar.bottom; bottom: bottomBar.top }
     }
 
     // ---------------------------------------------------------------- bottom bar
@@ -1430,6 +1489,7 @@ Window {
         case "crop": a[1] === "reset" ? setCrop(full) : setCrop({ x: n(1), y: n(2), w: n(3), h: n(4) }); break
         case "crop-ratio": setCropRatio(n(1)); break
         case "transform": transformImage(a[1], n(2), n(3)); break
+        case "bg": setBg(a[1] === "none" ? null : JSON.parse(a.slice(1).join(" "))); break
         case "color": setColor(a[1]); break
         case "tool": setTool(a[1]); break
         case "undo": undo(); break
@@ -1450,7 +1510,7 @@ Window {
                 ready: base.status === Image.Ready, editingText: editingText, typed: textEdit.text, active: ed.active,
                 selectionBox: { x: selectionBox.x, y: selectionBox.y, w: selectionBox.width, h: selectionBox.height },
                 words: words ? words.length : -1, fill: doc.fill || "", shownX: shown.x, shownY: shown.y,
-                imgW: imgW, imgH: imgH, base: doc.base || "", ink: ink, savedColors: savedColors, picking: picking,
+                imgW: imgW, imgH: imgH, base: doc.base || "", bg: doc.bg || null, exportRect: exportRect, ink: ink, savedColors: savedColors, picking: picking,
                 counterLabels: doc.items.map((o, i) => o.kind === "counter" ? Ed.counterLabel(doc, Ed.counterNumber(doc.items, i), o.style) : null).filter(l => l !== null)
             }).slice(1, -1))
             break
