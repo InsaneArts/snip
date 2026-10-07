@@ -150,6 +150,10 @@ QtObject {
         function onDebugCommand(cmd) { root.debug(cmd) }
         function onEditorOpen(json) { root.openEditor(JSON.parse(json)) }
         function onPinOpen(json) { root.openPin(JSON.parse(json)) }
+        function onBackgroundAuto(json) {
+            const r = root.renderComponent.createObject(null, { capture: JSON.parse(json), token: root.nextToken() })
+            r.done.connect(() => r.destroy())
+        }
         function onPinsCommand(cmd) {
             if (cmd === "close") root.closePins()
             else if (cmd === "unlock") for (const p of root.pins) p.unlock()
@@ -242,6 +246,7 @@ QtObject {
     // Pins (PIN-01): one window each, created directly like editors
     property var pins: []
     property Component pinComponent: Component { Pin {} }
+    property Component renderComponent: Component { BackgroundRender {} }
     function openPin(capture) {
         const p = pinComponent.createObject(null, { capture: capture, controller: root, number: nextToken() })
         pins = pins.concat([p])
