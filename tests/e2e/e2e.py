@@ -1285,6 +1285,12 @@ def editor_colors(s, env):
     s.json("edit", str(png))
     assert wait_for(lambda: editor_window(), 5)
     assert "#12a05a" in editor_state(s)["savedColors"], "My Colors survive into the next editor"
+    s.debug("ui", "editor", "save-color", "#112233")
+    s.debug("ui", "editor", "save-color", "#445566")             # newest first: 445566, 112233, 12a05a
+    s.debug("ui", "editor", "move-color", 0, 2)
+    assert editor_state(s)["savedColors"][:3] == ["#112233", "#12a05a", "#445566"], editor_state(s)["savedColors"]
+    s.debug("ui", "editor", "remove-color", 1)
+    assert "#12a05a" not in editor_state(s)["savedColors"], "removed"
     close_editor(s)
 
 
