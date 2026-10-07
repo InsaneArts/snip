@@ -1900,6 +1900,27 @@ def editor_drop_zones(s, env):
 
 
 @case
+def background_tiles_have_no_frame(s, env):
+    """The Background panel's thumbnails run to their rounded edges: no white frame around
+    a gradient (one showed before, 2 px wide)."""
+    from PIL import Image
+    png = s.tmp / "tiles.png"
+    noise_png(png, 300, 1000, seed=8)
+    s.json("edit", str(png))
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3), "the editor opens"
+    s.debug("ui", "editor", "tool", "background")
+    assert wait_for(lambda: editor_state(s)["firstTile"], 2), "the panel shows"
+    time.sleep(0.3)
+    w, mon, t, scale = editor_window(), env.monitor(), editor_state(s)["firstTile"], env.monitor()["scale"]
+    shot = s.tmp / "tiles-shot.png"
+    sh("grim", "-o", OUT, str(shot))
+    x, y = round((w["at"][0] - mon["x"] + t["x"]) * scale), round((w["at"][1] - mon["y"] + t["y"] + 12) * scale)
+    px = Image.open(shot).convert("RGB").getpixel((x + 1, y))
+    assert min(px) < 230, ("a white frame at the tile's edge", px)
+    close_editor(s)
+
+
+@case
 def editor_add_image(s, env):
     """ANN-12: add an image from a file and from the clipboard; it keeps its shape when
     resized from a corner, and is drawn into the export."""
