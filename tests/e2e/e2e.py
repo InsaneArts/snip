@@ -1282,6 +1282,34 @@ def editor_rotate_flip_resize(s, env):
 
 
 @case
+def editor_background(s, env):
+    """BG-01…06: the Background tool wraps the image: padding grows the export, the image
+    stays exact inside, corners round it, a ratio squares it, None takes it away."""
+    from PIL import Image
+    png = s.tmp / "bg.png"
+    noise_png(png, 200, 120, seed=5)
+    orig = Image.open(png).convert("RGB")
+    rec = s.json("edit", str(png))["result"]
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    s.debug("ui", "editor", "bg", '{"kind":"color","value":"#10a050","padding":40,"inset":0,"radius":0,"shadow":0,"ratio":0,"align":"c"}')
+    editor_flush(s)
+    out = Image.open(rec["source"]).convert("RGB")
+    assert out.size == (280, 200), out.size
+    assert out.getpixel((3, 3)) == (16, 160, 80), out.getpixel((3, 3))
+    assert out.crop((40, 40, 240, 160)).tobytes() == orig.tobytes(), "the image is exact inside its background"
+    s.debug("ui", "editor", "bg", '{"radius":24}')
+    editor_flush(s)
+    assert Image.open(rec["source"]).convert("RGB").getpixel((41, 41)) == (16, 160, 80), "rounded corners show the background"
+    s.debug("ui", "editor", "bg", '{"ratio":1,"radius":0}')
+    editor_flush(s)
+    assert Image.open(rec["source"]).size == (280, 280)
+    s.debug("ui", "editor", "bg", "none")
+    editor_flush(s)
+    assert Image.open(rec["source"]).convert("RGB").tobytes() == orig.tobytes(), "no background: the image again"
+    close_editor(s)
+
+
+@case
 def editor_from_clipboard(s, env):
     """ANN-19: snip edit --clipboard opens the clipboard's image (from another app), or a
     copied PNG file, in the editor; text alone is a clean error."""
