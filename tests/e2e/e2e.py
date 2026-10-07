@@ -535,6 +535,46 @@ def qr_on_card(s, env):
 
 
 @case
+def self_timer(s, env):
+    """CAP-06: --delay counts down on screen, then captures live; the countdown is
+    never in the capture; the capture hotkey cancels a running countdown."""
+    from PIL import Image, ImageChops
+    s.cli("close-all"); time.sleep(0.3)
+    s.move(5, 5); time.sleep(0.2)
+    ref = s.json("fullscreen", "--monitor", OUT)["result"]
+    s.cli("close-all"); time.sleep(0.4)
+    # fullscreen after 2 s
+    t0 = time.time()
+    p = s.bg("fullscreen", "--monitor", OUT, "--delay", "2")
+    time.sleep(0.6)
+    assert layer_mapped("snip-countdown"), "no countdown on screen"
+    sh("grim", "-o", OUT, str(s.tmp / "countdown.png"))
+    r, code = finish(p, timeout=10)
+    took = time.time() - t0
+    assert code == 0 and 1.9 < took < 3.5, (code, took)
+    a = Image.open(ref["source"]).convert("RGB"); b = Image.open(r["result"]["source"]).convert("RGB")
+    cx, cy = a.width // 2, a.height // 2
+    assert ImageChops.difference(a.crop((cx - 80, cy - 80, cx + 80, cy + 80)), b.crop((cx - 80, cy - 80, cx + 80, cy + 80))).getbbox() is None, "the countdown is in the capture"
+    s.cli("close-all"); time.sleep(0.4)
+    # area: select first, then count down, then capture that area live
+    p = s.bg("area", "--delay", "2")
+    time.sleep(0.5)
+    s.drag(200, 200, 600, 400)
+    time.sleep(0.4)
+    assert layer_mapped("snip-countdown"), "no countdown after the selection"
+    r, code = finish(p, timeout=10)
+    assert code == 0 and (r["result"]["width"], r["result"]["height"]) == (500, 250), r
+    s.cli("close-all"); time.sleep(0.4)
+    # the hotkey cancels a running countdown
+    p = s.bg("fullscreen", "--monitor", OUT, "--delay", "3")
+    time.sleep(0.6)
+    hypr_eval('hl.dispatch(hl.dsp.global("snip-e2e:area"))')
+    r, code = finish(p, timeout=5)
+    assert code == 1 and r["error"] == "cancelled", r
+    assert wait_for(lambda: not layer_mapped("snip-countdown"), 2), "countdown still on screen"
+
+
+@case
 def scales_and_transforms(s, env):
     """Exact physical crops at every scale, and on a rotated output (SEL-11)."""
     for scale, transform in [(1, 0), (1.5, 0), (2, 0), (1.25, 1)]:
