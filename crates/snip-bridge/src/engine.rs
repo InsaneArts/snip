@@ -184,7 +184,7 @@ impl Inner {
     }
 
     /// A short confirmation on the monitor the user is looking at.
-    fn toast(&self, text: impl Into<String>) {
+    pub fn toast(&self, text: impl Into<String>) {
         let t = text.into();
         let out = self.cursor_output().unwrap_or_default();
         self.ui(move |e| e.toast(&QString::from(t.as_str()), &QString::from(out.as_str())));
@@ -896,6 +896,42 @@ impl Inner {
         Ok(path)
     }
 
+    /// Save As (QAO-09, ANN-15): to a path the user picked; also copies, as
+    /// Save does when save_also_copies.
+    pub fn save_as(&self, id: &str, path: &Path) -> Result<PathBuf, String> {
+        let cfg = self.cfg();
+        let path = self.store.save_as(id, path, &cfg).map_err(|e| e.to_string())?;
+        if cfg.general.save_also_copies {
+            let _ = self.copy(id);
+        }
+        trace::trace("saved", &format!("\"id\":\"{id}\",\"path\":{},\"as\":true", js(&path.to_string_lossy())));
+        if let Ok(rec) = self.store.get(id) {
+            let out = self.cards.lock().unwrap().iter().find(|(i, _)| i == id).map(|(_, o)| o.clone()).unwrap_or_default();
+            let j = card_json(&rec, &out).to_string();
+            let id = id.to_string();
+            self.ui(move |e| e.card_update(&QString::from(id.as_str()), &QString::from(j.as_str())));
+        }
+        Ok(path)
+    }
+
+    /// What the Save As dialog starts with: the export folder and the name
+    /// Save would use.
+    pub fn save_as_suggestion(&self, id: &str) -> Value {
+        let cfg = self.cfg();
+        let rec = self.store.get(id).ok();
+        let when = rec.as_ref().and_then(|r| chrono::DateTime::from_timestamp(r.created_at, 0)).map(|t| t.with_timezone(&chrono::Local)).unwrap_or_else(chrono::Local::now);
+        let ctx = naming::NameContext {
+            window_title: rec.as_ref().and_then(|r| r.title.clone()),
+            app_name: rec.as_ref().and_then(|r| r.app.clone()),
+            counter: 0,
+            random: id.chars().rev().take(4).collect(),
+        };
+        let name = format!("{}.{}", naming::render(&cfg.general.file_name, when, &ctx), cfg.export_format().ext());
+        // the dialog opens a folder only if it exists (Save creates it too)
+        let _ = std::fs::create_dir_all(cfg.export_dir());
+        json!({ "name": name, "folder": cfg.export_dir() })
+    }
+
     /// A file to drag out (QAO-04): the saved file, or a nicely named copy in
     /// the drag cache (never the history path, which has no useful name).
     pub fn drag_file(&self, id: &str) -> Result<PathBuf, String> {
@@ -1351,6 +1387,13 @@ impl Inner {
                 let (Some(id), Some(op)) = (a.first(), a.get(1)) else { return Response::err("transform needs an id and an op") };
                 self.transform(id, op);
                 Response::ok(Value::Null)
+            }
+            "save-as" => {
+                let (Some(id), Some(path)) = (a.first(), a.get(1)) else { return Response::err("save-as needs an id and a path") };
+                match self.save_as(id, Path::new(path)) {
+                    Ok(p) => Response::ok(json!(p)),
+                    Err(e) => Response::err(e),
+                }
             }
             "annotate" => {
                 let Some(id) = a.first() else { return Response::err("annotate needs an id") };

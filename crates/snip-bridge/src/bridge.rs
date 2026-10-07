@@ -83,6 +83,14 @@ pub mod qobject {
         #[qinvokable]
         fn save(self: Pin<&mut Engine>, id: QString);
 
+        /// Save As to `path` (from the portal's save dialog)
+        #[qinvokable]
+        fn save_as(self: Pin<&mut Engine>, id: QString, path: QString);
+
+        /// {name, folder} the Save As dialog starts with
+        #[qinvokable]
+        fn save_as_suggestion(self: &Engine, id: QString) -> QString;
+
         #[qinvokable]
         fn card_closed(self: Pin<&mut Engine>, id: QString);
 
@@ -364,6 +372,23 @@ impl qobject::Engine {
                 }
             });
         }
+    }
+
+    fn save_as(self: Pin<&mut Self>, id: QString, path: QString) {
+        if let Some(i) = self.inner() {
+            let (id, path) = (id.to_string(), path.to_string());
+            std::thread::spawn(move || {
+                if let Err(e) = i.save_as(&id, std::path::Path::new(&path)) {
+                    trace::warn("save_failed", &format!("\"msg\":{}", trace::js(&e)));
+                    i.toast(format!("Couldn't save: {e}"));
+                }
+            });
+        }
+    }
+
+    fn save_as_suggestion(&self, id: QString) -> QString {
+        let j = self.inner().map(|i| i.save_as_suggestion(&id.to_string()).to_string()).unwrap_or_default();
+        QString::from(j.as_str())
     }
 
     fn card_closed(self: Pin<&mut Self>, id: QString) {
