@@ -278,6 +278,22 @@ def area(s, x0, y0, x1, y1, during=None):
 
 
 @case
+def first_overlay_is_warm(s, env):
+    """SEL-01: overlays map once, invisibly, at start, so the instance's first session
+    appears about as fast as the rest (it took ~145 ms without that)."""
+    assert not s.traces("overlay_presented"), "run this case first"
+    p = s.bg("area")
+    assert wait_for(lambda: s.traces("overlay_presented"), 3)
+    s.move(400, 300); s.key("Escape")
+    finish(p)
+    begin = s.traces("capture_begin")[0]["t_ns"]
+    shown = s.traces("overlay_presented")[0]["t_ns"]
+    ms = (shown - begin) / 1e6
+    print(f"      first overlay: {ms:.1f} ms")
+    assert ms < 100, ms
+
+
+@case
 def area_exact_size(s, env):
     """500x300 logical at 1.25 -> exactly 625x375 physical, file matches."""
     r, code = area(s, 100, 100, 600, 400)
@@ -431,6 +447,7 @@ def cards_not_in_captures(s, env):
 def latency(s, env):
     """Hotkey -> every overlay presented: p95 < 35 ms warm (SEL-01)."""
     times = []
+    s.move(400, 300)   # Escape goes to the overlay under the pointer
     for i in range(12):
         hypr_eval('hl.dispatch(hl.dsp.global("snip-e2e:area"))')
         time.sleep(0.35)
