@@ -932,6 +932,31 @@ def editor_spotlight(s, env):
 
 
 @case
+def editor_counters(s, env):
+    """ANN-08: counter styles and start number, renumbering on delete, counters on top."""
+    from PIL import Image
+    png = s.tmp / "counters.png"
+    Image.new("RGB", (500, 300), "white").save(png)
+    rec = s.json("edit", str(png))["result"]
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    for x in (60, 160, 260):
+        s.debug("ui", "editor", "counter", x, 80, "roman")
+    s.debug("ui", "editor", "counter-start", 3)
+    assert editor_state(s)["counterLabels"] == ["III", "IV", "V"]
+    s.debug("ui", "editor", "delete", 1)
+    assert editor_state(s)["counterLabels"] == ["III", "IV"], "renumbered after a delete"
+    s.debug("ui", "editor", "counter", 360, 80, "alpha")
+    s.debug("ui", "editor", "counter-start", 1)
+    assert editor_state(s)["counterLabels"] == ["I", "II", "A"], "each style counts on its own"
+    s.debug("ui", "editor", "color", "#0a7cff")                 # recolours the selected (last) counter; then a blue box over the first
+    s.debug("ui", "editor", "frect", 30, 50, 80, 80)
+    editor_flush(s)
+    r, g, b = Image.open(rec["source"]).convert("RGB").getpixel((60, 80 - 13))
+    assert r > 200 and b < 150, ("the first counter (red) stays on top of the blue box drawn later", (r, g, b))
+    close_editor(s)
+
+
+@case
 def editor_keyboard(s, env):
     """ANN-05/14: the Text tool types where you click and Enter commits; tool keys, undo,
     redo and Escape work. Keys are delivered inside snipd (never through the seat)."""
