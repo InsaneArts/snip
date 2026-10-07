@@ -978,6 +978,32 @@ def editor_redaction_is_secure(s, env):
 
 
 @case
+def editor_text_shape(s, env):
+    """D30: Text shape shows word-shaped ink blocks on the paper colour, and the hidden
+    words can't be read (they leave the history search)."""
+    from PIL import Image, ImageDraw, ImageFont
+    try:
+        font = ImageFont.truetype("/usr/share/fonts/noto/NotoSans-Regular.ttf", 26)
+    except OSError:
+        font = ImageFont.load_default(26)
+    im = Image.new("RGB", (520, 160), (250, 250, 252))
+    ImageDraw.Draw(im).text((30, 50), "token hunter2 swordfish", fill=(20, 20, 30), font=font)
+    png = s.tmp / "shape.png"
+    im.save(png)
+    rec = s.json("edit", str(png))["result"]
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    assert wait_for(lambda: s.json("search", "swordfish")["result"], 8), "the words should be searchable first"
+    s.debug("ui", "editor", "redact", 20, 40, 400, 50, "text", 5)
+    editor_flush(s)
+    out = Image.open(rec["source"]).convert("RGB").crop((20, 40, 420, 90))
+    lum = [sum(p) / 3 for p in out.get_flattened_data()]
+    assert min(lum) < 120 and max(lum) > 220, "ink blocks and paper both show"
+    assert out.tobytes() != im.crop((20, 40, 420, 90)).tobytes()
+    assert wait_for(lambda: not s.json("search", "swordfish")["result"], 8), "hidden words are still searchable"
+    close_editor(s)
+
+
+@case
 def editor_crop(s, env):
     """ANN-11: a crop exports exactly that part of the image; resetting brings back all of it."""
     from PIL import Image
