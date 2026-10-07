@@ -223,6 +223,12 @@ pub mod qobject {
         fn tray_anchor(self: &Engine) -> QString;
         #[qinvokable]
         fn run_action(self: &Engine, id: QString);
+        /// The bar menu's Open… and Pin to the Screen…: a chosen image, in
+        /// the editor or pinned (as `snip edit FILE`, `snip pin FILE`)
+        #[qinvokable]
+        fn edit_file(self: &Engine, path: QString);
+        #[qinvokable]
+        fn pin_file(self: &Engine, path: QString);
         /// Scrolling capture: Start Capture, Done, Cancel
         #[qinvokable]
         fn scroll_start(self: Pin<&mut Engine>);
@@ -819,6 +825,22 @@ impl qobject::Engine {
             None => serde_json::Value::Null,
         };
         QString::from(j.to_string().as_str())
+    }
+
+    fn edit_file(&self, path: QString) {
+        if let Some(i) = self.inner() {
+            if let Err(e) = i.edit_file(&path.to_string()) {
+                i.toast(e);
+            }
+        }
+    }
+
+    fn pin_file(&self, path: QString) {
+        if let Some(i) = self.inner() {
+            if let Err(e) = i.pin_file(&path.to_string()) {
+                i.toast(e);
+            }
+        }
     }
 
     fn run_action(&self, id: QString) {
