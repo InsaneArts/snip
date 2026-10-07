@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 import Snip.Core
 import "editor.js" as Ed
 
@@ -48,14 +49,36 @@ Rectangle {
     Rectangle { anchors { left: parent.left; top: parent.top; bottom: parent.bottom } width: 1; color: Theme.hairline }
 
     component Heading: Text { color: Theme.textSecondary; font.family: Theme.fontUi; font.pixelSize: 12; font.weight: Font.DemiBold; topPadding: 6 }
-    component Tile: Rectangle {
+    // a source's thumbnail: the picture to its rounded edges, no frame; the
+    // chosen one gets a ring around it
+    component Tile: Item {
+        id: tile
         property bool current: false
+        default property alias content: face.data
         signal picked()
         // five to a row, filling the panel
-        width: Math.floor((col.width - 4 * 6) / 5); height: Math.round(width * 0.68); radius: 7
-        border.width: current ? 2 : 1
-        border.color: current ? Theme.accent : Theme.hairline
-        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: parent.picked() }
+        width: Math.floor((col.width - 4 * 6) / 5); height: Math.round(width * 0.68)
+        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: tile.picked() }
+        Item {
+            id: face
+            anchors.fill: parent
+            layer.enabled: true
+            layer.effect: MultiEffect { maskEnabled: true; maskSource: tileMask; maskThresholdMin: 0.5; maskSpreadAtMin: 1.0 }
+        }
+        Item {
+            id: tileMask
+            anchors.fill: parent
+            visible: false
+            layer.enabled: true
+            Rectangle { anchors.fill: parent; radius: 7; color: "white" }
+        }
+        Rectangle {
+            visible: tile.current
+            anchors.fill: parent; anchors.margins: -3
+            radius: 10
+            color: "transparent"
+            border.width: 2; border.color: Theme.accent
+        }
     }
 
     Flickable {
@@ -65,7 +88,8 @@ Rectangle {
         clip: true
         Column {
             id: col
-            width: parent.width
+            x: 3                                // room for the chosen tile's ring
+            width: parent.width - 6
             spacing: 10
 
             // presets (BG-03): a dropdown and +, as in CleanShot
@@ -127,11 +151,12 @@ Rectangle {
                 Repeater {
                     model: panel.allGradients ? Ed.gradients.length : 10
                     delegate: Tile {
+                        id: gradTile
                         required property int index
                         current: !!panel.bg && panel.bg.kind === "gradient" && panel.bg.value === index
                         BackgroundLayer {
-                            bg: ({ kind: "gradient", value: parent.index, padding: 0, inset: 0, radius: 0, shadow: 0 })
-                            rect: ({ x: 2, y: 2, w: parent.width - 4, h: parent.height - 4 })
+                            bg: ({ kind: "gradient", value: gradTile.index, padding: 0, inset: 0, radius: 0, shadow: 0 })
+                            rect: ({ x: 0, y: 0, w: parent.width, h: parent.height })
                             inner: ({ x: 0, y: 0, w: 0, h: 0 })
                         }
                         onPicked: panel.ed.setBg({ kind: "gradient", value: index })
@@ -152,8 +177,7 @@ Rectangle {
                             required property string modelData
                             readonly property bool own: panel.ownWalls.indexOf(modelData) >= 0
                             current: !!panel.bg && panel.bg.kind === "wallpaper" && panel.bg.value === modelData
-                            clip: true
-                            Image { anchors.fill: parent; anchors.margins: 2; source: "file://" + parent.modelData; fillMode: Image.PreserveAspectCrop
+                            Image { anchors.fill: parent; source: "file://" + wallTile.modelData; fillMode: Image.PreserveAspectCrop
                                     sourceSize: Qt.size(120, 80); asynchronous: true }
                             onPicked: panel.ed.setBg({ kind: "wallpaper", value: modelData })
                             HoverHandler { id: wallHover }
@@ -169,8 +193,6 @@ Rectangle {
                     }
                     // + : add an image of your own (or drop one here)
                     Tile {
-                        color: "transparent"
-                        border.width: 0
                         Canvas {
                             anchors.fill: parent
                             onPaint: {
@@ -197,19 +219,20 @@ Rectangle {
             Heading { text: "Blurred" }
             Row {
                 spacing: 6
+                // blurred, as they will look
                 Tile {
                     visible: panel.walls.length > 0
                     current: !!panel.bg && panel.bg.kind === "blur-wallpaper"
-                    clip: true
-                    Image { anchors.fill: parent; anchors.margins: 2; source: panel.walls.length ? "file://" + panel.walls[0] : ""
-                            fillMode: Image.PreserveAspectCrop; sourceSize: Qt.size(60, 40); smooth: true }
+                    Image { id: blurWall; anchors.fill: parent; visible: false; source: panel.walls.length ? "file://" + panel.walls[0] : ""
+                            fillMode: Image.PreserveAspectCrop; sourceSize: Qt.size(120, 80); smooth: true }
+                    MultiEffect { anchors.fill: parent; source: blurWall; autoPaddingEnabled: false; blurEnabled: true; blur: 1.0; blurMax: 16 }
                     onPicked: panel.ed.setBg({ kind: "blur-wallpaper", value: panel.walls[0] })
                 }
                 Tile {
                     current: !!panel.bg && panel.bg.kind === "blur-image"
-                    clip: true
-                    Image { anchors.fill: parent; anchors.margins: 2; source: "file://" + panel.ed.basePath
-                            fillMode: Image.PreserveAspectCrop; sourceSize: Qt.size(40, 26); smooth: true }
+                    Image { id: blurShot; anchors.fill: parent; visible: false; source: "file://" + panel.ed.basePath
+                            fillMode: Image.PreserveAspectCrop; sourceSize: Qt.size(120, 80); smooth: true }
+                    MultiEffect { anchors.fill: parent; source: blurShot; autoPaddingEnabled: false; blurEnabled: true; blur: 1.0; blurMax: 16 }
                     onPicked: panel.ed.setBg({ kind: "blur-image", value: "" })
                 }
             }
