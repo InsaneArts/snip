@@ -533,9 +533,22 @@ def lifecycle(s, env):
     s.cli("copy", rec["id"])
     time.sleep(0.2)
     types = sh("wl-paste", "-l", check=False).stdout.split()
-    assert "image/png" in types and "text/plain;charset=utf-8" in types, types
-    path = sh("wl-paste", "-n", "-t", "text/plain;charset=utf-8", check=False).stdout
-    assert path.endswith(".png") and png_size(path) == (1920, 1080), path   # text targets get the file
+    # D38: the image only, so web fields get the screenshot (Zen lists text first)
+    assert types == ["image/png"], ("Copy offers the image only", types)
+    cfg = s.tmp / "cfg/snip/config.toml"
+    before = cfg.read_text()
+    cfg.write_text(before + "\n[clipboard]\ntext_path = true\n")
+    try:
+        time.sleep(0.8)
+        s.cli("copy", rec["id"])
+        time.sleep(0.2)
+        types = sh("wl-paste", "-l", check=False).stdout.split()
+        assert "image/png" in types and "text/plain;charset=utf-8" in types, types
+        path = sh("wl-paste", "-n", "-t", "text/plain;charset=utf-8", check=False).stdout
+        assert path.endswith(".png") and png_size(path) == (1920, 1080), path   # with text_path, text targets get the file
+    finally:
+        cfg.write_text(before)
+        time.sleep(0.8)
     saved = s.json("save", rec["id"])["result"]
     assert Path(saved).exists() and Path(saved).parent == s.export, saved
     assert Path(saved).name.startswith("Snip ") and saved.endswith(".png"), saved
