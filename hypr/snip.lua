@@ -15,7 +15,8 @@
 -- timer-area, timer-fullscreen, edit-clipboard (open the clipboard's image in the editor),
 -- history (browse and search past captures), area-pin (capture an area and pin it
 -- in place), pins-toggle (hide or show every pin),
--- pins-close, pins-unlock (locked pins take no clicks), settings.
+-- pins-close, pins-unlock (locked pins take no clicks), settings, scroll (scrolling
+-- capture; while it runs Snip binds Enter and Esc itself).
 --
 -- Settings › Shortcuts records other keys for any action; snipd binds those
 -- over these defaults (config.toml [shortcuts]), and Restore Defaults calls
