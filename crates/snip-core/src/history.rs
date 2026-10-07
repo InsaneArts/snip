@@ -87,6 +87,14 @@ impl History {
         Ok(())
     }
 
+    /// Forget a capture's recognised text (its pixels changed, say a
+    /// redaction): the indexer reads it again.
+    pub fn reset_index(&self, id: &str) -> rusqlite::Result<()> {
+        self.db.execute("UPDATE captures SET ocr_text = NULL, indexed = 0 WHERE id = ?1", [id])?;
+        self.db.execute("DELETE FROM captures_fts WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
     /// Full-text search: every word must match (as a prefix), best first.
     /// Returns records with a short snippet around the match.
     pub fn search(&self, query: &str, limit: u32) -> rusqlite::Result<Vec<(Record, String)>> {

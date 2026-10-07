@@ -12,6 +12,11 @@ use crate::config::Config;
 use crate::history::{History, Record};
 use crate::naming::{self, NameContext};
 
+/// Next to an edited capture's `source.png` (the flattened result): the image
+/// before any edit, and the editor's objects (ANN-16).
+const ORIGINAL: &str = "original.png";
+const EDIT: &str = "edit.json";
+
 #[derive(Clone, Debug, Default)]
 pub struct CaptureMeta {
     pub kind: String,
@@ -207,6 +212,48 @@ impl Store {
         self.get(id)
     }
 
+    /// What the editor opens (ANN-16): the image to draw on (the original
+    /// when the capture was edited before) and its objects, if any.
+    pub fn edit_state(&self, id: &str) -> Result<(PathBuf, Option<String>), StoreError> {
+        let rec = self.get(id)?;
+        let dir = rec.source.parent().unwrap_or(Path::new(".")).to_path_buf();
+        let original = dir.join(ORIGINAL);
+        if !original.exists() {
+            return Ok((rec.source, None));
+        }
+        Ok((original, std::fs::read_to_string(dir.join(EDIT)).ok()))
+    }
+
+    /// Write an edit back (ANN-15): the original is kept once, next to the
+    /// flattened image, together with the objects that made it. The text
+    /// index is redone, so redacted text can't be found any more.
+    pub fn write_edit(&self, id: &str, png: Vec<u8>, width: u32, height: u32, doc: &str, cfg: &Config) -> Result<Record, StoreError> {
+        let rec = self.get(id)?;
+        let dir = rec.source.parent().unwrap_or(Path::new(".")).to_path_buf();
+        let original = dir.join(ORIGINAL);
+        if !original.exists() {
+            std::fs::copy(&rec.source, &original)?;
+        }
+        atomic_write(&dir.join(EDIT), doc.as_bytes())?;
+        let rec = self.replace_image(id, png, width, height, cfg)?;
+        self.history.lock().unwrap().reset_index(id)?;
+        Ok(rec)
+    }
+
+    /// The capture's pixels changed outside the editor (rotate, flip): its
+    /// current image becomes the one to edit, and old objects are dropped.
+    pub fn flatten(&self, id: &str) -> Result<(), StoreError> {
+        let rec = self.get(id)?;
+        let dir = rec.source.parent().unwrap_or(Path::new(".")).to_path_buf();
+        for f in [ORIGINAL, EDIT] {
+            match std::fs::remove_file(dir.join(f)) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.into()),
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
     pub fn delete(&self, id: &str) -> Result<(), StoreError> {
         self.warm.lock().unwrap().retain(|(i, _)| i != id);
         Ok(self.history.lock().unwrap().delete(id)?)
@@ -253,6 +300,29 @@ mod tests {
         assert_eq!(store.save(&rec.id, &cfg, now).unwrap(), p);
         assert_eq!(store.get(&rec.id).unwrap().saved, Some(p));
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn edits_keep_the_original_and_objects() {
+        let root = tmp();
+        let store = Store::open(&root.join("history"), root.join("counter")).unwrap();
+        let rec = store.ingest(b"before".to_vec(), 4, 3, CaptureMeta::default(), 0).unwrap();
+        assert_eq!(store.edit_state(&rec.id).unwrap(), (rec.source.clone(), None));
+        store.history.lock().unwrap().set_index(&rec.id, "secret token").unwrap();
+
+        let cfg = Config::default();
+        store.write_edit(&rec.id, b"after1".to_vec(), 4, 3, "[1]", &cfg).unwrap();
+        store.write_edit(&rec.id, b"after2".to_vec(), 2, 3, "[2]", &cfg).unwrap();
+        let (img, doc) = store.edit_state(&rec.id).unwrap();
+        assert_eq!(std::fs::read(&img).unwrap(), b"before", "the original is kept from the first edit");
+        assert_eq!(doc.as_deref(), Some("[2]"));
+        assert_eq!(&**store.bytes(&rec.id).unwrap(), b"after2");
+        assert_eq!(store.get(&rec.id).unwrap().width, 2);
+        assert!(store.search("secret", 5).unwrap().is_empty(), "edited pixels are indexed again");
+
+        store.flatten(&rec.id).unwrap();
+        assert_eq!(store.edit_state(&rec.id).unwrap(), (rec.source.clone(), None));
+        assert_eq!(std::fs::read(&rec.source).unwrap(), b"after2");
     }
 
     #[test]
