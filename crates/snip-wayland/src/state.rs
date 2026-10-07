@@ -1,6 +1,7 @@
 use std::collections::HashMap;
-use std::io::Write;
-use std::sync::Arc;
+use std::io::{Read, Write};
+use std::os::fd::AsFd;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use calloop::channel::{self, Channel};
@@ -121,6 +122,8 @@ pub(crate) struct State {
     dc_device: Option<ExtDataControlDeviceV1>,
     clip_source: Option<ExtDataControlSourceV1>,
     clip_offers: Arc<HashMap<String, Arc<Vec<u8>>>>,
+    /// The current selection (anyone's) and the MIME types it offers
+    selection: Option<(ExtDataControlOfferV1, Offered)>,
     gs_mgr: Option<HyprlandGlobalShortcutsManagerV1>,
     shortcuts: Vec<HyprlandGlobalShortcutV1>,
     vptr_mgr: Option<ZwlrVirtualPointerManagerV1>,
@@ -197,6 +200,7 @@ pub(crate) fn run(app_id: String, rx: Channel<Request>, sink: &Sink) -> Result<(
         dc_device,
         clip_source: None,
         clip_offers: Arc::new(HashMap::new()),
+        selection: None,
         gs_mgr,
         shortcuts: Vec::new(),
         vptr_mgr,
@@ -244,6 +248,7 @@ impl State {
         match req {
             Request::Capture { request, source, cursor } => self.start_capture(request, source, cursor),
             Request::SetClipboard { offers } => self.set_clipboard(offers),
+            Request::ReadClipboard { mimes, reply } => self.read_clipboard(mimes, reply),
             Request::RegisterShortcut { id, description } => {
                 if let Some(m) = &self.gs_mgr {
                     let s = m.register_shortcut(id.clone(), self.app_id.clone(), description, String::new(), &self.qh, id);
@@ -475,6 +480,33 @@ impl State {
         self.clip_offers = Arc::new(offers.into_iter().collect());
         let _ = self.conn.flush();
     }
+
+    /// `snip edit --clipboard` (ANN-19). The source writes into a pipe that a
+    /// helper thread drains, so the Wayland thread never waits on another
+    /// client (or on itself, when the selection is Snip's own).
+    fn read_clipboard(&mut self, mimes: Vec<String>, reply: std::sync::mpsc::Sender<Option<(String, Vec<u8>)>>) {
+        let Some((offer, offered)) = &self.selection else {
+            let _ = reply.send(None);
+            return;
+        };
+        let offered = offered.lock().unwrap().clone();
+        let Some(mime) = mimes.into_iter().find(|m| offered.contains(m)) else {
+            let _ = reply.send(None);
+            return;
+        };
+        let Ok((rd, wr)) = rustix::pipe::pipe_with(rustix::pipe::PipeFlags::CLOEXEC) else {
+            let _ = reply.send(None);
+            return;
+        };
+        offer.receive(mime.clone(), wr.as_fd());
+        let _ = self.conn.flush();
+        drop(wr); // the compositor has its own copy; EOF comes when the source closes it
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let ok = std::fs::File::from(rd).read_to_end(&mut buf).is_ok();
+            let _ = reply.send(ok.then_some((mime, buf)));
+        });
+    }
 }
 
 impl Item {
@@ -676,24 +708,38 @@ impl Dispatch<HyprlandToplevelWindowMappingHandleV1, u32> for State {
     }
 }
 
+/// MIME types an offer announced, filled in before its Selection event.
+type Offered = Arc<Mutex<Vec<String>>>;
+
 impl Dispatch<ExtDataControlDeviceV1, ()> for State {
     fn event(st: &mut Self, _: &ExtDataControlDeviceV1, ev: ext_data_control_device_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
-        // We never read other clients' selections; release their offers.
-        if let ext_data_control_device_v1::Event::Selection { id } = ev {
-            if let Some(offer) = id {
-                offer.destroy();
+        // Keep only the current selection's offer (read on request); the
+        // primary selection is never read.
+        match ev {
+            ext_data_control_device_v1::Event::Selection { id } => {
+                if let Some((old, _)) = st.selection.take() {
+                    if Some(&old) != id.as_ref() {
+                        old.destroy();
+                    }
+                }
+                st.selection = id.and_then(|o| o.data::<Offered>().cloned().map(|m| (o, m)));
             }
-            let _ = st;
+            ext_data_control_device_v1::Event::PrimarySelection { id: Some(offer) } => offer.destroy(),
+            _ => {}
         }
     }
 
     event_created_child!(State, ExtDataControlDeviceV1, [
-        ext_data_control_device_v1::EVT_DATA_OFFER_OPCODE => (ExtDataControlOfferV1, ()),
+        ext_data_control_device_v1::EVT_DATA_OFFER_OPCODE => (ExtDataControlOfferV1, Offered::default()),
     ]);
 }
 
-impl Dispatch<ExtDataControlOfferV1, ()> for State {
-    fn event(_: &mut Self, _: &ExtDataControlOfferV1, _: <ExtDataControlOfferV1 as Proxy>::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {}
+impl Dispatch<ExtDataControlOfferV1, Offered> for State {
+    fn event(_: &mut Self, _: &ExtDataControlOfferV1, ev: <ExtDataControlOfferV1 as Proxy>::Event, mimes: &Offered, _: &Connection, _: &QueueHandle<Self>) {
+        if let wayland_protocols::ext::data_control::v1::client::ext_data_control_offer_v1::Event::Offer { mime_type } = ev {
+            mimes.lock().unwrap().push(mime_type);
+        }
+    }
 }
 
 impl Dispatch<ExtDataControlSourceV1, ()> for State {
