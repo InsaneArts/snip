@@ -152,6 +152,31 @@ pub fn current(rounding: u32) -> serde_json::Value {
     v
 }
 
+/// Wallpapers for the editor's Background tool: the one in use, the current
+/// theme's, then the user's own for that theme (at most `limit`).
+pub fn wallpapers(limit: usize) -> Vec<String> {
+    let cur = current_dir();
+    let name = std::fs::read_to_string(cur.join("theme.name")).map(|s| s.trim().to_string()).unwrap_or_default();
+    let home = std::env::var("HOME").unwrap_or_default();
+    let mut out: Vec<String> = vec![];
+    if let Ok(bg) = std::fs::canonicalize(cur.join("background")) {
+        out.push(bg.to_string_lossy().into_owned());
+    }
+    for dir in [cur.join("theme/backgrounds"), PathBuf::from(format!("{home}/.config/omarchy/backgrounds/{name}"))] {
+        let mut v: Vec<PathBuf> = std::fs::read_dir(&dir).map(|d| d.flatten().map(|e| e.path()).collect()).unwrap_or_default();
+        v.sort();
+        for p in v {
+            let ok = matches!(p.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).as_deref(), Some("jpg" | "jpeg" | "png" | "webp"));
+            let p = std::fs::canonicalize(&p).unwrap_or(p).to_string_lossy().into_owned();
+            if ok && !out.contains(&p) {
+                out.push(p);
+            }
+        }
+    }
+    out.truncate(limit);
+    out
+}
+
 /// Directory to watch for theme switches.
 pub fn current_dir() -> PathBuf {
     PathBuf::from(format!("{}/.local/state/omarchy/current", std::env::var("HOME").unwrap_or_default()))
