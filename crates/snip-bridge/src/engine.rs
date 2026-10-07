@@ -295,7 +295,7 @@ impl Inner {
             return;
         }
         match mode {
-            "area" | "window" | "text" | "all-in-one" => {
+            "area" | "window" | "text" | "all-in-one" | "insert" => {
                 // SEL-09: the capture hotkey while the overlay is up cancels it.
                 if let Some(s) = self.session.lock().unwrap().take() {
                     reply(s.waiter, cancelled());
@@ -513,13 +513,13 @@ impl Inner {
     pub fn finish_area(self: &Arc<Self>, output: String, rect: Rect, kind: String) {
         trace::trace("finish_area", &format!("\"output\":{},\"rect\":[{},{},{},{}],\"kind\":{}", js(&output), rect.x, rect.y, rect.w, rect.h, js(&kind)));
         let Some(s) = self.session.lock().unwrap().take() else { return };
-        let kind = if s.mode == "text" { "text".to_string() } else { kind };
+        let kind = if s.mode == "text" || s.mode == "insert" { s.mode.clone() } else { kind };
         if kind == "area" {
             *self.last_area.lock().unwrap() = Some((output.clone(), rect));
             save_last_area(&output, rect);
         }
         // self-timer: the selected area is captured live after the countdown
-        if s.delay > 0 && kind != "text" {
+        if s.delay > 0 && kind != "text" && kind != "insert" {
             let scale = frames::get(&output).map(|f| f.scale).unwrap_or(1.0);
             frames::clear();
             let shown = Rect::new(
@@ -576,6 +576,17 @@ impl Inner {
     /// Window mode click (CAP-05): the window's own buffer, never occluded.
     pub fn finish_window(self: &Arc<Self>, address: &str, output: String, rect: Rect, invert: bool) {
         let Some(s) = self.session.lock().unwrap().take() else { return };
+        if s.mode == "insert" {
+            // for an editor: the window as it is on screen
+            self.play("shutter");
+            let frame = frames::get(&output);
+            frames::clear();
+            let me = self.clone();
+            return match frame {
+                Some(f) => drop(std::thread::spawn(move || me.finish_from_frame(&f, rect, "insert", &output, s.waiter))),
+                None => reply(s.waiter, Response::err("window not found")),
+            };
+        }
         let Some(addr) = u64::from_str_radix(address.trim_start_matches("0x"), 16).ok() else { return };
         let client = s.clients.iter().find(|c| c.address == addr).cloned();
         self.play("shutter");
@@ -606,6 +617,17 @@ impl Inner {
     }
 
     fn finish_from_frame(self: &Arc<Self>, frame: &Frame, rect: Rect, kind: &str, output: &str, waiter: Option<Waiter>) {
+        if kind == "insert" {
+            // for an editor (ANN-12): a file to add, not a capture in history
+            let (data, w, h, alpha) = encode::crop_upright(frame, rect);
+            let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+            let path = snip_core::paths::runtime_dir().join(format!("insert-{ms}.png"));
+            let r = std::fs::write(&path, encode::encode_png(&data, w, h, alpha));
+            return reply(waiter, match r {
+                Ok(()) => Response::ok(json!(path.to_string_lossy())),
+                Err(e) => Response::err(e.to_string()),
+            });
+        }
         if kind == "text" {
             let (data, w, h, alpha) = encode::crop_upright(frame, rect);
             let t0 = trace::now_ns();
@@ -1194,6 +1216,19 @@ impl Inner {
         };
         self.edit(&rec.id);
         Ok(serde_json::to_value(&rec).unwrap_or(Value::Null))
+    }
+
+    /// Add image > Take Screenshot (ANN-12): an area (or window) selection
+    /// whose pixels go into editor `token` as a file, not into history.
+    /// Answered with editor_screenshot (an empty path when cancelled).
+    pub fn editor_screenshot(self: &Arc<Self>, token: i32) {
+        let (tx, rx) = mpsc::channel();
+        self.begin("insert", None, None, Some(tx), 0);
+        let me = self.clone();
+        std::thread::spawn(move || {
+            let path = rx.recv().ok().filter(|r| r.ok).and_then(|r| r.result.as_str().map(String::from)).unwrap_or_default();
+            me.ui(move |e| e.editor_screenshot(token, &QString::from(path.as_str())));
+        });
     }
 
     /// The clipboard's PNG, if it holds one (2 s at most).

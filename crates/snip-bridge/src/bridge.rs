@@ -88,6 +88,11 @@ pub mod qobject {
         #[qinvokable]
         fn request_words(self: &Engine, path: QString);
 
+        /// Add image > Take Screenshot (ANN-12): select an area or window; the
+        /// pixels come back through editor_screenshot, not as a capture
+        #[qinvokable]
+        fn take_screenshot_for_editor(self: &Engine, token: i32);
+
         /// "My Colors" (ANN-13): up to ten, kept across sessions (JSON array)
         #[qinvokable]
         fn saved_colors(self: &Engine) -> QString;
@@ -250,6 +255,10 @@ pub mod qobject {
         /// Word boxes for `path`: [{line, x, y, w, h}] in image px
         #[qsignal]
         fn editor_words(self: Pin<&mut Engine>, path: &QString, words: &QString);
+        /// Add image > Take Screenshot finished for editor `token`: the new
+        /// image's file, or "" when cancelled (ANN-12)
+        #[qsignal]
+        fn editor_screenshot(self: Pin<&mut Engine>, token: i32, path: &QString);
 
         /// An editor_commit finished (ok) or failed (detail says why).
         #[qsignal]
@@ -601,6 +610,12 @@ impl qobject::Engine {
     fn request_words(&self, path: QString) {
         if let Some(i) = self.inner() {
             i.text_words(path.to_string());
+        }
+    }
+
+    fn take_screenshot_for_editor(&self, token: i32) {
+        if let Some(i) = self.inner() {
+            i.editor_screenshot(token);
         }
     }
 
