@@ -202,8 +202,8 @@ pub mod qobject {
         /// An editor render, straight RGBA8888 rows `stride` bytes apart,
         /// kept under `token` for editor_commit.
         fn edit_put(token: u32, data: &[u8], width: u32, height: u32, stride: u32);
-        /// Pixelate (style 0) or Blur (1) tiles for a region of the image at
-        /// `path`, built only from pixels outside it (ANN-06, D26).
+        /// Pixelate (style 0), Blur (1) or Text shape (2) tiles for a region
+        /// of the image at `path` (ANN-06, D26, D30).
         fn redact_tiles(path: &QString, x: i32, y: i32, w: i32, h: i32, style: u32, seed: u32) -> RedactTiles;
         /// Another snipd already answers on ctl.sock.
         fn already_running() -> bool;
@@ -499,7 +499,11 @@ fn edit_put(token: u32, data: &[u8], width: u32, height: u32, stride: u32) {
 }
 
 fn redact_tiles(path: &QString, x: i32, y: i32, w: i32, h: i32, style: u32, seed: u32) -> qobject::RedactTiles {
-    let style = if style == 1 { snip_core::redact::Style::Blur } else { snip_core::redact::Style::Pixelate };
+    let style = match style {
+        1 => snip_core::redact::Style::Blur,
+        2 => snip_core::redact::Style::TextShape,
+        _ => snip_core::redact::Style::Pixelate,
+    };
     match crate::edits::decoded(&path.to_string()) {
         Some(img) => {
             let (rgba, width, height) = snip_core::redact::tiles(&img.data, img.width, img.height, img.bpp, (x as i64, y as i64, w as i64, h as i64), style, seed);
