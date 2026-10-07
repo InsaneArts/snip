@@ -690,7 +690,20 @@ Window {
         commit(Object.assign({}, doc, { items: doc.items.concat([{ kind: "image", x: x, y: y, w: w, h: h, src: file }]), crop: crop,
                                         fill: doc.fill || edgeFill || Engine.edgeColor(basePath) }))
         selected = doc.items.length - 1
+        growWindow()
         return true
+    }
+    // CleanShot's window grows with the canvas (as far as at opening: 86 % of
+    // the screen), staying centred; Hyprland does it, a client can't
+    function growWindow() {
+        const scr = Platform.screen(capture.output || ""), s = capture.scale || 1
+        if (!scr) return
+        const g = scr.availableGeometry
+        const w = Math.round(Math.max(width, Math.min(g.width * 0.86, shown.w / s + 96)))
+        const h = Math.round(Math.max(height, Math.min(g.height * 0.86, shown.h / s + 96 + toolbar.height + bottomBar.height)))
+        if (w === width && h === height) return
+        Engine.resizeWindow(title, w, h)
+        Engine.moveWindow(title, Math.round(g.x + (g.width - w) / 2), Math.round(g.y + (g.height - h) / 2), false)
     }
     function dropFiles(paths, vx, vy) {
         const side = dropSide(vx, vy)
