@@ -152,7 +152,8 @@ QtObject {
         function onPinOpen(json) { root.openPin(JSON.parse(json)) }
         function onPinsCommand(cmd) {
             if (cmd === "close") root.closePins()
-            else if (root.pins.some(p => p.visible)) for (const p of root.pins) p.hide()
+            else if (cmd === "unlock") for (const p of root.pins) p.unlock()
+            else if (root.pins.some(p => p.shown)) for (const p of root.pins) p.hide()
             else for (const p of root.pins) p.show()
         }
     }
