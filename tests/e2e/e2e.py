@@ -1124,6 +1124,40 @@ def editor_keyboard(s, env):
 
 
 @case
+def editor_text_emoji(s, env):
+    """ANN-05: the blue smiley above the text being typed opens an emoji picker (Omarchy's
+    list); searching and Return insert the emoji at the caret, and typing goes on."""
+    from PIL import Image
+    if not Path(os.environ.get("OMARCHY_PATH", "/usr/share/omarchy"), "shell/plugins/emojis/emojis.json").exists():
+        raise Skip("no Omarchy emoji list here")
+    png = s.tmp / "emoji.png"
+    Image.new("RGB", (500, 260), "white").save(png)
+    rec = s.json("edit", str(png))["result"]
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    time.sleep(0.3)
+    w, mon, st = editor_window(), env.monitor(), editor_state(s)
+    win = lambda x, y: (w["at"][0] - mon["x"] + x, w["at"][1] - mon["y"] + y)
+    at = lambda ix, iy: win(st["originX"] + ix * st["k"], st["originY"] + iy * st["k"])
+    s.debug("ui", "editor", "tool", "text")
+    s.move(*at(60, 120)); s.click(); time.sleep(0.2)
+    s.debug("ui", "editor", "keys", "Launch ")
+    b = editor_state(s)["emojiButton"]
+    assert b, "the smiley shows while typing"
+    s.move(*win(b["x"], b["y"])); s.click(); time.sleep(0.3)
+    assert editor_state(s)["menuOpen"], "the smiley opens the picker"
+    s.debug("ui", "editor", "keys", "rocket{Return}")
+    st2 = editor_state(s)
+    assert not st2["menuOpen"] and st2["editingText"] and st2["typed"] == "Launch \U0001F680", st2["typed"]
+    s.debug("ui", "editor", "keys", " day{Return}")
+    assert [i.get("text") for i in editor_state(s)["items"]] == ["Launch \U0001F680 day"]
+    editor_flush(s)
+    px = Image.open(rec["source"]).convert("RGB")
+    colourful = [p for p in px.crop((60, 100, 360, 150)).get_flattened_data() if max(p) - min(p) > 80]
+    assert len(colourful) > 30, "the emoji is drawn in colour"
+    close_editor(s)
+
+
+@case
 def editor_redaction_is_secure(s, env):
     """ANN-06 / D26: Pixelate, Blur and Black out never carry the hidden content. Two
     images that differ only inside the regions export identically, and the hidden text
