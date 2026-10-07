@@ -1065,7 +1065,8 @@ def editor_select_commands(s, env):
 
 @case
 def editor_colors(s, env):
-    """ANN-13: the eyedropper picks a colour from the image; My Colors are kept across editors."""
+    """ANN-13: the eyedropper picks a colour anywhere on screen (the frozen overlay with
+    the magnifier), this canvas included; My Colors are kept across editors."""
     from PIL import Image
     im = Image.new("RGB", (400, 260), "white")
     im.paste((18, 160, 90), (100, 80, 220, 180))
@@ -1075,10 +1076,15 @@ def editor_colors(s, env):
     assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
     w, mon, st = editor_window(), env.monitor(), editor_state(s)
     at = lambda ix, iy: (w["at"][0] - mon["x"] + st["originX"] + ix * st["k"], w["at"][1] - mon["y"] + st["originY"] + iy * st["k"])
+    sessions = len(s.traces("session"))
     s.debug("ui", "editor", "eyedropper")
-    s.move(*at(160, 130)); time.sleep(0.2); s.click(); time.sleep(0.2)
+    assert wait_for(lambda: len(s.traces("session")) > sessions, 3), "the eyedropper's overlay opens"
+    assert s.traces("session")[-1]["json"]["magnifier"], "with the magnifier"
+    time.sleep(0.3)
+    s.move(*at(160, 130)); time.sleep(0.2); s.click()
+    assert wait_for(lambda: not editor_state(s)["picking"], 3)
     st = editor_state(s)
-    assert st["ink"].lower() == "#12a05a" and not st["picking"], st["ink"]
+    assert st["ink"].lower() == "#12a05a", st["ink"]
     assert st["items"] == [], "picking a colour draws nothing"
     s.debug("ui", "editor", "save-color", "#12a05a")
     close_editor(s)
