@@ -10,6 +10,7 @@ Item {
     property bool chevron: false       // opens a dropdown
     property string tip: ""
     property bool tipAbove: false
+    property bool iconFilled: false
     property real leftPad: 0           // room for content drawn before the glyph (the colour dot)
     signal clicked()
 
@@ -30,6 +31,7 @@ Item {
         Icon {
             visible: root.icon !== ""
             name: root.icon
+            filled: root.iconFilled
             size: 16
             stroke: 2
             color: root.selected ? Theme.onAccent : Theme.text

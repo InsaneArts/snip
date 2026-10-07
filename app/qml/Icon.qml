@@ -10,6 +10,7 @@ Item {
     property color color: "white"
     property real size: 16
     property real stroke: 1.75
+    property bool filled: false         // fill the first path (CleanShot's filled-rectangle tool)
     width: size
     height: size
 
@@ -49,6 +50,8 @@ Item {
         "chevron-down": ["M6 9l6 6 6-6"],
         "grip": ["M5 9h14", "M5 15h14"],
         "stroke": ["M5 19 19 5"],
+        "ellipse": ["M12 3.5a8.5 8.5 0 1 0 0 17a8.5 8.5 0 1 0 0-17z"],
+        "line": ["M5 19 19 5"],
         "crop": ["M6 2v14a2 2 0 0 0 2 2h14", "M18 22V8a2 2 0 0 0-2-2H2"],
         "scan-text": ["M3 7V5a2 2 0 0 1 2-2h2", "M17 3h2a2 2 0 0 1 2 2v2", "M21 17v2a2 2 0 0 1-2 2h-2",
                       "M7 21H5a2 2 0 0 1-2-2v-2", "M7 8h8", "M7 12h10", "M7 16h6"]
@@ -60,7 +63,7 @@ Item {
         anchors.fill: parent
         preferredRendererType: Shape.CurveRenderer
         transform: Scale { xScale: root.size / 24; yScale: root.size / 24 }
-        ShapePath { strokeColor: root.color; strokeWidth: root.stroke; fillColor: "transparent"; capStyle: ShapePath.RoundCap; joinStyle: ShapePath.RoundJoin; PathSvg { path: root.current[0] || "" } }
+        ShapePath { strokeColor: root.color; strokeWidth: root.stroke; fillColor: root.filled ? root.color : "transparent"; capStyle: ShapePath.RoundCap; joinStyle: ShapePath.RoundJoin; PathSvg { path: root.current[0] || "" } }
         ShapePath { strokeColor: root.color; strokeWidth: root.stroke; fillColor: "transparent"; capStyle: ShapePath.RoundCap; joinStyle: ShapePath.RoundJoin; PathSvg { path: root.current[1] || "" } }
         ShapePath { strokeColor: root.color; strokeWidth: root.stroke; fillColor: "transparent"; capStyle: ShapePath.RoundCap; joinStyle: ShapePath.RoundJoin; PathSvg { path: root.current[2] || "" } }
         ShapePath { strokeColor: root.color; strokeWidth: root.stroke; fillColor: "transparent"; capStyle: ShapePath.RoundCap; joinStyle: ShapePath.RoundJoin; PathSvg { path: root.current[3] || "" } }

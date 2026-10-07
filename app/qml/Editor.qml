@@ -84,7 +84,8 @@ Window {
     property string tool: "arrow"
     property string ink: Ed.palette[8]     // the colour new objects get
     property var sizeIndex: Object.assign({}, Ed.defaultSize)
-    readonly property string sizeKind: tool === "select" ? (selectedObj ? selectedObj.kind : "arrow") : tool
+    readonly property string sizeKind: tool !== "select" ? tool
+                                     : !selectedObj ? "arrow" : selectedObj.filled ? "frect" : selectedObj.kind
     function sizeFor(kind) { return Math.round(Ed.sizes[kind][sizeIndex[kind]] * unit) }
     property string redactStyle: "pixelate"   // CleanShot's default (D26)
     property string toolBeforeCrop: "arrow"
@@ -369,6 +370,9 @@ Window {
             case Qt.Key_V: ed.setTool("select"); break
             case Qt.Key_A: ed.setTool("arrow"); break
             case Qt.Key_R: ed.setTool("rect"); break
+            case Qt.Key_F: ed.setTool("frect"); break
+            case Qt.Key_E: ed.setTool("ellipse"); break
+            case Qt.Key_L: ed.setTool("line"); break
             case Qt.Key_T: ed.setTool("text"); break
             case Qt.Key_C: ed.setTool("counter"); break
             case Qt.Key_P: ed.setTool("redact"); break
@@ -676,8 +680,14 @@ Window {
                 case "arrow":
                     ed.draft = { kind: "arrow", x1: p.x, y1: p.y, x2: p.x, y2: p.y, cx: p.x, cy: p.y, color: c, size: ed.sizeFor("arrow") }
                     gesture = "draw"; break
-                case "rect":
-                    ed.draft = { kind: "rect", x: p.x, y: p.y, w: 0, h: 0, color: c, size: ed.sizeFor("rect") }
+                case "rect": case "frect":
+                    ed.draft = { kind: "rect", x: p.x, y: p.y, w: 0, h: 0, color: c, size: ed.sizeFor("rect"), filled: ed.tool === "frect" }
+                    gesture = "draw"; break
+                case "ellipse":
+                    ed.draft = { kind: "ellipse", x: p.x, y: p.y, w: 0, h: 0, color: c, size: ed.sizeFor("ellipse") }
+                    gesture = "draw"; break
+                case "line":
+                    ed.draft = { kind: "line", x1: p.x, y1: p.y, x2: p.x, y2: p.y, color: c, size: ed.sizeFor("line") }
                     gesture = "draw"; break
                 case "redact":
                     ed.draft = { kind: "redact", x: Math.round(p.x), y: Math.round(p.y), w: 0, h: 0, style: ed.redactStyle,
@@ -722,13 +732,14 @@ Window {
                 } else if (gesture === "draw") {
                     const d = Ed.copy(ed.draft)
                     let x = p.x, y = p.y
-                    if (d.kind === "arrow") {
+                    if (d.kind === "arrow" || d.kind === "line") {
                         if (shift) {   // 45° steps
                             const a = Math.round(Math.atan2(y - pressAt.y, x - pressAt.x) / (Math.PI / 4)) * (Math.PI / 4)
                             const r = Math.hypot(x - pressAt.x, y - pressAt.y)
                             x = pressAt.x + Math.cos(a) * r; y = pressAt.y + Math.sin(a) * r
                         }
-                        d.x2 = x; d.y2 = y; d.cx = (d.x1 + x) / 2; d.cy = (d.y1 + y) / 2
+                        d.x2 = x; d.y2 = y
+                        if (d.kind === "arrow") { d.cx = (d.x1 + x) / 2; d.cy = (d.y1 + y) / 2 }
                     } else {
                         if (shift) {   // square
                             const s = Math.max(Math.abs(x - pressAt.x), Math.abs(y - pressAt.y))
@@ -963,6 +974,9 @@ Window {
         switch (a[0]) {
         case "arrow": addItem({ kind: "arrow", x1: n(1), y1: n(2), x2: n(3), y2: n(4), cx: (n(1) + n(3)) / 2, cy: (n(2) + n(4)) / 2, color: ink, size: sizeFor("arrow") }); break
         case "rect": addItem({ kind: "rect", x: n(1), y: n(2), w: n(3), h: n(4), color: ink, size: sizeFor("rect") }); break
+        case "frect": addItem({ kind: "rect", x: n(1), y: n(2), w: n(3), h: n(4), color: ink, size: sizeFor("rect"), filled: true }); break
+        case "ellipse": addItem({ kind: "ellipse", x: n(1), y: n(2), w: n(3), h: n(4), color: ink, size: sizeFor("ellipse") }); break
+        case "line": addItem({ kind: "line", x1: n(1), y1: n(2), x2: n(3), y2: n(4), color: ink, size: sizeFor("line") }); break
         case "counter": addItem({ kind: "counter", x: n(1), y: n(2), color: ink, size: sizeFor("counter") }); break
         case "text": addItem({ kind: "text", x: n(1), y: n(2), text: a.slice(3).join(" "), color: ink, size: sizeFor("text") }); break
         case "redact": addItem({ kind: "redact", x: n(1), y: n(2), w: n(3), h: n(4), style: a[5] || redactStyle, seed: a[6] ? n(6) : 1 }); break

@@ -62,10 +62,50 @@ Item {
             readonly property real grow: root.halo ? root.pad : 0
             x: r.x - grow; y: r.y - grow
             width: r.w + grow * 2; height: r.h + grow * 2
-            radius: r.size * 1.2 + grow
-            color: "transparent"
-            border.width: r.size + grow * 2
+            radius: (r.filled ? 6 : r.size * 1.2) + grow
+            color: r.filled ? (root.halo ? "transparent" : r.color) : "transparent"
+            border.width: r.filled ? (root.halo ? grow * 2 : 0) : r.size + grow * 2
             border.color: root.halo ? root.haloColor : r.color
+        }
+    }
+
+    Loader {
+        active: root.kind === "ellipse"
+        sourceComponent: Shape {
+            id: ellipse
+            readonly property var e: root.o
+            width: 1; height: 1
+            preferredRendererType: Shape.CurveRenderer
+            ShapePath {
+                strokeColor: root.halo ? root.haloColor : ellipse.e.color
+                strokeWidth: ellipse.e.size + (root.halo ? root.pad * 2 : 0)
+                fillColor: "transparent"
+                PathAngleArc {
+                    // the stroke sits inside the box, like the rectangle's border
+                    centerX: ellipse.e.x + ellipse.e.w / 2; centerY: ellipse.e.y + ellipse.e.h / 2
+                    radiusX: Math.max(0.5, ellipse.e.w / 2 - ellipse.e.size / 2)
+                    radiusY: Math.max(0.5, ellipse.e.h / 2 - ellipse.e.size / 2)
+                    startAngle: 0; sweepAngle: 360
+                }
+            }
+        }
+    }
+
+    Loader {
+        active: root.kind === "line"
+        sourceComponent: Shape {
+            id: line
+            readonly property var l: root.o
+            width: 1; height: 1
+            preferredRendererType: Shape.CurveRenderer
+            ShapePath {
+                strokeColor: root.halo ? root.haloColor : line.l.color
+                strokeWidth: line.l.size + (root.halo ? root.pad * 2 : 0)
+                fillColor: "transparent"
+                capStyle: ShapePath.RoundCap
+                startX: line.l.x1; startY: line.l.y1
+                PathLine { x: line.l.x2; y: line.l.y2 }
+            }
         }
     }
 

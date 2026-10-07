@@ -32,6 +32,11 @@ Rectangle {
         Capsule {
             Tool { name: "select"; icon: "pointer"; tip: "Select (V)" }
             Tool { name: "rect"; icon: "square"; tip: "Rectangle (R)" }
+            Tool { name: "frect"; icon: "square"; iconFilled: true; tip: "Filled rectangle (F)" }
+            Sep {}
+            Tool { name: "ellipse"; icon: "ellipse"; tip: "Ellipse (E)" }
+            Sep {}
+            Tool { name: "line"; icon: "line"; tip: "Line (L)" }
             Sep {}
             Tool { name: "arrow"; icon: "arrow"; tip: "Arrow (A)" }
             Sep {}
