@@ -171,7 +171,7 @@ What follows from this:
 | SEL-04 | Crosshair mode: Off / Always / While Ctrl is held | P0 | Coordinate readout next to the cursor. |
 | SEL-05 | Magnifier loupe with pixel grid and hex colour of the centre pixel | P0 | Needs crosshair (CleanShot rule). Pressing **C** copies the hex value (our addition, which covers part of hyprpicker's job). |
 | SEL-06 | Window hover highlight (while Space is held, or in `snip window`) | P0 | Smallest rectangle wins. Tab and Shift+Tab, and arrow keys, pick windows explicitly in any mode; Enter captures the picked window (or the monitor when none is picked). |
-| SEL-07 | Modifiers while dragging: Shift = square or locked axis, Alt = resize from centre, Space (held) = move the selection | P0 | macOS conventions. CleanShot does not document them, but users expect them. |
+| SEL-07 | Modifiers while dragging, CleanShot's (D32): Alt = square, Ctrl = resize from centre, Space (held) = move the selection; Shift held at the release skips an auto-applied Background preset | P0 | |
 | SEL-08 | Adjustable selection (All-In-One and recording) | P1 | 8 handles, arrow-key nudge (1 px; Shift = 10 px; Ctrl = resize), snap to window and monitor edges, typed W×H, ratio presets (Free, 1:1, 4:3, 3:2, 16:9, 5:4, 9:16, custom). |
 | SEL-09 | Esc cancels; Enter confirms (or records the full screen in the recording overlay) | P0 | Pressing the capture hotkey again while the overlay is up cancels it, or cycles mode (decision Q6). |
 | SEL-10 | Multi-monitor | P0 | A selection stays on one monitor. Each monitor gets its own overlay. A selection never crosses monitors (Wayland capture and encoders require one monitor; CleanShot behaves the same way). |
@@ -227,7 +227,7 @@ A normal floating window (Hyprland rule: float, centred, with optional pin / alw
 | BG-01 | Sources: built-in gradients (we design our own set of 20, not CleanShot's), current Omarchy wallpaper, custom images, blurred wallpaper or screenshot, plain colour, transparent | P0 |
 | BG-06 | **Omarchy theme backgrounds**, our signature addition. A "Themes" section builds backgrounds from every installed Omarchy theme (system `/usr/share/omarchy/themes/*` and user `~/.config/omarchy/themes/*`). For each theme: (a) its **signature gradient** from `hyprland_active_border` (for example `e20342 → c8e967` in Aetheria); (b) gradients from palette pairs (accent with background, accent with color4/5/6…); (c) solid `background` and `accent`; (d) its wallpapers (`backgrounds/`). A "**Follow current theme**" choice (also in presets) re-resolves the colours when the theme changes, so an auto-applied preset always matches the desktop. Theme previews (`preview.png`) label each group. | P0 |
 | BG-02 | Padding, inset (with colour), auto-balance, shadow, corner radius, aspect ratio (Auto, 1:1, 4:3, 3:2, 16:9, 5:4, 9:16, portrait), 9-point alignment | P0 |
-| BG-03 | Named presets; "apply automatically to every screenshot"; Shift during capture skips the preset | P0 |
+| BG-03 | Named presets; "apply automatically to every screenshot"; Shift held when the selection ends (or a window is clicked) skips the preset (D32) | P0 |
 | BG-04 | Window shots made with "With wallpaper" stay editable (background can be swapped or removed later) | P0 |
 | BG-05 | Precise numeric input: hover shows the value, click to type, ↑/↓ to adjust, Tab to commit | P0 |
 
