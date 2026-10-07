@@ -71,6 +71,7 @@ qt_add_qml_module(snipd
     app/qml/Pin.qml
     app/qml/BackgroundRender.qml
     app/qml/History.qml
+    app/qml/Settings.qml
     app/qml/editor.js
   RESOURCES
     app/fonts/Nunito.ttf
