@@ -1178,6 +1178,17 @@ Window {
             }
 
             onPressed: (m) => {
+                // in the text being typed, a press moves the caret and a drag selects
+                if (ed.editingText && m.button === Qt.LeftButton) {
+                    const b = textBox.mapFromItem(pointer, m.x, m.y)
+                    if (b.x >= 0 && b.y >= 0 && b.x <= textBox.width && b.y <= textBox.height) {
+                        const q = textEdit.mapFromItem(pointer, m.x, m.y)
+                        textEdit.cursorPosition = textEdit.positionAt(q.x, q.y)
+                        textEdit.forceActiveFocus()
+                        gesture = "text"
+                        return
+                    }
+                }
                 keys.forceActiveFocus()
                 pressVX = m.x; pressVY = m.y
                 if (keys.spaceHeld || m.button === Qt.MiddleButton) {
@@ -1258,6 +1269,11 @@ Window {
                 }
             }
             onPositionChanged: (m) => {
+                if (gesture === "text") {
+                    const q = textEdit.mapFromItem(pointer, m.x, m.y)
+                    textEdit.moveCursorSelection(textEdit.positionAt(q.x, q.y))
+                    return
+                }
                 if (gesture === "") {
                     hoverHandle = handleAt(m.x, m.y)
                     hoverItem = hoverHandle === "" ? itemAt(ed.toImage(m.x, m.y)) : -1
@@ -1334,7 +1350,7 @@ Window {
             onReleased: (m) => {
                 const g = gesture
                 gesture = ""
-                if (g === "pan" || g === "") return
+                if (g === "pan" || g === "" || g === "text") return
                 if (g.startsWith("crop")) {
                     const r = ed.cropDraft
                     ed.cropDraft = null
@@ -2039,7 +2055,7 @@ Window {
                 revision: revision, saved: savedRevision, undo: undoStack.length, redo: redoStack.length,
                 // where image px (0,0) is, in window-logical px, and logical px per image px
                 originX: originX, originY: originY + view.y, k: k, winW: width, winH: height,
-                ready: base.status === Image.Ready, editingText: editingText, typed: textEdit.text, active: ed.active, menuOpen: openedMenu !== null, toolbarNeeds: toolbar.needed,
+                ready: base.status === Image.Ready, editingText: editingText, typed: textEdit.text, caret: textEdit.cursorPosition, active: ed.active, menuOpen: openedMenu !== null, toolbarNeeds: toolbar.needed,
                 cropCancelAt: tool === "crop" ? cropCancelButton.mapToItem(null, cropCancelButton.width / 2, cropCancelButton.height / 2) : null,
                 cropCancelHovered: cropCancelButton.hovered,
                 emojiButton: emojiButton.visible ? emojiButton.mapToItem(null, 11, 11) : null,
