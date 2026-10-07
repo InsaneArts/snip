@@ -58,3 +58,14 @@ Source: cleanshot.com's `markup.mp4` demo (1700×1200, 60 fps, 27.6 s), studied 
   - The capture keeps its original and its objects next to it (`original.png`, `edit.json`), so reopening keeps everything editable (ANN-16).
   - Rotating or flipping a capture flattens it.
 - Export is the same scene rendered offscreen at native size (`Platform.grabExact`), so the preview equals the export (spike S05).
+
+### Pixelate / Blur (D26)
+
+The look comes from the pixels around the region, never from what is under it:
+- the four sides' colours are blended across the region;
+- seeded noise is added (big tiles for Pixelate, small smoothed ones for Blur);
+- Black out is a plain fill.
+
+![Before and after: Pixelate, Blur, Black out](editor/redaction-before-after.png)
+
+![Pixelate in the editor](editor/pixelate.jpg) ![Crop](editor/crop.jpg)
