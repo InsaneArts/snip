@@ -284,6 +284,22 @@ function extent(o, textBox) {
     return { x: x0, y: y0, w: Math.max.apply(null, xs) + pad - x0, h: Math.max.apply(null, ys) + pad - y0 }
 }
 
+// Snapping guides (ANN-12): the moved box's edges or middle snap to the
+// nearest target line within `tol`, per axis; gx / gy are the lines it met.
+function snapBox(e, xs, ys, tol) {
+    function best(cands, ts) {
+        var r = null
+        for (var i = 0; i < cands.length; i++)
+            for (var j = 0; j < ts.length; j++) {
+                var d = ts[j] - cands[i]
+                if (Math.abs(d) <= tol && (r === null || Math.abs(d) < Math.abs(r.d))) r = { d: d, at: ts[j] }
+            }
+        return r
+    }
+    var bx = best([e.x, e.x + e.w / 2, e.x + e.w], xs), by = best([e.y, e.y + e.h / 2, e.y + e.h], ys)
+    return { dx: bx ? bx.d : 0, dy: by ? by.d : 0, gx: bx ? bx.at : null, gy: by ? by.at : null }
+}
+
 function whole(r) {
     var n = copy(r)
     var x2 = Math.round(r.x + r.w), y2 = Math.round(r.y + r.h)
