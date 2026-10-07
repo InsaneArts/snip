@@ -814,6 +814,35 @@ def editor_done_button(s, env):
 
 
 @case
+def editor_shapes(s, env):
+    """ANN-03: Filled rectangle (F), Ellipse (E) and Line (L), drawn with the pointer.
+    (Shift for squares and 45° lines needs a held key, which the virtual pointer can't send.)"""
+    from PIL import Image
+    png = s.tmp / "shapes.png"
+    Image.new("RGB", (600, 360), "white").save(png)
+    rec = s.json("edit", str(png))["result"]
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    time.sleep(0.3)
+    w, mon, st = editor_window(), env.monitor(), editor_state(s)
+    at = lambda ix, iy: (w["at"][0] - mon["x"] + st["originX"] + ix * st["k"], w["at"][1] - mon["y"] + st["originY"] + iy * st["k"])
+    s.move(*at(300, 340)); s.click(); time.sleep(0.2)           # focus
+    for key, a, b in (("f", (30, 30), (150, 120)), ("e", (200, 30), (380, 150)), ("l", (420, 40), (560, 160))):
+        s.debug("ui", "editor", "keys", key)
+        s.drag(*at(*a), *at(*b), steps=5); time.sleep(0.15)
+    items = editor_state(s)["items"]
+    assert [(i["kind"], i.get("filled", False)) for i in items] == [("rect", True), ("ellipse", False), ("line", False)], items
+    editor_flush(s)
+    out = Image.open(rec["source"]).convert("RGB")
+    red = lambda p: p[0] > 200 and p[1] < 90
+    assert red(out.getpixel((90, 75))), "the filled rectangle is filled"
+    e = items[1]
+    assert red(out.getpixel((round(e["x"] + e["w"] / 2), round(e["y"] + e["size"] / 2)))), "the ellipse's top edge"
+    assert not red(out.getpixel((round(e["x"] + e["w"] / 2), round(e["y"] + e["h"] / 2)))), "an ellipse is not filled"
+    assert red(out.getpixel((490, 100))), "the line's middle"
+    close_editor(s)
+
+
+@case
 def editor_keyboard(s, env):
     """ANN-05/14: the Text tool types where you click and Enter commits; tool keys, undo,
     redo and Escape work. Keys are delivered inside snipd (never through the seat)."""
