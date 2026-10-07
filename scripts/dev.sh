@@ -2,17 +2,42 @@
 # Dev loop: build Snip from source and use it as your screenshot tool.
 #
 #   scripts/dev.sh          build, (re)start snipd from build/, load hypr/snip.lua
-#   scripts/dev.sh stop     stop it; `hyprctl reload` gives Hyprland its own bindings back
+#   scripts/dev.sh stop     stop it, also at login; `hyprctl reload` gives Hyprland its own bindings back
 #   scripts/dev.sh log      follow the daemon's log
 #   scripts/dev.sh status   is it running, which keys point at it
 #
-# snipd runs as the transient user unit `snip-dev` (journalctl --user -u snip-dev)
-# with your real data: history in ~/.local/share/snip, Save to the export
-# folder in ~/.config/snip/config.toml. Nothing is installed and no config
-# file is edited: the bindings are applied at runtime from the repo's snip.lua.
+# snipd runs as the user unit `snip-dev` (journalctl --user -u snip-dev), which
+# starts with every login (graphical-session.target) until `stop`, with your
+# real data: history in ~/.local/share/snip, Save to the export folder in
+# ~/.config/snip/config.toml. Nothing is installed but the unit file, and no
+# config file is edited: the bindings are applied at runtime from the repo's
+# snip.lua (load it from hyprland.lua to have them at login too).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 UNIT=snip-dev
+UNIT_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/$UNIT.service"
+
+write_unit() {
+  mkdir -p "$(dirname "$UNIT_FILE")"
+  cat >"$UNIT_FILE" <<EOF
+# Written by $PWD/scripts/dev.sh: Snip from the source checkout.
+[Unit]
+Description=Snip (snipd from $PWD/build)
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+ExecStart=$PWD/build/snipd
+Environment=SNIP_TRACE=1 QT_FORCE_STDERR_LOGGING=1
+Restart=on-failure
+RestartSec=1
+LimitCORE=0
+
+[Install]
+WantedBy=graphical-session.target
+EOF
+  systemctl --user daemon-reload
+}
 
 bind_keys() {
   local out
@@ -24,24 +49,19 @@ case "${1:-run}" in
   run | restart)
     [[ -f build/build.ninja ]] || cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
     ninja -C build
-    systemctl --user stop "$UNIT" 2>/dev/null || true
+    write_unit
+    systemctl --user enable --quiet "$UNIT"
     systemctl --user reset-failed "$UNIT" 2>/dev/null || true
-    systemd-run --user --quiet --unit="$UNIT" --collect \
-      -p Restart=on-failure -p RestartSec=1 -p LimitCORE=0 \
-      --setenv=WAYLAND_DISPLAY="${WAYLAND_DISPLAY:?}" \
-      --setenv=XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:?}" \
-      --setenv=HYPRLAND_INSTANCE_SIGNATURE="${HYPRLAND_INSTANCE_SIGNATURE:?}" \
-      --setenv=SNIP_TRACE=1 --setenv=QT_FORCE_STDERR_LOGGING=1 \
-      "$PWD/build/snipd"
+    systemctl --user restart "$UNIT"
     for _ in $(seq 50); do build/snip ping >/dev/null 2>&1 && break; sleep 0.1; done
     build/snip ping >/dev/null || { echo "dev.sh: snipd did not start; see: $0 log" >&2; exit 1; }
     bind_keys
-    echo "snipd running from build/ (unit $UNIT). SUPER+SHIFT+3 fullscreen, +4 area, +5 all-in-one."
+    echo "snipd running from build/ (unit $UNIT, starts at login). SUPER+SHIFT+3 fullscreen, +4 area, +5 all-in-one."
     ;;
   stop)
-    systemctl --user stop "$UNIT" 2>/dev/null || true
+    systemctl --user disable --now --quiet "$UNIT" 2>/dev/null || true
     hyprctl reload >/dev/null
-    echo "stopped; Hyprland bindings restored from your config"
+    echo "stopped, also at login; Hyprland bindings restored from your config"
     ;;
   log) exec journalctl --user -u "$UNIT" -f -o cat ;;
   status)
