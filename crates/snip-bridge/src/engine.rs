@@ -295,7 +295,7 @@ impl Inner {
             return;
         }
         match mode {
-            "area" | "window" | "text" | "all-in-one" | "insert" => {
+            "area" | "window" | "text" | "all-in-one" | "insert" | "pick" => {
                 // SEL-09: the capture hotkey while the overlay is up cancels it.
                 if let Some(s) = self.session.lock().unwrap().take() {
                     reply(s.waiter, cancelled());
@@ -317,7 +317,8 @@ impl Inner {
                 // user's monitors.
                 let monitor = monitor.or_else(|| std::env::var("SNIP_OUTPUTS").ok().filter(|s| !s.is_empty()));
                 let outputs = monitor.filter(|m| self.output_names().contains(m)).map(|m| vec![m]);
-                if self.cfg().capture.freeze {
+                // the eyedropper reads the frozen pixels, so it always freezes
+                if self.cfg().capture.freeze || mode == "pick" {
                     self.pending.lock().unwrap().insert(req, Pending::Overlay { mode, waiter, snap, cursor, delay });
                     self.capture_clean(req, Source::Outputs(outputs), cursor);
                 } else {
@@ -495,7 +496,7 @@ impl Inner {
             "outputs": out_json,
             "cursor": pointer,
             "crosshair": cfg.capture.crosshair,
-            "magnifier": cfg.capture.magnifier,
+            "magnifier": cfg.capture.magnifier || mode == "pick",
             "toplevel": self.features.lock().unwrap().toplevel_capture,
         })
         .to_string();
@@ -607,6 +608,14 @@ impl Inner {
                 None => reply(s.waiter, Response::err("window not found")),
             },
         }
+    }
+
+    /// The eyedropper's click: the colour under the pointer (ANN-13).
+    pub fn finish_pick(&self, color: String) {
+        if let Some(s) = self.session.lock().unwrap().take() {
+            reply(s.waiter, Response::ok(json!(color)));
+        }
+        frames::clear();
     }
 
     pub fn cancel(&self) {
@@ -1228,6 +1237,18 @@ impl Inner {
         std::thread::spawn(move || {
             let path = rx.recv().ok().filter(|r| r.ok).and_then(|r| r.result.as_str().map(String::from)).unwrap_or_default();
             me.ui(move |e| e.editor_screenshot(token, &QString::from(path.as_str())));
+        });
+    }
+
+    /// The editor's eyedropper (ANN-13): the frozen screen with the
+    /// magnifier; a click answers editor_color with "#rrggbb" ("" if cancelled).
+    pub fn editor_pick_color(self: &Arc<Self>, token: i32) {
+        let (tx, rx) = mpsc::channel();
+        self.begin("pick", None, None, Some(tx), 0);
+        let me = self.clone();
+        std::thread::spawn(move || {
+            let c = rx.recv().ok().filter(|r| r.ok).and_then(|r| r.result.as_str().map(String::from)).unwrap_or_default();
+            me.ui(move |e| e.editor_color(token, &QString::from(c.as_str())));
         });
     }
 

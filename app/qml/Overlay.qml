@@ -64,7 +64,8 @@ Window {
     readonly property rect phys: toPhys(raw)
     readonly property rect shown: toShown(phys)
     readonly property bool crosshair: hovered && !c.windowMode && !dragging
-                                      && (c.crosshairMode === "always" || (c.crosshairMode === "ctrl" && c.ctrlHeld))
+                                      && (c.crosshairMode === "always" || (c.crosshairMode === "ctrl" && c.ctrlHeld)
+                                          || (!!c.session && c.session.mode === "pick"))     // the eyedropper
     readonly property point cursorPhys: Qt.point(Math.floor(mouse.x * s), Math.floor(mouse.y * s))
     readonly property color magnifierColor: mag.centre
 
@@ -182,7 +183,9 @@ Window {
     // Enter: the picked window (clean toplevel buffer in window mode), else
     // the whole monitor.
     function confirm() {
-        if (hoverWin) {
+        if (c.session && c.session.mode === "pick") {
+            c.finishPick(win)
+        } else if (hoverWin) {
             if (c.windowMode && c.session.mode !== "text" && c.session.toplevel)
                 c.finishWindow(win, hoverWin, winPhys(hoverWin))
             else
@@ -380,7 +383,7 @@ Window {
             win.c.activeOverlay = win
             if (win.pick >= 0 && !win.pressed) win.pick = -1
             if (!win.pressed) return
-            if (!win.dragging && Math.hypot(m.x - win.p0.x, m.y - win.p0.y) > 3 && !win.c.windowMode) {
+            if (!win.dragging && Math.hypot(m.x - win.p0.x, m.y - win.p0.y) > 3 && !win.c.windowMode && !(win.c.session && win.c.session.mode === "pick")) {
                 win.dragging = true
                 win.pick = -1
             }
@@ -395,6 +398,7 @@ Window {
         }
         onReleased: (m) => {
             if (m.button !== Qt.LeftButton) return
+            if (win.c.session && win.c.session.mode === "pick") { win.pressed = false; win.c.finishPick(win); return }
             const wasDragging = win.dragging
             win.pressed = false
             win.dragging = false

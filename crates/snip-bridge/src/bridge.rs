@@ -93,6 +93,13 @@ pub mod qobject {
         #[qinvokable]
         fn take_screenshot_for_editor(self: &Engine, token: i32);
 
+        /// The eyedropper, anywhere on screen (ANN-13): answered with
+        /// editor_color; the overlay's click calls finish_pick
+        #[qinvokable]
+        fn pick_color_for_editor(self: &Engine, token: i32);
+        #[qinvokable]
+        fn finish_pick(self: &Engine, color: QString);
+
         /// "My Colors" (ANN-13): up to ten, kept across sessions (JSON array)
         #[qinvokable]
         fn saved_colors(self: &Engine) -> QString;
@@ -151,10 +158,6 @@ pub mod qobject {
         /// array of {e: emoji, k: keywords}, or "[]" without Omarchy
         #[qinvokable]
         fn emojis(self: &Engine) -> QString;
-
-        /// The colour of pixel (x, y) of the image at `path`: "#rrggbb"
-        #[qinvokable]
-        fn pixel_color(self: &Engine, path: QString, x: i32, y: i32) -> QString;
 
         /// Save As to `path` (from the portal's save dialog)
         #[qinvokable]
@@ -259,6 +262,10 @@ pub mod qobject {
         /// image's file, or "" when cancelled (ANN-12)
         #[qsignal]
         fn editor_screenshot(self: Pin<&mut Engine>, token: i32, path: &QString);
+        /// The eyedropper picked `color` ("#rrggbb", or "" when cancelled)
+        /// for editor `token` (ANN-13)
+        #[qsignal]
+        fn editor_color(self: Pin<&mut Engine>, token: i32, color: &QString);
 
         /// An editor_commit finished (ok) or failed (detail says why).
         #[qsignal]
@@ -596,17 +603,6 @@ impl qobject::Engine {
         QString::from(j.unwrap_or_else(|| "null".into()).as_str())
     }
 
-    fn pixel_color(&self, path: QString, x: i32, y: i32) -> QString {
-        let c = crate::edits::decoded(&path.to_string()).and_then(|img| {
-            if x < 0 || y < 0 || x as u32 >= img.width || y as u32 >= img.height {
-                return None;
-            }
-            let i = (y as usize * img.width as usize + x as usize) * img.bpp;
-            Some(format!("#{:02x}{:02x}{:02x}", img.data[i], img.data[i + 1], img.data[i + 2]))
-        });
-        QString::from(c.unwrap_or_default().as_str())
-    }
-
     fn request_words(&self, path: QString) {
         if let Some(i) = self.inner() {
             i.text_words(path.to_string());
@@ -616,6 +612,18 @@ impl qobject::Engine {
     fn take_screenshot_for_editor(&self, token: i32) {
         if let Some(i) = self.inner() {
             i.editor_screenshot(token);
+        }
+    }
+
+    fn pick_color_for_editor(&self, token: i32) {
+        if let Some(i) = self.inner() {
+            i.editor_pick_color(token);
+        }
+    }
+
+    fn finish_pick(&self, color: QString) {
+        if let Some(i) = self.inner() {
+            i.finish_pick(color.to_string());
         }
     }
 
