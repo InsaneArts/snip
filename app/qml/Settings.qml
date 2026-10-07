@@ -529,19 +529,14 @@ Window {
                 width: 600
                 spacing: 10
                 Item { width: 1; height: 20 }
-                Rectangle {
+                Image {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    width: 88
-                    height: 88
-                    radius: 19
-                    color: Theme.surface
-                    border.width: 1
-                    border.color: Theme.hairline
-                    Rectangle {
-                        x: 22; y: 27.5; width: 44; height: 33; radius: 4
-                        color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22)
-                    }
-                    Icon { anchors.centerIn: parent; name: "snip"; size: 88; stroke: 1.5; color: Theme.accent }
+                    width: 96
+                    height: 96
+                    source: "../icons/snip.png"
+                    sourceSize: Qt.size(192, 192)
+                    smooth: true
+                    mipmap: true
                 }
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter

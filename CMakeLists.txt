@@ -73,13 +73,16 @@ qt_add_qml_module(snipd
     app/qml/History.qml
     app/qml/Settings.qml
     app/qml/ScrollHud.qml
+    app/qml/TrayMenu.qml
     app/qml/editor.js
   RESOURCES
     app/fonts/Nunito.ttf
+    app/icons/snip.png
   SOURCES
     app/src/frozenframe.cpp app/src/frozenframe.h
     app/src/loupe.cpp app/src/loupe.h
     app/src/platform.cpp app/src/platform.h
+    app/src/tray.cpp app/src/tray.h
     app/src/redact.cpp app/src/redact.h)
 
 target_link_libraries(snipd PRIVATE
@@ -95,5 +98,5 @@ install(PROGRAMS $<TARGET_FILE:snip> DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(FILES systemd/snipd.service DESTINATION lib/systemd/user)
 install(FILES hypr/snip.lua DESTINATION ${CMAKE_INSTALL_DATADIR}/snip/hypr)
 install(FILES app/snip.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
-install(FILES app/icons/snip.svg DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps)
+install(FILES app/icons/snip.png DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/512x512/apps)
 install(FILES LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/snip OPTIONAL)

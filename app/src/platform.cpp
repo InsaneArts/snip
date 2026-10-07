@@ -24,6 +24,7 @@
 #include <memory>
 
 #include "snip_bridge/src/bridge.cxxqt.h"
+#include "tray.h"
 
 QScreen*
 Platform::screen(const QString& name) const
@@ -316,4 +317,13 @@ Platform::closeFileDialogs()
     // Close ends the dialog without a Response
     Q_EMIT req->done(1, {});
   }
+}
+
+void
+Platform::showTray(const QString& iconDir)
+{
+  if (qEnvironmentVariableIsSet("SNIP_NO_TRAY") || findChild<Tray*>())
+    return;
+  auto* tray = new Tray(iconDir, this);
+  connect(tray, &Tray::activated, this, &Platform::trayActivated);
 }
