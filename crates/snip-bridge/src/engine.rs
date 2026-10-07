@@ -1196,6 +1196,13 @@ impl Inner {
         Ok(serde_json::to_value(&rec).unwrap_or(Value::Null))
     }
 
+    /// The clipboard's PNG, if it holds one (2 s at most).
+    pub fn clipboard_png(&self) -> Option<Vec<u8>> {
+        let (tx, rx) = mpsc::channel();
+        self.wl(Wl::ReadClipboard { mimes: vec!["image/png".into()], reply: tx });
+        rx.recv_timeout(Duration::from_secs(2)).ok().flatten().map(|(_, b)| b)
+    }
+
     /// An image file as a new capture in history.
     fn import(&self, path: &str) -> Result<Record, String> {
         let bytes = std::fs::read(path).map_err(|e| format!("{path}: {e}"))?;

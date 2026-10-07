@@ -106,6 +106,16 @@ pub mod qobject {
         #[qinvokable]
         fn editor_transform(self: &Engine, path: QString, op: QString, w: i32, h: i32) -> QString;
 
+        /// Add image (ANN-12): copy `src` beside the editor's image at `base`;
+        /// answers the new file's name, or "" on failure.
+        #[qinvokable]
+        fn editor_import_image(self: &Engine, base: QString, src: QString) -> QString;
+
+        /// Add image from the clipboard: its PNG written beside `base`; the
+        /// file's name, or "" when the clipboard holds no image.
+        #[qinvokable]
+        fn editor_paste_image(self: &Engine, base: QString) -> QString;
+
         /// Wallpapers for the Background tool (JSON array of paths)
         #[qinvokable]
         fn wallpapers(self: &Engine) -> QString;
@@ -452,6 +462,25 @@ impl qobject::Engine {
         }
         trace::trace("editor_transformed", &format!("\"op\":{},\"w\":{nw},\"h\":{nh}", trace::js(&op.to_string())));
         QString::from(serde_json::json!({ "file": file, "width": nw, "height": nh }).to_string().as_str())
+    }
+
+    fn editor_import_image(&self, base: QString, src: QString) -> QString {
+        let (base, src) = (std::path::PathBuf::from(base.to_string()), std::path::PathBuf::from(src.to_string()));
+        let ext = src.extension().and_then(|e| e.to_str()).unwrap_or("png").to_ascii_lowercase();
+        let file = format!("img-{}.{ext}", chrono::Local::now().timestamp_millis());
+        match std::fs::copy(&src, base.with_file_name(&file)) {
+            Ok(_) => QString::from(file.as_str()),
+            Err(_) => QString::default(),
+        }
+    }
+
+    fn editor_paste_image(&self, base: QString) -> QString {
+        let Some(png) = self.inner().and_then(|i| i.clipboard_png()) else { return QString::default() };
+        let file = format!("img-{}.png", chrono::Local::now().timestamp_millis());
+        match snip_core::store::atomic_write(&std::path::PathBuf::from(base.to_string()).with_file_name(&file), &png) {
+            Ok(()) => QString::from(file.as_str()),
+            Err(_) => QString::default(),
+        }
     }
 
     fn wallpapers(&self) -> QString {
