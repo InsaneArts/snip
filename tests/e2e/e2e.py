@@ -113,6 +113,7 @@ class Snip:
             SNIP_OUTPUTS=OUT,         # overlays only on the test output
             SNIP_TRACE="1",
             SNIP_NO_PORTALS="1",      # no portal dialog may open on the user's screen
+            SNIP_NO_TRAY="1",         # no second Snip icon in the user's bar (D-Bus is shared)
             QT_FORCE_STDERR_LOGGING="1",
         )
         (self.tmp / "cfg/snip").mkdir(parents=True)
@@ -1180,6 +1181,54 @@ def scrolling_capture(s, env):
         assert code == 1 and "Return" not in sh("hyprctl", "binds").stdout, (r, code)
     finally:
         os.kill(c["pid"], 15)
+
+
+def tray_state(s):
+    n = len(s.traces("tray_state"))
+    s.debug("ui", "tray", "state")
+    assert wait_for(lambda: len(s.traces("tray_state")) > n, 2), "no tray_state"
+    return s.traces("tray_state")[-1]
+
+
+@case
+def tray_menu(s, env):
+    """OMA-08: Snip's menu in the bar, CleanShot's: the captures with their keys, History,
+    Settings…, Quit. It opens under the bar where it was clicked; an entry runs as its key
+    does (Settings… opens Settings); Esc or a click elsewhere closes it."""
+    hypr_eval('hl.bind("SUPER + SHIFT + code:13", hl.dsp.global("snip-e2e:area"), { description = "Snip: Capture area" })')
+    mon = env.monitor()
+    try:
+        s.move(300, 5)                                                  # on the bar, as the icon's click
+        s.debug("ui", "tray", "open")
+        assert wait_for(lambda: tray_state(s)["open"], 2), "the menu opens"
+        st = tray_state(s)
+        items = dict(st["items"])
+        assert list(items)[:6] == ["area", "fullscreen", "window", "scroll", "text", "all-in-one"], st["items"]
+        assert items["area"] == "Super+Shift+4" and items["fullscreen"] == "", items
+        assert {"history", "restore", "settings", "quit"} <= set(items), items
+        x, y, w, h = st["menu"]
+        assert abs(x - (300 - 18)) <= 1 and y >= mon["reserved"][1], ("under the click, below the bar", st["menu"])
+
+        s.debug("ui", "tray", "keys", "{Escape}")
+        assert wait_for(lambda: not tray_state(s)["open"], 2), "Esc closes it"
+        s.debug("ui", "tray", "open")
+        assert wait_for(lambda: tray_state(s)["open"], 2)
+        s.move(900, 700); s.click()                                     # elsewhere
+        assert wait_for(lambda: not tray_state(s)["open"], 2), "a click elsewhere closes it"
+
+        s.debug("ui", "tray", "open")
+        assert wait_for(lambda: tray_state(s)["open"], 2)
+        n = len(s.traces("tray_where"))
+        s.debug("ui", "tray", "where", "menu:settings")
+        assert wait_for(lambda: len(s.traces("tray_where")) > n, 2)
+        p = s.traces("tray_where")[-1]
+        s.move(p["x"], p["y"]); s.click()
+        assert wait_for(lambda: settings_client(), 5), "Settings… opens Settings"
+        assert not tray_state(s)["open"], "and the menu is gone"
+    finally:
+        s.debug("ui", "settings", "close")
+        s.debug("ui", "tray", "keys", "{Escape}")
+        hypr_eval('pcall(hl.unbind, "SUPER + SHIFT + code:13")')
 
 
 @case
