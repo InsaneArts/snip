@@ -787,6 +787,22 @@ def capture_area_and_pin(s, env):
 
 
 @case
+def pin_copy_text(s, env):
+    """PIN-06: a pin's menu copies the text in it (OCR), as the card's does."""
+    png = s.tmp / "pintext.png"
+    make_text_png(png, ["pinned words here"])
+    rec = s.json("open", str(png))["result"]
+    s.cli("close-all")
+    s.json("pin", rec["id"])
+    assert wait_for(lambda: pin_windows(), 3), "the pin opens"
+    s.debug("ui", "pin", "act", "text")
+    assert wait_for(lambda: [e for e in s.traces("card_status") if e["id"] == rec["id"] and e["status"] == "text-copied"], 10), \
+        [e for e in s.traces("card_status") if e["id"] == rec["id"]]
+    assert wait_for(lambda: "pinned" in (sh("wl-paste", "-n", check=False).stdout or "").lower(), 3), "the text is on the clipboard"
+    s.json("pins", "close")
+
+
+@case
 def pin_look(s, env):
     """PIN-08: [pins] sets the corners, the shadow and the border; square corners show the
     image's own corner pixel."""
