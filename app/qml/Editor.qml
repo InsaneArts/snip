@@ -444,6 +444,20 @@ Window {
         keys.forceActiveFocus()
     }
 
+    // Omarchy's emoji list, read when the picker first opens
+    property var emojiList: []
+    function openEmoji() {
+        if (!emojiList.length) emojiList = JSON.parse(Engine.emojis())
+        emojiSearch.text = ""
+        openMenu(emojiMenu, emojiButton)
+        emojiSearch.forceActiveFocus()
+    }
+    function insertEmoji(e) {
+        openedMenu = null
+        textEdit.insert(textEdit.cursorPosition, e)
+        textEdit.forceActiveFocus()
+    }
+
     // ---------------------------------------------------------------- keys
     FocusScope {
         id: keys
@@ -748,6 +762,7 @@ Window {
                 }
                 // text being typed, exactly where it will be drawn
                 Rectangle {
+                    id: textBox
                     visible: ed.editingText
                     x: ed.textObj ? ed.textObj.x - 8 / ed.k : 0
                     y: ed.textObj ? ed.textObj.y - 4 / ed.k : 0
@@ -796,6 +811,21 @@ Window {
                 layer.enabled: true
                 layer.effect: MultiEffect { shadowEnabled: true; shadowBlur: 0.4; shadowOpacity: 0.35; shadowVerticalOffset: 1 }
             }
+        }
+
+        // CleanShot's blue smiley above the text being typed: emoji (ANN-05)
+        Rectangle {
+            id: emojiButton
+            z: 1                    // above the canvas's pointer area
+            visible: ed.editingText
+            readonly property var at: ed.toView(textBox.x + textBox.width / 2, textBox.y)
+            x: at.x - width / 2; y: at.y - height - 8
+            width: 22; height: 22; radius: 11
+            color: emojiMa.containsMouse ? Qt.lighter("#0a7cff", 1.15) : "#0a7cff"
+            border.width: 2; border.color: "white"
+            Icon { anchors.centerIn: parent; name: "smile"; size: 14; stroke: 2; color: "white" }
+            MouseArea { id: emojiMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                        onClicked: ed.openEmoji() }
         }
 
         // crop: the rest dimmed, a frame with handles, size and Done
@@ -1551,6 +1581,49 @@ Window {
     }
 
     Menu {
+        id: emojiMenu
+        readonly property var found: {
+            const q = emojiSearch.text.trim().toLowerCase()
+            return q ? ed.emojiList.filter(i => i.k.indexOf(q) >= 0) : ed.emojiList
+        }
+        // closing it in any way goes back to typing
+        onVisibleChanged: if (!visible && ed.editingText) textEdit.forceActiveFocus()
+        Rectangle {
+            width: 8 * 34; height: 30; radius: 8
+            color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+            TextInput {
+                id: emojiSearch
+                anchors.fill: parent; anchors.leftMargin: 10; anchors.rightMargin: 10
+                verticalAlignment: TextInput.AlignVCenter
+                color: Theme.text; font.family: Theme.fontUi; font.pixelSize: 13
+                Text { visible: !parent.text; anchors.verticalCenter: parent.verticalCenter; text: "Search emoji"
+                       color: Theme.textSecondary; font: parent.font }
+                Keys.onEscapePressed: ed.openedMenu = null
+                Keys.onReturnPressed: if (emojiMenu.found.length) ed.insertEmoji(emojiMenu.found[0].e)
+                Keys.onEnterPressed: if (emojiMenu.found.length) ed.insertEmoji(emojiMenu.found[0].e)
+            }
+        }
+        GridView {
+            width: 8 * 34; height: 6 * 34
+            cellWidth: 34; cellHeight: 34
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            model: emojiMenu.found
+            delegate: Rectangle {
+                required property var modelData
+                width: 34; height: 34; radius: 8
+                color: emMa.containsMouse ? Theme.controlHover : "transparent"
+                Text { anchors.centerIn: parent; text: parent.modelData.e; font.pixelSize: 22 }
+                MouseArea { id: emMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                            onClicked: ed.insertEmoji(parent.modelData.e) }
+            }
+            Text { visible: !emojiMenu.found.length; anchors.centerIn: parent; color: Theme.textSecondary
+                   font.family: Theme.fontUi; font.pixelSize: 13
+                   text: ed.emojiList.length ? "No emoji found" : "Emoji come from Omarchy" }
+        }
+    }
+
+    Menu {
         id: textMenu
         Repeater {
             model: Ed.textStyles
@@ -1663,6 +1736,7 @@ Window {
                 // where image px (0,0) is, in window-logical px, and logical px per image px
                 originX: originX, originY: originY + view.y, k: k, winW: width, winH: height,
                 ready: base.status === Image.Ready, editingText: editingText, typed: textEdit.text, active: ed.active, menuOpen: openedMenu !== null,
+                emojiButton: emojiButton.visible ? emojiButton.mapToItem(null, 11, 11) : null,
                 selectionBox: { x: selectionBox.x, y: selectionBox.y, w: selectionBox.width, h: selectionBox.height },
                 words: words ? words.length : -1, fill: doc.fill || "", shownX: shown.x, shownY: shown.y,
                 imgW: imgW, imgH: imgH, base: doc.base || "", bg: doc.bg || null, exportRect: exportRect,
