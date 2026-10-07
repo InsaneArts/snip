@@ -697,6 +697,68 @@ def close_editor(s):
     assert wait_for(lambda: editor_window() is None, 5), "the editor did not close"
 
 
+def pin_windows():
+    return [c for c in hypr_json("clients") if c["class"] == "snip-e2e" and c["title"].startswith("Snip Pin ")]
+
+
+def pin_state(s):
+    n = len(s.traces("pin_state"))
+    s.debug("ui", "pin", "state")
+    assert wait_for(lambda: len(s.traces("pin_state")) > n, 2), "no pin state"
+    return s.traces("pin_state")[-1]
+
+
+@case
+def pins(s, env):
+    """PIN-01…06: a pin floats on every workspace at the capture's own size; scroll fades
+    it, Ctrl+= zooms it (the window follows), middle-click closes it; Close All Pins."""
+    from PIL import Image
+    png = s.tmp / "pin.png"
+    noise_png(png, 500, 300, seed=4)
+    rec = s.json("open", str(png))["result"]
+    assert s.json("pin", rec["id"])["ok"]
+    assert wait_for(lambda: pin_windows(), 3), "a pin window opens"
+    w, st = pin_windows()[0], pin_state(s)
+    assert w["floating"] and w["pinned"], w
+    scale = env.monitor()["scale"]
+    assert abs(st["baseW"] - 500 / scale) < 0.01 and st["zoom"] == 1, st
+    assert tuple(w["size"]) == (st["w"], st["h"]) == (round(500 / scale) + 32, round(300 / scale) + 32), (w["size"], st)
+    mon = env.monitor()
+    cx, cy = w["at"][0] - mon["x"] + w["size"][0] / 2, w["at"][1] - mon["y"] + w["size"][1] / 2
+    s.move(cx, cy); time.sleep(0.2)
+    s.debug("scroll", "30")                                      # wheel down: fade
+    assert wait_for(lambda: pin_state(s)["fade"] < 1, 2), pin_state(s)
+    s.debug("ui", "pin", "keys", "{ctrl+=}")                     # zoom in
+    st = pin_state(s)
+    assert abs(st["zoom"] - 1.1) < 0.01, st
+    assert wait_for(lambda: tuple(pin_windows()[0]["size"]) == (st["w"], st["h"]), 2), (pin_windows()[0]["size"], st)
+    s.debug("mdown"); s.debug("mup")                             # middle-click closes
+    assert wait_for(lambda: not pin_windows(), 3), "middle-click closes the pin"
+    for _ in range(2):
+        s.json("pin", rec["id"])
+    assert wait_for(lambda: len(pin_windows()) == 2, 3)
+    s.debug("ui", "pin", "act", "close-all")
+    assert wait_for(lambda: not pin_windows(), 3), "Close All Pins"
+
+
+@case
+def editor_pins(s, env):
+    """The editor's pin button: the edits are written back, then the result is pinned."""
+    from PIL import Image
+    png = s.tmp / "edpin.png"
+    Image.new("RGB", (300, 200), "white").save(png)
+    s.json("edit", str(png))
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    s.debug("ui", "editor", "bg", '{"kind":"color","value":"#10a050","padding":20,"shadow":0,"radius":0,"inset":0}')
+    s.debug("ui", "editor", "flush", "pin")
+    assert wait_for(lambda: pin_windows(), 5), "the editor pins its result"
+    st = pin_state(s)
+    assert abs(st["baseW"] * env.monitor()["scale"] - 340) < 0.5, st     # the image with its background
+    s.debug("ui", "close-pins")
+    close_editor(s)
+    assert wait_for(lambda: not pin_windows(), 3)
+
+
 @case
 def editor_round_trip(s, env):
     """ANN-15/16/19: snip edit FILE opens the editor; the export is pixel-exact outside the
@@ -1829,6 +1891,7 @@ def main():
                 print(f"  FAIL {fn.__name__}: {e}")
             s.cli("close-all", check=False)
             s.cli("debug", "ui", "close-editors", check=False)   # a failed case must not leave its editor to the next
+            s.cli("debug", "ui", "close-pins", check=False)
             time.sleep(0.2)
     finally:
         pid = s.proc.pid if s.proc else None
