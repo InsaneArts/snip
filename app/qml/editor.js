@@ -301,6 +301,45 @@ function fitRatio(r, ratio) {
     return { x: r.x + (r.w - w) / 2, y: r.y + (r.h - h) / 2, w: w, h: h }
 }
 
+// Rotate, flip or resize a whole document with its image (ANN-11): every
+// object's geometry follows; text stays upright. W, H: the image before;
+// nw, nh: after a resize.
+function transformDoc(doc, op, W, H, nw, nh) {
+    var sx = op === "resize" ? nw / W : 1, sy = op === "resize" ? nh / H : 1, sc = (sx + sy) / 2
+    var pt = function (x, y) {
+        if (op === "rotate-right") return [H - y, x]
+        if (op === "rotate-left") return [y, W - x]
+        if (op === "flip-horizontal") return [W - x, y]
+        if (op === "flip-vertical") return [x, H - y]
+        return [x * sx, y * sy]
+    }
+    var box = function (r) {
+        var a = pt(r.x, r.y), b = pt(r.x + r.w, r.y + r.h), n = normRect(a[0], a[1], b[0], b[1])
+        return { x: n.x, y: n.y, w: n.w, h: n.h }
+    }
+    var items = doc.items.map(function (o) {
+        var n = copy(o), a
+        if (o.kind === "arrow" || o.kind === "line") {
+            a = pt(o.x1, o.y1); n.x1 = a[0]; n.y1 = a[1]
+            a = pt(o.x2, o.y2); n.x2 = a[0]; n.y2 = a[1]
+            if (o.kind === "arrow") { a = pt(o.cx, o.cy); n.cx = a[0]; n.cy = a[1] }
+        } else if (o.kind === "pencil") {
+            n.pts = o.pts.map(function (q) { return pt(q[0], q[1]) })
+        } else if (o.kind === "counter" || o.kind === "text") {
+            a = pt(o.x, o.y); n.x = a[0]; n.y = a[1]
+            if (o.w) n.w = o.w * sc
+        } else {
+            var b = box(o); n.x = b.x; n.y = b.y; n.w = b.w; n.h = b.h
+        }
+        if (n.size !== undefined) n.size = o.size * sc
+        if (o.kind === "redact") n = whole(n)
+        return n
+    })
+    var out = Object.assign({}, doc, { items: items })
+    if (doc.crop) out.crop = whole(box(doc.crop))
+    return out
+}
+
 // Edges within `d` of the image's edges snap onto them.
 function snapEdges(r, iw, ih, d) {
     var x1 = r.x, y1 = r.y, x2 = r.x + r.w, y2 = r.y + r.h
