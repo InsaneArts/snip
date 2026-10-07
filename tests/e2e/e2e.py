@@ -1427,8 +1427,9 @@ def editor_crop_bar(s, env):
     s.move(w["at"][0] - mon["x"] + at["x"], w["at"][1] - mon["y"] + at["y"])
     assert wait_for(lambda: editor_state(s)["cropCancelHovered"], 2), "the pointer is on Cancel"
     s.click()
-    st = editor_state(s)
-    assert st["tool"] != "crop" and st["crop"] == {"x": -20, "y": -20, "w": 340, "h": 240}, ("Cancel clicked", st["tool"], st["crop"])
+    # the release comes back through Hyprland, so it can trail the state request
+    assert wait_for(lambda: editor_state(s)["tool"] != "crop", 2), "clicking Cancel leaves cropping"
+    assert editor_state(s)["crop"] == {"x": -20, "y": -20, "w": 340, "h": 240}, editor_state(s)["crop"]
     close_editor(s)
 
 
