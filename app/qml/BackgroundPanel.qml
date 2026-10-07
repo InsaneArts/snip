@@ -2,14 +2,21 @@ import QtQuick
 import Snip.Core
 import "editor.js" as Ed
 
-// The Background tool's panel (BG-01…06), CleanShot's sidebar: sources
-// (gradients, the Omarchy theme's wallpapers, blurred, plain colours), then
-// padding, inset, shadow, corners, ratio and alignment.
+// The Background tool's panel (BG-01…06), CleanShot's sidebar: presets and
+// None, sources (gradients, the Omarchy theme's wallpapers, blurred, plain
+// colours), then padding, inset, shadow, corners, ratio and alignment.
 Rectangle {
     id: panel
     required property var ed
     readonly property var bg: ed.bgLive
     readonly property var walls: JSON.parse(Engine.wallpapers() || "[]")
+    property bool naming: false
+    onNamingChanged: if (naming) { presetName.text = ""; presetName.forceActiveFocus() }
+    function finishNaming(save) {
+        if (save) ed.saveBgPreset(presetName.text)
+        naming = false
+        ed.focusKeys()
+    }
     color: Theme.surface
     Rectangle { anchors { left: parent.left; top: parent.top; bottom: parent.bottom } width: 1; color: Theme.hairline }
 
@@ -33,11 +40,49 @@ Rectangle {
             width: parent.width
             spacing: 10
 
+            // presets (BG-03): a dropdown and +, as in CleanShot
             Row {
-                width: parent.width
-                Text { text: "Background"; color: Theme.text; font.family: Theme.fontUi; font.pixelSize: 15; font.weight: Font.DemiBold
-                       anchors.verticalCenter: parent.verticalCenter; width: parent.width - noneButton.width }
-                ToolButton { id: noneButton; label: panel.bg ? "Remove" : "None"; onClicked: panel.ed.setBg(null) }
+                visible: !panel.naming
+                width: parent.width; spacing: 6
+                Rectangle {
+                    id: presetsButton
+                    width: parent.width - addPreset.width - 6; height: 30; radius: 8
+                    color: presetsMa.containsMouse ? Theme.controlHover : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+                    Text { x: 10; anchors.verticalCenter: parent.verticalCenter; width: parent.width - 34; elide: Text.ElideRight
+                           text: panel.ed.bgPreset ? panel.ed.bgPreset + (panel.ed.bgPresetChanged ? " (edited)" : "") : "Presets…"
+                           color: Theme.text; font.family: Theme.fontUi; font.pixelSize: 13 }
+                    Icon { anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
+                           name: "chevron-down"; size: 14; color: Theme.textSecondary }
+                    MouseArea { id: presetsMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                                onClicked: panel.ed.openMenuNamed("presets", presetsButton) }
+                }
+                ToolButton { id: addPreset; icon: "plus"; tip: "Add New Preset…"; onClicked: panel.naming = true }
+            }
+            // the new preset's name
+            Rectangle {
+                visible: panel.naming
+                width: parent.width; height: 30; radius: 8
+                color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+                border.width: 1; border.color: Theme.accent
+                TextInput {
+                    id: presetName
+                    anchors.fill: parent; anchors.leftMargin: 10; anchors.rightMargin: 10
+                    verticalAlignment: TextInput.AlignVCenter
+                    color: Theme.text; font.family: Theme.fontUi; font.pixelSize: 13
+                    Text { visible: !parent.text; anchors.verticalCenter: parent.verticalCenter; text: "Preset name, then Enter"
+                           color: Theme.textSecondary; font: parent.font }
+                    Keys.onReturnPressed: panel.finishNaming(true)
+                    Keys.onEnterPressed: panel.finishNaming(true)
+                    Keys.onEscapePressed: panel.finishNaming(false)
+                }
+            }
+            Rectangle {
+                width: parent.width; height: 30; radius: 8
+                color: noneMa.containsMouse ? Theme.controlHover : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+                border.width: panel.bg ? 0 : 2; border.color: Theme.accent
+                Text { anchors.centerIn: parent; text: "None"; color: Theme.text; font.family: Theme.fontUi; font.pixelSize: 13; font.weight: Font.DemiBold }
+                MouseArea { id: noneMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                            onClicked: { panel.ed.setBg(null); panel.ed.bgPreset = "" } }
             }
 
             Heading { text: "Gradients" }
