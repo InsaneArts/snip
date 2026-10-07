@@ -9,6 +9,7 @@ Item {
     property bool selected: false
     property bool chevron: false       // opens a dropdown
     property string tip: ""
+    property bool tipAbove: false
     signal clicked()
 
     implicitWidth: label !== "" || chevron ? row.implicitWidth + 18 : 32
@@ -55,6 +56,9 @@ Item {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: root.clicked()
+        onClicked: { tipRest.stop(); hint.shown = false; root.clicked() }
+        onContainsMouseChanged: if (containsMouse) tipRest.restart(); else { tipRest.stop(); hint.shown = false }
     }
+    Timer { id: tipRest; interval: 600; onTriggered: hint.shown = true }
+    Tip { id: hint; text: root.tip; above: root.tipAbove }
 }
