@@ -1652,6 +1652,47 @@ def editor_background_presets(s, env):
 
 
 @case
+def background_auto_apply(s, env):
+    """BG-03 "Apply to New Screenshots": a preset set to apply automatically wraps every
+    new screenshot before its card, as an edit (the background stays editable)."""
+    from PIL import Image
+    png = s.tmp / "auto-a.png"
+    noise_png(png, 200, 120, seed=1)
+    s.json("edit", str(png))
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3), "the editor opens"
+    s.debug("ui", "editor", "bg", '{"kind":"color","value":"#10a050","padding":40,"inset":0,"radius":0,"shadow":0,"ratio":0,"align":"c"}')
+    s.debug("ui", "editor", "bg-preset-save", "Green")
+    s.debug("ui", "editor", "bg-auto", "Green")
+    assert editor_state(s)["bgAuto"] == "Green", "set to apply automatically"
+    close_editor(s)
+    try:
+        r, code = area(s, 100, 100, 300, 220)                     # 200x120 logical
+        assert code == 0 and r["ok"], r
+        rec = r["result"]
+        assert wait_for(lambda: [e for e in s.traces("edited") if e["id"] == rec["id"]], 5), "the background is applied"
+        out = Image.open(rec["source"]).convert("RGB")
+        pad = 40                                                  # saved in points, back in this output's pixels
+        assert out.size == (rec["width"] + 2 * pad, rec["height"] + 2 * pad), (out.size, rec["width"], rec["height"], pad)
+        assert out.getpixel((3, 3)) == (16, 160, 80), out.getpixel((3, 3))
+        original = Image.open(Path(rec["source"]).parent / "original.png").convert("RGB")
+        assert out.crop((pad, pad, pad + original.width, pad + original.height)).tobytes() == original.tobytes(), "the shot is exact inside"
+        assert wait_for(lambda: not [l for m in hypr_json("layers").values() for lv in m["levels"].values() for l in lv
+                                     if l["namespace"] == "snip-render"], 2), "the render layer goes"
+        assert wait_for(lambda: rec["id"] in s.json("status")["result"]["cards"], 3), "then the card"
+        s.debug("annotate", rec["id"])                             # and it stays editable
+        assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3), "the editor opens"
+        bg = editor_state(s)["bg"]
+        assert bg and bg["kind"] == "color" and bg["padding"] == pad, bg
+        close_editor(s)
+    finally:
+        s.json("edit", str(png))
+        if wait_for(lambda: editor_window(), 5):
+            s.debug("ui", "editor", "bg-auto", "Green")          # off again for the cases after
+            s.debug("ui", "editor", "bg-preset-delete", "Green")
+            close_editor(s)
+
+
+@case
 def editor_own_wallpaper(s, env):
     """BG-01: an image of your own becomes a wallpaper (copied into Snip's data, so it
     stays when the file goes), shows behind the capture, and can be removed again."""
