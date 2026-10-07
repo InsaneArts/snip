@@ -440,8 +440,8 @@ Window {
         Row {
             anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
             spacing: 8
-            ToolButton { icon: "undo"; tip: "Undo"; opacity: ed.undoStack.length ? 1 : 0.4; onClicked: ed.undo() }
-            ToolButton { icon: "redo"; tip: "Redo"; opacity: ed.redoStack.length ? 1 : 0.4; onClicked: ed.redo() }
+            ToolButton { icon: "undo"; tip: "Undo (Ctrl+Z)"; opacity: ed.undoStack.length ? 1 : 0.4; onClicked: ed.undo() }
+            ToolButton { icon: "redo"; tip: "Redo (Ctrl+Shift+Z)"; opacity: ed.redoStack.length ? 1 : 0.4; onClicked: ed.redo() }
             Rectangle {
                 id: saveButton
                 width: saveLabel.implicitWidth + 32; height: 32
@@ -851,7 +851,8 @@ Window {
         Group {
             anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
             implicitHeight: 34
-            ToolButton { id: zoomButton; label: Math.round(ed.zoom * 100) + "%"; chevron: true; onClicked: ed.openMenu(zoomMenu, zoomButton) }
+            ToolButton { id: zoomButton; label: Math.round(ed.zoom * 100) + "%"; chevron: true; tip: "Zoom (Ctrl+scroll)"; tipAbove: true
+                         onClicked: ed.openMenu(zoomMenu, zoomButton) }
         }
 
         // drag the result out (QAO-04 style): edits are written back first
@@ -891,7 +892,7 @@ Window {
         Row {
             anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
             spacing: 8
-            IconButton { icon: "copy"; tip: "Copy (Ctrl+C)"; width: 32; height: 32; radius: 16; onClicked: ed.flush("copy") }
+            IconButton { icon: "copy"; tip: "Copy (Ctrl+C)"; tipAbove: true; width: 32; height: 32; radius: 16; onClicked: ed.flush("copy") }
         }
     }
 

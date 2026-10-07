@@ -23,12 +23,16 @@ Rectangle {
         stroke: 2
         color: Theme.text
     }
+    property bool tipAbove: false
     MouseArea {
         id: ma
         anchors.fill: parent
         hoverEnabled: true
         enabled: root.enabled
         cursorShape: Qt.PointingHandCursor
-        onClicked: root.clicked()
+        onClicked: { tipRest.stop(); hint.shown = false; root.clicked() }
+        onContainsMouseChanged: if (containsMouse) tipRest.restart(); else { tipRest.stop(); hint.shown = false }
     }
+    Timer { id: tipRest; interval: 600; onTriggered: hint.shown = true }
+    Tip { id: hint; text: root.tip; above: root.tipAbove }
 }
