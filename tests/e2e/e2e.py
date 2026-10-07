@@ -1268,9 +1268,10 @@ def tray_state(s):
 
 @case
 def tray_menu(s, env):
-    """OMA-08: Snip's menu in the bar, CleanShot's: the captures with their keys, History,
-    Settings…, Quit. It opens under the bar where it was clicked; an entry runs as its key
-    does (Settings… opens Settings); Esc or a click elsewhere closes it."""
+    """OMA-08: Snip's menu in the bar, CleanShot's in its order: the captures with their
+    keys, Open…, Open from Clipboard, Pin to the Screen…, History, Settings…, About, Quit. It
+    opens under the bar where it was clicked; an entry runs as its key does (Settings…
+    opens Settings, About opens its tab); Esc or a click elsewhere closes it."""
     hypr_eval('hl.bind("SUPER + SHIFT + code:13", hl.dsp.global("snip-e2e:area"), { description = "Snip: Capture area" })')
     mon = env.monitor()
     try:
@@ -1279,9 +1280,9 @@ def tray_menu(s, env):
         assert wait_for(lambda: tray_state(s)["open"], 2), "the menu opens"
         st = tray_state(s)
         items = dict(st["items"])
-        assert list(items)[:6] == ["area", "fullscreen", "window", "scroll", "text", "all-in-one"], st["items"]
+        assert list(items) == ["all-in-one", "area", "previous", "fullscreen", "window", "timer-area", "scroll", "text",
+                               "open", "edit-clipboard", "pin", "history", "restore", "settings", "about", "quit"], st["items"]
         assert items["area"] == "Super+Shift+4" and items["fullscreen"] == "", items
-        assert {"history", "restore", "settings", "quit"} <= set(items), items
         x, y, w, h = st["menu"]
         assert abs(x - (300 - 18)) <= 1 and y >= mon["reserved"][1], ("under the click, below the bar", st["menu"])
 
@@ -1301,6 +1302,16 @@ def tray_menu(s, env):
         s.move(p["x"], p["y"]); s.click()
         assert wait_for(lambda: settings_client(), 5), "Settings… opens Settings"
         assert not tray_state(s)["open"], "and the menu is gone"
+        s.debug("ui", "settings", "close")
+        assert wait_for(lambda: not settings_client(), 2)
+        s.debug("ui", "tray", "open")
+        assert wait_for(lambda: tray_state(s)["open"], 2)
+        n = len(s.traces("tray_where"))
+        s.debug("ui", "tray", "where", "menu:about")
+        assert wait_for(lambda: len(s.traces("tray_where")) > n, 2)
+        p = s.traces("tray_where")[-1]
+        s.move(p["x"], p["y"]); s.click()
+        assert wait_for(lambda: settings_client() and settings_state(s)["tab"] == "about", 5), "About Snip opens its tab"
     finally:
         s.debug("ui", "settings", "close")
         s.debug("ui", "tray", "keys", "{Escape}")
