@@ -121,6 +121,7 @@ Built: `snipd` (Rust core + Qt Quick UI in one process), `snip` CLI, `hypr/snip.
 | Pixelate / Text shape / Blur / Black out (ANN-06, D26, D30) | ✅ | Pixelate is the default. Text shape (D30) shows word-shaped blocks of ink, never pixel values. Tiles come only from pixels outside the region plus seeded noise (`snip-core/redact.rs`): e2e exports two images that differ only in the hidden text and gets identical bytes; the hidden text also leaves the history search. Intensity control and "natural blur" still to add. |
 | Spotlight (ANN-07) | ✅ | Rounded rectangle or ellipse; dim 25–85 %; spotlights merge; objects drawn on top stay bright. |
 | Crop (ANN-11) | ✅ first slice | Crop tool with handles, move, Reset, Done; exported exactly. Ratios, snapping, outward crop and resize still to add. |
+| Background tool (BG-01…06) | ✅ first slice | Gradients (2 from the Omarchy theme), the theme's wallpapers, blurred wallpaper or screenshot, plain colours and transparent; padding, inset, shadow, corners, ratio, alignment; the image stays pixel-exact inside. Presets, auto-apply and auto-balance still to add. |
 | Preview == export | ✅ | `Platform.grabExact`: the same scene, one item unit per pixel at any fractional scale; e2e checks every pixel outside the drawn object, and undo restores all of them. |
 | Project format (ANN-16) | ✅ | `edit.json` (objects) and `original.png` next to the capture; reopening keeps objects editable; rotate/flip flatten. |
 
