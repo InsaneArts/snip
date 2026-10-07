@@ -106,7 +106,11 @@ fn now_secs() -> i64 {
 }
 
 pub fn card_json(rec: &Record, output: &str) -> Value {
+    // changes whenever the image does (rotate, flip, edits), so QML reloads it
+    let rev = std::fs::metadata(&rec.source).and_then(|m| m.modified()).ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_millis() as u64).unwrap_or(0);
     json!({
+        "rev": rev,
         "id": rec.id,
         "path": rec.source,
         "width": rec.width,
@@ -949,6 +953,33 @@ impl Inner {
         }
     }
 
+    /// QAO-09 Rotate Left / Flip Horizontal: rewrite the capture (and its
+    /// saved file), then refresh its card.
+    pub fn transform(self: &Arc<Self>, id: &str, op: &str) {
+        let (me, id, op) = (self.clone(), id.to_string(), op.to_string());
+        std::thread::spawn(move || {
+            let Some((data, w, h, alpha)) = me.store.bytes(&id).ok().and_then(|b| encode::decode_png(&b).ok()) else { return };
+            let bpp = if alpha { 4 } else { 3 };
+            let (data, w, h) = match op.as_str() {
+                "rotate-left" => encode::rotate_left(&data, w, h, bpp),
+                "flip-horizontal" => (encode::flip_horizontal(&data, w, h, bpp), w, h),
+                _ => return,
+            };
+            let png = encode::encode_png(&data, w, h, alpha);
+            match me.store.replace_image(&id, png, w, h, &me.cfg()) {
+                Ok(rec) => {
+                    // the drag copy is stale now; it is recreated on demand
+                    let _ = std::fs::remove_dir_all(paths::drag_dir().join(&id));
+                    let out = me.cards.lock().unwrap().iter().find(|(i, _)| i == &id).map(|(_, o)| o.clone()).unwrap_or_default();
+                    let j = card_json(&rec, &out).to_string();
+                    trace::trace("transformed", &format!("\"id\":\"{id}\",\"op\":{},\"w\":{w},\"h\":{h}", js(&op)));
+                    me.ui(move |e| e.card_update(&QString::from(id.as_str()), &QString::from(j.as_str())));
+                }
+                Err(e) => me.toast(format!("Could not change the capture: {e}")),
+            }
+        });
+    }
+
     /// Extract text from a stored capture (QAO-09).
     pub fn extract_text(self: &Arc<Self>, id: &str) {
         let me = self.clone();
@@ -1193,6 +1224,11 @@ impl Inner {
             }
             "sweep" => {
                 self.sweep();
+                Response::ok(Value::Null)
+            }
+            "transform" => {
+                let (Some(id), Some(op)) = (a.first(), a.get(1)) else { return Response::err("transform needs an id and an op") };
+                self.transform(id, op);
                 Response::ok(Value::Null)
             }
             "nudge" => {

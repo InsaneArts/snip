@@ -167,6 +167,11 @@ impl History {
         rows.collect()
     }
 
+    pub fn set_size(&self, id: &str, width: u32, height: u32) -> rusqlite::Result<()> {
+        self.db.execute("UPDATE captures SET width = ?2, height = ?3 WHERE id = ?1", params![id, width, height])?;
+        Ok(())
+    }
+
     pub fn set_saved(&self, id: &str, path: &Path) -> rusqlite::Result<()> {
         self.db.execute("UPDATE captures SET saved = ?2 WHERE id = ?1", params![id, path.to_string_lossy()])?;
         Ok(())

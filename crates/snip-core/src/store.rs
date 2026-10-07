@@ -188,6 +188,25 @@ impl Store {
         Ok(self.history.lock().unwrap().search(query, limit)?)
     }
 
+    /// Replace a capture's image (rotate, flip; later the editor). The saved
+    /// file, if any, is rewritten too, in its own format.
+    pub fn replace_image(&self, id: &str, png: Vec<u8>, width: u32, height: u32, cfg: &Config) -> Result<Record, StoreError> {
+        let rec = self.get(id)?;
+        atomic_write(&rec.source, &png)?;
+        if let Some(saved) = rec.saved.as_ref().filter(|p| p.exists()) {
+            let fmt = match saved.extension().and_then(|e| e.to_str()) {
+                Some("jpg") | Some("jpeg") => crate::encode::Export::Jpg(cfg.general.jpg_quality),
+                Some("webp") => crate::encode::Export::Webp,
+                _ => crate::encode::Export::Png,
+            };
+            let out = crate::encode::transcode(&png, fmt).map_err(|e| StoreError::Io(std::io::Error::other(e)))?;
+            atomic_write(saved, &out)?;
+        }
+        self.history.lock().unwrap().set_size(id, width, height)?;
+        self.warm_put(id, Arc::new(png));
+        self.get(id)
+    }
+
     pub fn delete(&self, id: &str) -> Result<(), StoreError> {
         self.warm.lock().unwrap().retain(|(i, _)| i != id);
         Ok(self.history.lock().unwrap().delete(id)?)
