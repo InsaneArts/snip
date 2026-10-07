@@ -123,6 +123,16 @@ pub mod qobject {
         #[qinvokable]
         fn set_backgrounds(self: &Engine, json: QString);
 
+        /// The user's own wallpapers for the Background tool (BG-01), copied
+        /// into the data dir: list them (JSON array), add one (answers the
+        /// copy's path, or "" if it isn't an image) or remove one
+        #[qinvokable]
+        fn custom_wallpapers(self: &Engine) -> QString;
+        #[qinvokable]
+        fn add_wallpaper(self: &Engine, path: QString) -> QString;
+        #[qinvokable]
+        fn remove_wallpaper(self: &Engine, path: QString);
+
         /// Wallpapers for the Background tool (JSON array of paths)
         #[qinvokable]
         fn wallpapers(self: &Engine) -> QString;
@@ -463,6 +473,34 @@ impl qobject::Engine {
         let dir = snip_core::paths::data_dir();
         let _ = std::fs::create_dir_all(&dir);
         let _ = snip_core::store::atomic_write(&dir.join("backgrounds.json"), json.to_string().as_bytes());
+    }
+
+    fn custom_wallpapers(&self) -> QString {
+        let mut v: Vec<String> = std::fs::read_dir(snip_core::paths::data_dir().join("wallpapers"))
+            .map(|d| d.flatten().map(|e| e.path().to_string_lossy().into_owned()).collect())
+            .unwrap_or_default();
+        v.sort();
+        QString::from(serde_json::to_string(&v).unwrap_or_else(|_| "[]".into()).as_str())
+    }
+
+    fn add_wallpaper(&self, path: QString) -> QString {
+        let src = std::path::PathBuf::from(path.to_string());
+        let image = matches!(src.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).as_deref(), Some("png" | "jpg" | "jpeg" | "webp"));
+        let dir = snip_core::paths::data_dir().join("wallpapers");
+        let name = src.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+        let dst = dir.join(format!("{ms}-{name}"));
+        if !image || std::fs::create_dir_all(&dir).is_err() || std::fs::copy(&src, &dst).is_err() {
+            return QString::default();
+        }
+        QString::from(dst.to_string_lossy().as_ref())
+    }
+
+    fn remove_wallpaper(&self, path: QString) {
+        let p = std::path::PathBuf::from(path.to_string());
+        if p.parent() == Some(snip_core::paths::data_dir().join("wallpapers").as_path()) {
+            let _ = std::fs::remove_file(p);
+        }
     }
 
     fn editor_transform(&self, path: QString, op: QString, w: i32, h: i32) -> QString {
