@@ -11,6 +11,7 @@ Item {
     property int number: 1            // counters: their place in the document
     property bool halo: false
     property real pad: 4
+    property string base: ""          // the image file, for Pixelate / Blur tiles
     readonly property color haloColor: Qt.rgba(0.04, 0.47, 1, 0.28)
     readonly property string kind: o ? o.kind : ""
     // the rendered text box, for hit-testing (image px)
@@ -128,6 +129,41 @@ Item {
                 font.pixelSize: parent.c.size * 0.56
                 font.weight: Font.Bold
                 font.features: { "tnum": 1 }
+            }
+        }
+    }
+
+    Loader {
+        active: root.kind === "redact"
+        sourceComponent: Item {
+            readonly property var r: root.o
+            readonly property real grow: root.halo ? root.pad : 0
+            x: r.x - grow; y: r.y - grow
+            width: r.w + grow * 2; height: r.h + grow * 2
+            Rectangle {
+                visible: root.halo
+                anchors.fill: parent
+                radius: root.pad
+                color: "transparent"
+                border.width: root.pad * 2
+                border.color: root.haloColor
+            }
+            Rectangle {
+                visible: !root.halo && parent.r.style === "black"
+                anchors.fill: parent
+                color: "black"
+            }
+            // secure tiles: built from the pixels around the region only
+            Image {
+                visible: !root.halo && parent.r.style !== "black"
+                anchors.fill: parent
+                source: visible && root.base !== ""
+                        ? "image://snip-redact/" + (parent.r.style === "blur" ? 1 : 0) + "/" + parent.r.seed + "/"
+                          + [parent.r.x, parent.r.y, parent.r.w, parent.r.h].map(Math.round).join(",") + "/" + encodeURIComponent(root.base)
+                        : ""
+                smooth: parent.r.style === "blur"
+                cache: false
+                fillMode: Image.Stretch
             }
         }
     }
