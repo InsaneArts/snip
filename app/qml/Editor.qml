@@ -455,6 +455,7 @@ Window {
             return
         }
         const what = ran || action
+        if (what === "share") { openWith(); return }
         if (what === "copy" && !ran) Engine.copy(captureId)
         if (what === "save" && !ran) Engine.save(captureId)
         if (what === "copy" || what === "save") {
@@ -463,6 +464,12 @@ Window {
         } else if (action === "close") {
             close_()
         }
+    }
+    // the bottom bar's share, on Linux "Open With…": the edited image in the app you pick
+    function openWith() {
+        const path = Engine.dragFile(captureId)
+        Engine.log("open_with", JSON.stringify({ id: captureId, path: path }).slice(1, -1))
+        if (path) Platform.openWith(path)
     }
     // Save As (ANN-15): pick a path, write the edits back, then save there
     property int saveAsToken: 0
@@ -1513,6 +1520,7 @@ Window {
         Row {
             anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
             spacing: 8
+            IconButton { icon: "share"; tip: "Open With…"; tipAbove: true; width: 32; height: 32; radius: 16; onClicked: ed.flush("share") }
             IconButton { icon: "pin"; tip: "Pin to Screen (Ctrl+P)"; tipAbove: true; width: 32; height: 32; radius: 16; onClicked: ed.flush("pin") }
             IconButton { icon: "copy"; tip: "Copy (Ctrl+C)"; tipAbove: true; width: 32; height: 32; radius: 16; onClicked: ed.flush("copy") }
         }
@@ -2100,6 +2108,7 @@ Window {
         case "bg-previous": applyPreviousBg(); break
         case "bg-auto": toggleAutoPreset(a.slice(1).join(" ")); break
         case "take-screenshot": takeScreenshot(); break
+        case "share": flush("share"); break
         case "drop": { const v = toView(n(2), n(3)); dropFiles([a[1]], v.x, v.y); break }   // at image px
         case "add-wallpaper": bgPanel.addWallpaper(a.slice(1).join(" ")); break
         case "remove-wallpaper": bgPanel.removeWallpaper(a.slice(1).join(" ")); break
