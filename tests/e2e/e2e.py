@@ -453,14 +453,15 @@ def cards_not_in_captures(s, env):
     from PIL import Image
     s.cli("close-all"); time.sleep(0.3)
     s.move(1200, 300)
+    recs = []
     for _ in range(3):
-        rec = s.json("fullscreen", "--monitor", OUT)["result"]
+        recs.append(s.json("fullscreen", "--monitor", OUT)["result"])
         time.sleep(0.4)
-    im = Image.open(rec["source"]).convert("RGB")
-    strip = im.crop((22, 600, 32, 1060))   # the cards' left edge (accent ring on the newest)
-    reds = [p[0] for p in strip.get_flattened_data()]
     assert len(s.status()["cards"]) == 3
-    assert max(reds) < 100 or statistics.mean(reds) < 30, "a card was captured"
+    # The first capture ran with no card on screen; the last with two. The cards'
+    # corner must look the same in both (a terminal's blinking cursor would not be there).
+    first, last = (Image.open(r["source"]).convert("RGB").crop((0, 500, 700, 1080)) for r in (recs[0], recs[-1]))
+    assert first.tobytes() == last.tobytes(), "a card was captured"
 
 
 @case
