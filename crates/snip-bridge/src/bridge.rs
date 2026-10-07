@@ -223,9 +223,14 @@ pub mod qobject {
         /// `action`: "" | "copy" | "save". Answers with editor_done.
         #[qinvokable]
         fn editor_commit(self: Pin<&mut Engine>, id: QString, token: i32, doc: QString, action: QString);
-        /// An editor closed: its capture gets its card back if it had none
+        /// A capture back in Quick Access, unless its card is there: after its
+        /// editor closes, and history's Restore
         #[qinvokable]
-        fn editor_closed(self: Pin<&mut Engine>, id: QString);
+        fn restore_card(self: Pin<&mut Engine>, id: QString);
+        /// The history window's captures: the newest, or those matching
+        /// `query` (JSON array of card JSON with title and app)
+        #[qinvokable]
+        fn history(self: &Engine, query: QString, limit: i32) -> QString;
 
 
         /// rotate-left | flip-horizontal
@@ -293,6 +298,10 @@ pub mod qobject {
         /// Open a pin (PIN-01): a card's JSON plus the scale of its output
         #[qsignal]
         fn pin_open(self: Pin<&mut Engine>, pin: &QString);
+        /// Show the history window (HIS-01) on `output`
+        #[qsignal]
+        fn history_open(self: Pin<&mut Engine>, output: &QString);
+
         /// Every pin at once (PIN-07): toggle (hide or show) | close
         #[qsignal]
         fn pins_command(self: Pin<&mut Engine>, command: &QString);
@@ -406,6 +415,7 @@ impl qobject::Engine {
                 ("close-all", "Close all Quick Access cards"),
                 ("edit-clipboard", "Edit the image on the clipboard"),
                 ("area-pin", "Capture area and pin it"),
+                ("history", "Open capture history"),
                 ("pins-toggle", "Hide or show all pins"),
                 ("pins-close", "Close all pins"),
                 ("pins-unlock", "Unlock all pins"),
@@ -777,10 +787,15 @@ impl qobject::Engine {
         }
     }
 
-    fn editor_closed(self: Pin<&mut Self>, id: QString) {
+    fn restore_card(self: Pin<&mut Self>, id: QString) {
         if let Some(i) = self.inner() {
-            i.editor_closed(&id.to_string());
+            i.restore_card(&id.to_string());
         }
+    }
+
+    fn history(&self, query: QString, limit: i32) -> QString {
+        let j = self.inner().map(|i| i.history(&query.to_string(), limit.max(0) as u32).to_string()).unwrap_or_else(|| "[]".into());
+        QString::from(j.as_str())
     }
 
     fn editor_commit(self: Pin<&mut Self>, id: QString, token: i32, doc: QString, action: QString) {

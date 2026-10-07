@@ -62,6 +62,8 @@ pub enum Request {
         #[serde(default = "default_n")]
         n: u32,
     },
+    /// Show the capture history window (HIS-01)
+    History,
     /// Re-open the most recently closed Quick Access card
     RestoreLast,
     CloseAll,

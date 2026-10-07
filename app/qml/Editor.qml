@@ -498,7 +498,7 @@ Window {
         // "Remember if the Background tool was opened" (ANN-18)
         if (annotateCfg.remember_background_tool) storeBg({ toolOpen: tool === "background" })
         Engine.log("editor_closed", JSON.stringify({ id: captureId, revision: revision }).slice(1, -1))
-        Engine.editorClosed(captureId)      // the edited capture is in Quick Access, even if its card had gone
+        Engine.restoreCard(captureId)       // the edited capture is in Quick Access, even if its card had gone
         visible = false
         finished()
     }
