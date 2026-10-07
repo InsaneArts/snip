@@ -151,7 +151,8 @@ Built: `snipd` (Rust core + Qt Quick UI in one process), `snip` CLI, `hypr/snip.
 
 | Area | Status | Notes |
 |---|---|---|
-| History window (HIS-01, 03, 05) | ✅ | `snip history`, `snip:history`: a band across the top of the screen with large thumbnails, newest first; ←/→ or the wheel, Enter or a click restores to Quick Access (the band stays), double-click or Ctrl+E annotates, Space previews, Ctrl+C copies, drag out; typing searches the text in captures; Esc clears the search, then closes. Backspace deletes after asking ("Don't ask again"), Clear History…, and a right-click menu (Restore, Annotate, Pin, Copy, Open With…, Show in Files, Delete). Retention (HIS-02) is `history.retention` in the config for now. |
+| History window (HIS-01, 03, 05) | ✅ | `snip history`, `snip:history`: a band across the top of the screen with large thumbnails, newest first; ←/→ or the wheel, Enter or a click restores to Quick Access (the band stays), double-click or Ctrl+E annotates, Space previews, Ctrl+C copies, drag out; typing searches the text in captures; Esc clears the search, then closes. Backspace deletes after asking ("Don't ask again"), Clear History…, and a right-click menu (Restore, Annotate, Pin, Copy, Open With…, Show in Files, Delete). Retention (HIS-02) is set in Settings › Advanced. |
+| Settings window (SET-02) | ✅ (Shortcuts tab with SET-08) | `snip settings [TAB]`, `snip:settings`: CleanShot's tabs (General, Quick Access, Screenshots, Annotate, Advanced, About) over every key of config.toml. A change is written at once, keeping the file's comments, and only if the file stays valid; a hand edit of the file shows in the window at once. History's size and Clear History… (HIS-02) are under Advanced. Recording's tab comes with M4. |
 
 **Exit:**
 - **Every P0 item in the product spec is done.**
