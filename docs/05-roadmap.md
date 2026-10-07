@@ -101,7 +101,7 @@ Built: `snipd` (Rust core + Qt Quick UI in one process), `snip` CLI, `hypr/snip.
 
 **Dev loop:** `scripts/dev.sh` builds and runs `build/snipd` as the user unit `snip-dev` with real data, and loads `hypr/snip.lua` at runtime; `scripts/dev.sh stop` restores Hyprland's own bindings; `scripts/dev.sh log` follows the trace.
 
-**Follow-ups found in M1:** OCR picks up junk on busy translucent backgrounds and reads Georgian there poorly (try colour-cluster binarisation; link Tesseract in-process); pre-warm the overlay to remove the 225 ms first-use cost; window decoration takes ~40 ms on large windows (blur the shadow at quarter resolution).
+**Follow-ups found in M1:** OCR picks up junk on busy translucent backgrounds and reads Georgian there poorly (try colour-cluster binarisation; link Tesseract in-process); ~~pre-warm the overlay to remove the first-use cost~~ (done: overlays map once, invisibly, at start; first overlay ≈40 ms instead of ≈120–145 ms); window decoration takes ~40 ms on large windows (blur the shadow at quarter resolution).
 
 ## M2: Editor, Background tool, pins (L)
 
