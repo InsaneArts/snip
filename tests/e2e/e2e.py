@@ -968,6 +968,77 @@ def settings_window(s, env):
         time.sleep(0.8)
 
 
+QT_SHIFT, QT_CTRL, QT_ALT, QT_META = 0x02000000, 0x04000000, 0x08000000, 0x10000000
+
+
+def binds_for(description):
+    """The key specs Hyprland binds with this description (`hyprctl binds`)."""
+    specs = []
+    for block in sh("hyprctl", "binds").stdout.split("\n\n"):
+        f = {k.strip(): v.strip() for k, v in (line.split(":", 1) for line in block.splitlines() if ":" in line)}
+        if f.get("description") == description and not f.get("submap"):
+            specs.append(f["key"])
+    return specs
+
+
+@case
+def shortcut_recorder(s, env):
+    """SET-08: Settings › Shortcuts records a key for an action while an empty submap holds
+    Hyprland's binds off, binds it and writes it to config.toml. A key that already runs
+    something asks first; × clears a key; Restore Defaults brings snip.lua's keys back."""
+    cfg = s.tmp / "cfg/snip/config.toml"
+    before = cfg.read_text()
+    # stand-ins for snip.lua's default keys and an Omarchy bind, in the nested Hyprland
+    hypr_eval('function snip_bind_defaults() pcall(hl.unbind, "SUPER + SHIFT + code:13") '
+              'hl.bind("SUPER + SHIFT + code:13", hl.dsp.global("snip-e2e:area"), { description = "Snip: Capture area" }) end '
+              'snip_bind_defaults()')
+    hypr_eval('hl.bind("SUPER + SHIFT + code:12", hl.dsp.no_op(), { description = "Move window to workspace 3" })')
+    try:
+        s.json("settings", "shortcuts")
+        assert wait_for(lambda: settings_client(), 5), "the window opens"
+        area = next(x for x in settings_state(s)["shortcuts"] if x["id"] == "area")
+        assert area["keys"] == ["Super+Shift+4"], area
+
+        settings_click(s, env, "keys:history")
+        assert wait_for(lambda: settings_state(s)["recording"] == "history", 2), "a click starts recording"
+        assert sh("hyprctl", "submap").stdout.strip() == "snip-record", ("Hyprland's binds are held off", sh("hyprctl", "submap").stdout)
+        s.debug("ui", "settings", "press", QT_META | QT_ALT, 32)              # Super+Alt+O
+        assert wait_for(lambda: binds_for("Snip: Open capture history") == ["SUPER + ALT + code:32"], 2), binds_for("Snip: Open capture history")
+        assert sh("hyprctl", "submap").stdout.strip() == "default", "the binds are back"
+        assert 'history = "SUPER + ALT + code:32"' in cfg.read_text(), cfg.read_text()
+        assert next(x for x in settings_state(s)["shortcuts"] if x["id"] == "history")["keys"] == ["Super+Alt+O"]
+
+        s.debug("ui", "settings", "record", "window")
+        s.debug("ui", "settings", "keys", "{Escape}")
+        st = settings_state(s)
+        assert st["recording"] == "" and st["open"], ("Escape cancels recording, the window stays", st["recording"], st["open"])
+        assert sh("hyprctl", "submap").stdout.strip() == "default", "and the binds are back"
+
+        s.debug("ui", "settings", "record", "fullscreen")
+        s.debug("ui", "settings", "press", QT_META | QT_SHIFT, 12)             # Super+Shift+3: Omarchy's
+        p = settings_state(s)["pending"]
+        assert p and p["takes"] == "Move window to workspace 3" and p["label"] == "Super+Shift+3", p
+        assert binds_for("Snip: Capture fullscreen") == [], "nothing changes before the answer"
+        settings_click(s, env, "use-anyway")
+        assert wait_for(lambda: binds_for("Snip: Capture fullscreen") == ["SUPER + SHIFT + code:12"], 2)
+        assert binds_for("Move window to workspace 3") == [], "taken over"
+
+        settings_click(s, env, "clear:history")
+        assert wait_for(lambda: binds_for("Snip: Open capture history") == [], 2), "× clears it"
+        assert 'history = ""' in cfg.read_text(), cfg.read_text()
+
+        settings_click(s, env, "restore-defaults")
+        assert wait_for(lambda: "shortcuts" not in cfg.read_text(), 2), cfg.read_text()
+        assert wait_for(lambda: binds_for("Snip: Capture fullscreen") == [], 2), binds_for("Snip: Capture fullscreen")
+        assert binds_for("Snip: Capture area") == ["SUPER + SHIFT + code:13"], "snip.lua's default is back"
+    finally:
+        s.debug("ui", "settings", "close")
+        cfg.write_text(before)
+        hypr_eval('pcall(hl.unbind, "SUPER + SHIFT + code:13") pcall(hl.unbind, "SUPER + SHIFT + code:12") '
+                  'pcall(hl.unbind, "SUPER + ALT + code:32") snip_bind_defaults = nil')
+        time.sleep(0.8)
+
+
 @case
 def history_window(s, env):
     """HIS-01, 05: `snip history` shows past captures newest first; ←/→ move, Enter restores
