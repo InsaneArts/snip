@@ -239,4 +239,18 @@ Item {
             }
         }
     }
+
+    Loader {
+        active: root.kind === "highlight"
+        sourceComponent: Rectangle {
+            readonly property var hl: root.o
+            readonly property real grow: root.halo ? root.pad : 0
+            x: hl.x - grow; y: hl.y - grow
+            width: hl.w + grow * 2; height: hl.h + grow * 2
+            radius: Math.min(hl.h / 4, 6) + grow
+            color: root.halo ? "transparent" : Qt.rgba(Qt.color(hl.color).r, Qt.color(hl.color).g, Qt.color(hl.color).b, hl.opacity)
+            border.width: root.halo ? root.pad * 2 : 0
+            border.color: root.haloColor
+        }
+    }
 }

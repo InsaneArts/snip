@@ -12,6 +12,7 @@
 //   counter {kind, x, y, color, size, style}              centre; size = diameter; num | alpha | roman
 //   redact  {kind, x, y, w, h, style, seed}               pixelate | text | blur | black
 //   pencil  {kind, pts: [[x, y], …], color, size}         free hand, smoothed
+//   highlight {kind, x, y, w, h, color, opacity}          a translucent band
 //   spotlight {kind, x, y, w, h, shape, dim}              shape: rect | ellipse; dims the rest
 //
 // Counters are numbered by their order in the document, each style on its
@@ -29,13 +30,42 @@ var sizes = {
     ellipse: [2, 3, 5, 8, 12],
     line: [2, 3, 5, 8, 12],
     pencil: [2, 3, 5, 8, 12],
+    highlight: [12, 16, 20, 28, 36],
     text: [14, 20, 28, 40, 56],
     counter: [20, 26, 32, 40, 52]
 }
-var defaultSize = { arrow: 2, rect: 2, ellipse: 2, line: 2, pencil: 2, text: 1, counter: 2 }
+var defaultSize = { arrow: 2, rect: 2, ellipse: 2, line: 2, pencil: 2, highlight: 2, text: 1, counter: 2 }
 
 // Objects with a box (x, y, w, h) and corner handles.
-function isBox(o) { return o.kind === "rect" || o.kind === "ellipse" || o.kind === "redact" || o.kind === "spotlight" }
+function isBox(o) { return o.kind === "rect" || o.kind === "ellipse" || o.kind === "redact" || o.kind === "spotlight" || o.kind === "highlight" }
+
+var highlightOpacities = [0.25, 0.35, 0.45, 0.6]
+
+// Text lines from OCR word boxes ([{line, x, y, w, h}]): their extent and words.
+function textLines(words) {
+    var lines = {}
+    for (var i = 0; i < words.length; i++) {
+        var w = words[i], l = lines[w.line] || (lines[w.line] = { y0: 1e9, y1: -1e9, words: [] })
+        l.y0 = Math.min(l.y0, w.y); l.y1 = Math.max(l.y1, w.y + w.h); l.words.push(w)
+    }
+    return Object.keys(lines).map(function (k) { return lines[k] })
+}
+
+// CleanShot's smart highlighter (ANN-10): pressed on a text line, the band
+// takes the line's height and runs from the first to the last word the drag
+// covers. Null when the press isn't on text.
+function snapHighlight(lines, x0, y0, x, pad) {
+    for (var i = 0; i < lines.length; i++) {
+        var l = lines[i]
+        if (y0 < l.y0 - pad || y0 > l.y1 + pad) continue
+        var lo = Math.min(x0, x), hi = Math.max(x0, x)
+        var hit = l.words.filter(function (w) { return w.x + w.w >= lo - pad && w.x <= hi + pad })
+        if (!hit.length) continue
+        var a = Math.min.apply(null, hit.map(function (w) { return w.x })), b = Math.max.apply(null, hit.map(function (w) { return w.x + w.w }))
+        return { x: a - 3, y: l.y0 - 3, w: b - a + 6, h: l.y1 - l.y0 + 6 }
+    }
+    return null
+}
 
 var spotlightDims = [0.25, 0.4, 0.55, 0.7, 0.85]
 
@@ -278,7 +308,7 @@ function hits(o, x, y, tol, box) {
     }
     if (o.kind === "counter")
         return dist(x, y, o.x, o.y) <= o.size / 2 + tol
-    if (o.kind === "redact" || o.kind === "spotlight")
+    if (o.kind === "redact" || o.kind === "spotlight" || o.kind === "highlight")
         return x >= o.x - tol && x <= o.x + o.w + tol && y >= o.y - tol && y <= o.y + o.h + tol
     if (o.kind === "text" && box)
         return x >= box.x - tol && x <= box.x + box.width + tol && y >= box.y - tol && y <= box.y + box.height + tol
