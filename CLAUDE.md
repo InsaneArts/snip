@@ -109,7 +109,9 @@ What cost us hours before:
   - `hyprctl eval` answers only `ok` or an error, never a value.
   - A submap with no binds isn't registered.
   - In the nested Hyprland, keys from a virtual keyboard (wtype) never run binds.
+  - **Removing a Lua bind handle twice (`b:remove()`) crashes Hyprland.** Remove each handle once: clear the global that holds it first.
 - **Hyprland 0.56 window rules**: a rule matching `class` and `title` together never matches, nor does a `title` pattern with non-ASCII characters; and when one rule moves a window (`workspace`, `monitor`), `float` from another matching rule is dropped. Use one ASCII field per rule, and put everything a window needs in one rule.
 - **Grabbing an item** (`grabToImage`) renders `round(size × dpr)` texels: ask `Platform.grabExact` for exact pixels at a fractional scale.
 - **Nested Hyprland on NVIDIA** can't use headless outputs (aquamarine asks for linear buffers); the harness uses the nested window's own output, kept drawing by `render_unfocused` (15 fps).
+- **`right` is taken** on every QML Item (a FINAL property in Qt 6.11): a custom property with that name stops the file loading.
 - **`color` is taken** on a QML `Window`: a custom property with that name fails to compile ("Property value set multiple times").
