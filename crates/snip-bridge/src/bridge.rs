@@ -195,6 +195,13 @@ pub mod qobject {
         /// Where one of Snip's own windows is: JSON [x, y], or "null"
         #[qinvokable]
         fn window_position(self: &Engine, title: QString) -> QString;
+        /// The output a window is on and the window's place in it: JSON
+        /// {output, x, y} (logical px from the output's corner), or "null"
+        #[qinvokable]
+        fn window_place(self: &Engine, title: QString) -> QString;
+        /// The pointer, in layout px: JSON [x, y], or "null"
+        #[qinvokable]
+        fn cursor_position(self: &Engine) -> QString;
 
         #[qinvokable]
         fn extract_text(self: Pin<&mut Engine>, id: QString);
@@ -382,6 +389,7 @@ impl qobject::Engine {
                 ("edit-clipboard", "Edit the image on the clipboard"),
                 ("pins-toggle", "Hide or show all pins"),
                 ("pins-close", "Close all pins"),
+                ("pins-unlock", "Unlock all pins"),
             ] {
                 wl.send(snip_wayland::Request::RegisterShortcut { id: id.into(), description: d.into() });
             }
@@ -701,6 +709,19 @@ impl qobject::Engine {
 
     fn window_position(&self, title: QString) -> QString {
         let p = snip_hypr::window(&app_id(), &title.to_string()).map(|c| format!("[{},{}]", c.x, c.y)).unwrap_or_else(|_| "null".into());
+        QString::from(p.as_str())
+    }
+
+    fn window_place(&self, title: QString) -> QString {
+        let p = snip_hypr::window(&app_id(), &title.to_string()).ok().and_then(|c| {
+            let m = snip_hypr::monitors().into_iter().find(|m| c.x >= m.x && c.y >= m.y && c.x < m.x + m.width && c.y < m.y + m.height)?;
+            Some(serde_json::json!({ "output": m.name, "x": c.x - m.x, "y": c.y - m.y }).to_string())
+        });
+        QString::from(p.unwrap_or_else(|| "null".into()).as_str())
+    }
+
+    fn cursor_position(&self) -> QString {
+        let p = snip_hypr::cursor_pos().map(|(x, y)| format!("[{x},{y}]")).unwrap_or_else(|| "null".into());
         QString::from(p.as_str())
     }
 
