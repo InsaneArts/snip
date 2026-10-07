@@ -21,10 +21,11 @@ end
 
 if snip_keys ~= false then
   -- macOS muscle memory (product spec §7). These replace Omarchy's "move
-  -- window to workspace 3/4/5"; SUPER+SHIFT+ALT+3/4/5 (move silently) stay.
+  -- window to workspace 3/4/5/6"; SUPER+SHIFT+ALT+3..6 (move silently) stay.
   bind("SUPER + SHIFT + code:12", "fullscreen", "capture fullscreen")
   bind("SUPER + SHIFT + code:13", "area", "capture area")
   bind("SUPER + SHIFT + code:14", "all-in-one", "all-in-one")
+  bind("SUPER + SHIFT + code:15", "edit-clipboard", "edit the clipboard's image")
 
   if snip_print_keys then
     bind("PRINT", "area", "capture area")
