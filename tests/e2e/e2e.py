@@ -1921,6 +1921,30 @@ def background_tiles_have_no_frame(s, env):
 
 
 @case
+def slider_drag_stays_put(s, env):
+    """Dragging a Background slider moves the slider only: a drag that wanders up or down
+    never scrolls the panel."""
+    png = s.tmp / "sliders.png"
+    noise_png(png, 300, 1000, seed=8)                           # a tall window: the sliders in view
+    s.json("edit", str(png))
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3), "the editor opens"
+    s.debug("ui", "editor", "tool", "background")
+    s.debug("ui", "editor", "bg", '{"kind":"color","value":"#10a050","padding":10}')
+    w, mon, st = editor_window(), env.monitor(), editor_state(s)
+    t, width, before = st["paddingTrack"], st["paddingWidth"], st["bg"]["padding"]
+    x0, y0 = w["at"][0] - mon["x"] + t["x"], w["at"][1] - mon["y"] + t["y"]
+    s.move(x0 + width * 0.1, y0); s.debug("down")
+    for k, dy in enumerate([-15, -30, -45, -60, -75, -90], 1):   # left to right, drifting up as a hand does
+        s.move(x0 + width * (0.1 + 0.12 * k), y0 + dy)
+    s.debug("up")
+    assert wait_for(lambda: editor_state(s)["bg"]["padding"] > before + 50, 2), editor_state(s)["bg"]
+    assert editor_state(s)["panelScrolled"] == 0, ("the panel scrolled", editor_state(s)["panelScrolled"])
+    s.debug("scroll", "60")                                      # the wheel still scrolls it
+    assert wait_for(lambda: editor_state(s)["panelScrolled"] > 0, 2), "the wheel scrolls the panel"
+    close_editor(s)
+
+
+@case
 def editor_add_image(s, env):
     """ANN-12: add an image from a file and from the clipboard; it keeps its shape when
     resized from a corner, and is drawn into the export."""

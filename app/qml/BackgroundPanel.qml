@@ -39,6 +39,7 @@ Rectangle {
         ed.focusKeys()
     }
     readonly property alias paddingSlider: paddingSlider
+    readonly property alias scrolled: flick.contentY
     property bool naming: false
     onNamingChanged: if (naming) { presetName.text = ""; presetName.forceActiveFocus() }
     function finishNaming(save) {
@@ -83,6 +84,7 @@ Rectangle {
     }
 
     Flickable {
+        id: flick
         anchors.fill: parent
         anchors.margins: 16
         contentHeight: col.implicitHeight
