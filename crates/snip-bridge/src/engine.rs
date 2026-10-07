@@ -1197,6 +1197,11 @@ impl Inner {
 
     /// Pin a capture to the screen (PIN-01): its image floats above every
     /// window, on every workspace of its monitor, at its own size.
+    /// Pin to the Screen… (PIN-01): an image file, pinned as a new capture.
+    pub fn pin_file(&self, path: &str) -> Result<Value, String> {
+        self.import(path).and_then(|rec| self.pin(&rec.id))
+    }
+
     pub fn pin(&self, id: &str) -> Result<Value, String> {
         self.pin_at(id, None)
     }
