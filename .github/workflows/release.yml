@@ -1,0 +1,31 @@
+# Every merge to main is a release (D33): the next patch version, notes from
+# the merged pull requests, the source archive. Run it by hand for a minor or
+# major bump.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: patch, minor or major
+        default: patch
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: scripts/release.sh "${{ inputs.bump || 'patch' }}" "$GITHUB_SHA"
+        env:
+          GH_TOKEN: ${{ github.token }}
