@@ -121,6 +121,17 @@ Rectangle {
             }
         }
         Capsule {
+            visible: bar.ed.sizeKind === "counter"
+            ToolButton {
+                id: counterStyleButton
+                tip: "Counter style"
+                chevron: true
+                label: Ed.counterStyles.find(c => c.id === (bar.ed.selectedObj && bar.ed.selectedObj.kind === "counter"
+                                                              ? (bar.ed.selectedObj.style || "num") : bar.ed.counterStyle)).short
+                onClicked: bar.ed.openMenuNamed("counter", counterStyleButton)
+            }
+        }
+        Capsule {
             visible: bar.ed.sizeKind === "arrow" && bar.ed.tool !== "crop"
             ToolButton {
                 id: arrowStyleButton

@@ -9,12 +9,13 @@
 //   ellipse {kind, x, y, w, h, color, size}
 //   line    {kind, x1, y1, x2, y2, color, size}
 //   text    {kind, x, y, text, color, size, style, w}     size = font px; w wraps it (0: one line)
-//   counter {kind, x, y, color, size}                     centre; size = diameter
+//   counter {kind, x, y, color, size, style}              centre; size = diameter; num | alpha | roman
 //   redact  {kind, x, y, w, h, style, seed}               pixelate | text | blur | black
 //   spotlight {kind, x, y, w, h, shape, dim}              shape: rect | ellipse; dims the rest
 //
-// Counters are numbered by their order in the document, so deleting one
-// renumbers the rest (ANN-08).
+// Counters are numbered by their order in the document, each style on its
+// own, so deleting one renumbers the rest (ANN-08), from the document's
+// counterStart (default 1).
 
 // CleanShot's ten swatches; pink is its default.
 var palette = ["#000000", "#ff3b30", "#ff9500", "#ffcc00", "#34c759",
@@ -283,9 +284,34 @@ function tooSmall(o) {
     return false
 }
 
-function counterNumber(items, index) {
-    var n = 0
-    for (var i = 0; i <= index; i++) if (items[i].kind === "counter") n++
+var counterStyles = [{ id: "num", label: "1, 2, 3", short: "123" }, { id: "alpha", label: "A, B, C", short: "ABC" },
+                     { id: "roman", label: "I, II, III", short: "I II" }]
+
+function roman(n) {
+    var out = "", vals = [[1000, "M"], [900, "CM"], [500, "D"], [400, "CD"], [100, "C"], [90, "XC"],
+                          [50, "L"], [40, "XL"], [10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"]]
+    for (var i = 0; i < vals.length; i++) while (n >= vals[i][0]) { out += vals[i][1]; n -= vals[i][0] }
+    return out
+}
+function alpha(n) {
+    var out = ""
+    for (; n > 0; n = Math.floor((n - 1) / 26)) out = String.fromCharCode(65 + (n - 1) % 26) + out
+    return out
+}
+// The label of the n-th counter (1-based) in a document.
+function counterLabel(doc, n, style) {
+    var v = (doc.counterStart === undefined ? 1 : doc.counterStart) + n - 1
+    if (style === "alpha") return alpha(Math.max(1, v))
+    if (style === "roman") return roman(Math.max(1, v))
+    return String(v)
+}
+
+// Each style counts on its own: 1, 2 and A, B can share a screenshot.
+// `style` is for a counter not in the document yet (index = items.length).
+function counterNumber(items, index, style) {
+    var st = index < items.length ? (items[index].style || "num") : (style || "num"), n = index < items.length ? 0 : 1
+    for (var i = 0; i <= Math.min(index, items.length - 1); i++)
+        if (items[i].kind === "counter" && (items[i].style || "num") === st) n++
     return n
 }
 
