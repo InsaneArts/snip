@@ -122,6 +122,7 @@ Built: `snipd` (Rust core + Qt Quick UI in one process), `snip` CLI, `hypr/snip.
 | Spotlight (ANN-07) | ✅ | Rounded rectangle or ellipse; dim 25–85 %; spotlights merge; objects drawn on top stay bright. |
 | Crop (ANN-11) | ✅ | Handles, move, ratios, snapping to edges, outward crop that grows the canvas with the edge colour, rotate, flip, resize in px or %; exported exactly. |
 | Background tool (BG-01…06) | ✅ first slice | Gradients (2 from the Omarchy theme), the theme's wallpapers, blurred wallpaper or screenshot, plain colours and transparent; padding, inset, shadow, corners, ratio, alignment; the image stays pixel-exact inside. Presets, auto-apply and auto-balance still to add. |
+| Annotate settings (ANN-17, 18) | ✅ first slice | `[annotate]` in the config: `object_shadows` (on), `inverse_arrows`, `smooth_drawing` (on), `auto_expand` (objects past the canvas grow it, one undo step). Still to add: remember the Background tool's settings, always on top. |
 | Preview == export | ✅ | `Platform.grabExact`: the same scene, one item unit per pixel at any fractional scale; e2e checks every pixel outside the drawn object, and undo restores all of them. |
 | Project format (ANN-16) | ✅ | `edit.json` (objects) and `original.png` next to the capture; reopening keeps objects editable; rotate/flip flatten. |
 
