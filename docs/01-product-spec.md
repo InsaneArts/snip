@@ -334,7 +334,7 @@ A normal floating window (Hyprland rule: float, centred, with optional pin / alw
 | OMA-05 | Notifications through omarchy-shell (with image and click action) as a fallback when the QAO is off | P0 |
 | OMA-06 | Works as `OMARCHY_SCREENSHOT_EDITOR`, so Omarchy's own flow can open our editor | P0 |
 | OMA-07 | `.desktop` handlers: "Annotate with Snip", "Pin with Snip" for images | P1 |
-| OMA-08 | **Bar icon** (D35): a tray icon (StatusNotifierItem) with Snip's logo, drawn in the bar's colours. A click opens CleanShot's menu: Capture Area, Capture Fullscreen, Capture Window, Scrolling Capture, Capture Text, All-In-One (each with its key), Open History…, Restore Recently Closed, Settings…, Quit Snip | P0 |
+| OMA-08 | **Bar icon** (D35): a tray icon (StatusNotifierItem) with Snip's logo, drawn in the bar's colours. A click opens CleanShot's menu, in CleanShot's order (its MainMenu.nib): All-In-One, Capture Area, Capture Previous Area, Capture Fullscreen, Capture Window, Self-Timer, Scrolling Capture, Capture Text (each with its key); Open…, Open from Clipboard, Pin to the Screen…, Capture History…, Restore Recently Closed; Settings…, About Snip, Quit Snip. Record Screen, Hide Desktop Icons and Check for Updates join when Snip has them | P0 |
 | OMA-09 | **In the launcher**: "Snip" opens Settings, starting snipd if it isn't running. Its actions start captures and open History | P0 |
 
 ## 6. Linux reinterpretations: where we differ from CleanShot on purpose
