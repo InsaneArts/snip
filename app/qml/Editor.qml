@@ -150,7 +150,7 @@ Window {
 
     function setTool(t) {
         finishText()
-        if (t === "crop" && tool !== "crop") toolBeforeCrop = tool
+        if (t === "crop" && tool !== "crop") { toolBeforeCrop = tool; cropStart = { crop: doc.crop, fill: doc.fill } }
         tool = t
         if (t !== "select") selected = -1
     }
@@ -327,6 +327,20 @@ Window {
         if (JSON.stringify(next) !== JSON.stringify(doc)) commit(next)
     }
     function cropDone() { setTool(toolBeforeCrop === "crop" ? "arrow" : toolBeforeCrop) }
+    // CleanShot's crop bar: Cancel goes back to the crop (and fill) it started with
+    property var cropStart: null
+    function cropCancel() {
+        const was = cropStart || { crop: null, fill: undefined }
+        if (JSON.stringify([doc.crop, doc.fill]) !== JSON.stringify([was.crop, was.fill])) {
+            const next = Object.assign({}, doc, { crop: was.crop })
+            if (was.fill === undefined) delete next.fill; else next.fill = was.fill
+            commit(next)
+        }
+        cropDone()
+    }
+    // what the canvas shows beyond the image: the edge colour (automatic),
+    // transparent, or any colour
+    function setFill(c) { if (doc.fill !== c) commit(Object.assign({}, doc, { fill: c })) }
     property real zoom: 1               // 1 = 100 %: one image px per device px
     property bool fit: true
     readonly property real k: zoom / dpr // view px per image px
@@ -565,7 +579,7 @@ Window {
             }
             const nudge = shift ? 10 : 1
             if (ed.tool === "crop" && (e.key === Qt.Key_Escape || e.key === Qt.Key_Return || e.key === Qt.Key_Enter)) {
-                ed.cropDone()
+                if (e.key === Qt.Key_Escape) ed.cropCancel(); else ed.cropDone()
                 e.accepted = true
                 return
             }
@@ -1023,26 +1037,67 @@ Window {
                     id: cropRow
                     anchors.centerIn: parent
                     spacing: 6
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        leftPadding: 8; rightPadding: 4
-                        text: Math.round(ed.cropShown.w) + " × " + Math.round(ed.cropShown.h)
-                        color: Theme.textSecondary
-                        font.family: Theme.fontUi; font.pixelSize: 13; font.features: { "tnum": 1 }
-                    }
-                    ToolButton { icon: "rotate-ccw"; tip: "Rotate left"; onClicked: ed.transformImage("rotate-left") }
-                    ToolButton { icon: "rotate-cw"; tip: "Rotate right"; onClicked: ed.transformImage("rotate-right") }
-                    ToolButton { icon: "flip-horizontal"; tip: "Flip horizontal"; onClicked: ed.transformImage("flip-horizontal") }
-                    ToolButton { icon: "flip-vertical"; tip: "Flip vertical"; onClicked: ed.transformImage("flip-vertical") }
-                    ToolButton { id: resizeButton; label: "Resize"; chevron: true; onClicked: { resizeMenu.load(); ed.openMenuNamed("resize", resizeButton) } }
                     ToolButton {
                         id: ratioButton
                         label: (Ed.cropRatios.find(r => r.r === ed.cropRatio) || Ed.cropRatios[0]).label
                         chevron: true
                         onClicked: ed.openMenuNamed("ratio", ratioButton)
                     }
-                    ToolButton { label: "Reset"; onClicked: { ed.cropRatio = 0; ed.setCrop(ed.full) } }
-                    ToolButton { label: "Done"; selected: true; onClicked: ed.cropDone() }
+                    // the crop's size, typed (CleanShot's W ↔ H)
+                    component SizeField: Rectangle {
+                        id: sizeField
+                        property int value: 0
+                        signal typed(int v)
+                        anchors.verticalCenter: parent ? parent.verticalCenter : undefined
+                        width: 58; height: 26; radius: 7
+                        color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+                        border.width: input.activeFocus ? 1 : 0; border.color: Theme.accent
+                        TextInput {
+                            id: input
+                            anchors.fill: parent; anchors.leftMargin: 8; anchors.rightMargin: 8
+                            verticalAlignment: TextInput.AlignVCenter; horizontalAlignment: TextInput.AlignHCenter
+                            text: sizeField.value
+                            color: Theme.text; font.family: Theme.fontUi; font.pixelSize: 13; font.features: { "tnum": 1 }
+                            validator: IntValidator { bottom: 4; top: 100000 }
+                            selectByMouse: true
+                            onAccepted: { sizeField.typed(parseInt(text)); ed.focusKeys() }
+                            Keys.onTabPressed: (e) => { sizeField.typed(parseInt(text)); e.accepted = false }
+                            Keys.onEscapePressed: { text = sizeField.value; ed.focusKeys() }
+                        }
+                    }
+                    SizeField {
+                        value: Math.round(ed.cropShown.w)
+                        onTyped: (v) => { const c = ed.cropShown; ed.setCrop({ x: c.x, y: c.y, w: v, h: ed.ratioValue ? Math.round(v / ed.ratioValue) : c.h }) }
+                    }
+                    Text { anchors.verticalCenter: parent.verticalCenter; text: "×"; color: Theme.textSecondary; font.family: Theme.fontUi; font.pixelSize: 13 }
+                    SizeField {
+                        value: Math.round(ed.cropShown.h)
+                        onTyped: (v) => { const c = ed.cropShown; ed.setCrop({ x: c.x, y: c.y, w: ed.ratioValue ? Math.round(v * ed.ratioValue) : c.w, h: v }) }
+                    }
+                    // the canvas beyond the image
+                    ToolButton {
+                        id: fillButton
+                        tip: "Canvas fill"
+                        chevron: true
+                        leftPad: 18
+                        Rectangle {
+                            x: 9; anchors.verticalCenter: parent.verticalCenter
+                            width: 16; height: 16; radius: 8
+                            readonly property string f: ed.doc.fill || ed.edgeFill || "#ffffff"
+                            color: f === "transparent" ? "white" : f
+                            border.width: 1; border.color: Theme.hairline
+                            Rectangle { visible: parent.f === "transparent"; anchors.centerIn: parent; width: 14; height: 1.5; rotation: -45; color: Theme.danger }
+                        }
+                        onClicked: ed.openMenuNamed("fill", fillButton)
+                    }
+                    ToolButton { icon: "rotate-ccw"; tip: "Rotate left"; onClicked: ed.transformImage("rotate-left") }
+                    ToolButton { icon: "rotate-cw"; tip: "Rotate right"; onClicked: ed.transformImage("rotate-right") }
+                    ToolButton { icon: "flip-horizontal"; tip: "Flip horizontal"; onClicked: ed.transformImage("flip-horizontal") }
+                    ToolButton { icon: "flip-vertical"; tip: "Flip vertical"; onClicked: ed.transformImage("flip-vertical") }
+                    ToolButton { id: resizeButton; label: "Resize"; chevron: true; onClicked: { resizeMenu.load(); ed.openMenuNamed("resize", resizeButton) } }
+                    ToolButton { label: "Revert to Original"; onClicked: { ed.cropRatio = 0; ed.setCrop(ed.full) } }
+                    ToolButton { id: cropCancelButton; label: "Cancel"; onClicked: ed.cropCancel() }
+                    ToolButton { label: "Crop"; selected: true; onClicked: ed.cropDone() }
                 }
             }
         }
@@ -1392,7 +1447,7 @@ Window {
 
     // ---------------------------------------------------------------- dropdowns
     function openMenuNamed(name, anchorItem) {
-        openMenu({ color: colorMenu, size: sizeMenu, style: styleMenu, level: levelMenu, presets: presetsMenu, bgColor: bgColorMenu, zoom: zoomMenu, arrow: arrowMenu, text: textMenu, dim: dimMenu,
+        openMenu({ color: colorMenu, size: sizeMenu, style: styleMenu, level: levelMenu, presets: presetsMenu, bgColor: bgColorMenu, fill: fillMenu, zoom: zoomMenu, arrow: arrowMenu, text: textMenu, dim: dimMenu,
                    counter: counterMenu, opacity: opacityMenu, ratio: ratioMenu, resize: resizeMenu, addImage: addImageMenu }[name], anchorItem)
     }
     property Item openedMenu: null
@@ -1461,10 +1516,10 @@ Window {
     // the eyedropper (ANN-13): the frozen screen with the magnifier, so it
     // picks anywhere, this canvas included; for the ink or the background
     property int pickToken: 0
-    property bool pickForBg: false
-    function pickColor(forBg) {
+    property string pickFor: "ink"      // ink | bg | fill
+    function pickColor(target) {
         openedMenu = null
-        pickForBg = forBg
+        pickFor = target
         pickToken = controller.nextToken()
         Engine.pickColorForEditor(pickToken)
     }
@@ -1474,8 +1529,10 @@ Window {
             if (token !== ed.pickToken) return
             ed.pickToken = 0
             ed.requestActivate()
-            if (c && ed.pickForBg) ed.setBg({ kind: "color", value: c })
-            else if (c) ed.setColor(c)
+            if (!c) return
+            if (ed.pickFor === "bg") ed.setBg({ kind: "color", value: c })
+            else if (ed.pickFor === "fill") ed.setFill(c)
+            else ed.setColor(c)
         }
     }
 
@@ -1523,7 +1580,7 @@ Window {
                 value: ed.toolInk
                 onPicked: (c) => ed.setColor(c)
                 onSave: ed.saveColor(current)
-                onEyedropper: ed.pickColor(false)
+                onEyedropper: ed.pickColor("ink")
             }
         }
     }
@@ -1765,7 +1822,31 @@ Window {
             value: ed.bgLive && ed.bgLive.kind === "color" && ed.bgLive.value.startsWith("#") ? ed.bgLive.value : "#3a7bd5"
             onPicked: (c) => ed.previewBg({ kind: "color", value: c })
             onSave: ed.saveColor(current)
-            onEyedropper: ed.pickColor(true)
+            onEyedropper: ed.pickColor("bg")
+        }
+    }
+
+    // Crop's canvas fill: Automatic (the edge colour), Transparent, White, Black, any colour
+    Menu {
+        id: fillMenu
+        z: 11      // above the crop bar
+        Repeater {
+            model: [{ label: "Automatic", value: "auto" }, { label: "Transparent", value: "transparent" },
+                    { label: "White", value: "#ffffff" }, { label: "Black", value: "#000000" }]
+            delegate: MenuRow {
+                required property var modelData
+                width: 200
+                text: modelData.label
+                onActivated: { ed.setFill(modelData.value === "auto" ? (ed.edgeFill || Engine.edgeColor(ed.basePath)) : modelData.value); ed.openedMenu = null }
+            }
+        }
+        Rectangle { width: 200; height: 1; color: Theme.hairline }
+        ColorPanel {
+            width: 200
+            value: ed.doc.fill && ed.doc.fill.startsWith("#") ? ed.doc.fill : "#ffffff"
+            onPicked: (c) => ed.setFill(c)
+            onSave: ed.saveColor(current)
+            onEyedropper: ed.pickColor("fill")
         }
     }
 
@@ -1916,7 +1997,7 @@ Window {
         case "counter": addItem({ kind: "counter", x: n(1), y: n(2), color: ink, size: sizeFor("counter"), style: a[3] || counterStyle }); break
         case "counter-style": setCounterStyle(a[1]); break
         case "words": Engine.requestWords(basePath); break
-        case "eyedropper": pickColor(a[1] === "bg"); break
+        case "eyedropper": pickColor(a[1] || "ink"); break
         case "add-image": addImageFile(Engine.editorImportImage(basePath, a.slice(1).join(" "))); break
         case "paste-image": pasteImage(); break
         case "save-color": saveColor(a[1]); break
@@ -1929,6 +2010,8 @@ Window {
                                  level: a[7] ? n(7) : redactLevel }); break
         case "crop": a[1] === "reset" ? setCrop(full) : setCrop({ x: n(1), y: n(2), w: n(3), h: n(4) }); break
         case "crop-ratio": setCropRatio(n(1)); break
+        case "fill": setFill(a[1]); break
+        case "crop-cancel": cropCancel(); break
         case "transform": transformImage(a[1], n(2), n(3)); break
         case "bg": setBg(a[1] === "none" ? null : JSON.parse(a.slice(1).join(" "))); break
         case "bg-preset": applyBgPreset(a.slice(1).join(" ")); break
@@ -1957,6 +2040,7 @@ Window {
                 // where image px (0,0) is, in window-logical px, and logical px per image px
                 originX: originX, originY: originY + view.y, k: k, winW: width, winH: height,
                 ready: base.status === Image.Ready, editingText: editingText, typed: textEdit.text, active: ed.active, menuOpen: openedMenu !== null, toolbarNeeds: toolbar.needed,
+                cropCancelAt: tool === "crop" ? cropCancelButton.mapToItem(null, cropCancelButton.width / 2, cropCancelButton.height / 2) : null,
                 emojiButton: emojiButton.visible ? emojiButton.mapToItem(null, 11, 11) : null,
                 selectionBox: { x: selectionBox.x, y: selectionBox.y, w: selectionBox.width, h: selectionBox.height },
                 words: words ? words.length : -1, fill: doc.fill || "", shownX: shown.x, shownY: shown.y,
