@@ -1310,6 +1310,38 @@ def editor_background(s, env):
 
 
 @case
+def editor_add_image(s, env):
+    """ANN-12: add an image from a file and from the clipboard; it keeps its shape when
+    resized from a corner, and is drawn into the export."""
+    from PIL import Image
+    Image.new("RGB", (400, 300), "white").save(s.tmp / "canvas.png")
+    Image.new("RGB", (200, 100), (200, 30, 160)).save(s.tmp / "sticker.png")
+    rec = s.json("edit", str(s.tmp / "canvas.png"))["result"]
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    s.debug("ui", "editor", "add-image", str(s.tmp / "sticker.png"))
+    im = editor_state(s)["items"][0]
+    assert im["kind"] == "image" and (im["w"], im["h"]) == (200, 100), im
+    w, mon, st = editor_window(), env.monitor(), editor_state(s)
+    at = lambda ix, iy: (w["at"][0] - mon["x"] + st["originX"] + ix * st["k"], w["at"][1] - mon["y"] + st["originY"] + iy * st["k"])
+    s.drag(*at(im["x"] + im["w"], im["y"] + im["h"]), *at(im["x"] + im["w"] - 100, im["y"] + im["h"] - 10), steps=5)
+    time.sleep(0.2)
+    r = editor_state(s)["items"][0]
+    assert abs(r["w"] / r["h"] - 2) < 0.02 and abs(r["w"] - 100) < 3, ("resized from the corner, still 2:1", r)
+    subprocess.run(["wl-copy", "--type", "image/png"], stdin=open(s.tmp / "sticker.png", "rb"), check=True)
+    time.sleep(0.3)
+    try:
+        s.debug("ui", "editor", "paste-image")
+        assert [i["kind"] for i in editor_state(s)["items"]] == ["image", "image"]
+    finally:
+        subprocess.run(["wl-copy", "--clear"], check=False)
+    editor_flush(s)
+    c = editor_state(s)["items"][1]
+    px = Image.open(rec["source"]).convert("RGB").getpixel((round(c["x"] + c["w"] / 2), round(c["y"] + c["h"] / 2)))
+    assert px == (200, 30, 160), px
+    close_editor(s)
+
+
+@case
 def editor_from_clipboard(s, env):
     """ANN-19: snip edit --clipboard opens the clipboard's image (from another app), or a
     copied PNG file, in the editor; text alone is a clean error."""
