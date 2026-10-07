@@ -315,7 +315,7 @@ A normal floating window (Hyprland rule: float, centred, with optional pin / alw
 | SET-04 | File name template with tokens (`%y %m %n %d %w %H %M %S %p %t %a %r %i`), illegal-character stripping, UTC option, `@2x` suffix option | P0 | `%t` is the window title and `%a` the app class, both from Hyprland. |
 | SET-05 | Export folder (default `$XDG_PICTURES_DIR/Screenshots`, `$XDG_VIDEOS_DIR/Screencasts`) | P0 | |
 | SET-06 | Formats: PNG (default), JPG, WebP; optional lossless JPEG XL | P0 | |
-| SET-07 | Clipboard mode: Image (default) / File / Image + File; plus **the file path as text** (default on) | P0 | Copy offers `image/png` and the file's path as `text/plain`: image-aware apps paste the image, text-only targets (terminals, plain fields) paste the path instead of nothing (D24). |
+| SET-07 | Clipboard mode: Image (default) / File / Image + File; plus **the file path as text** (default off since D38; it was on, D24) | P0 | Copy offers `image/png` and the file's path as `text/plain`: image-aware apps paste the image, text-only targets (terminals, plain fields) paste the path instead of nothing (D24). |
 | SET-07b | "Keep captures out of clipboard history" | P1 | Mostly not needed, because nothing is copied automatically (§5.0). Kept as an opt-in for users who turn on auto-copy: copies are then offered with `x-kde-passwordManagerHint`, which Omarchy's clipboard history skips. Default **off**. |
 | SET-08 | Shortcuts: a recorder that writes Hyprland Lua binds, detects conflicts with Omarchy's binds, and restores defaults | P1 | Wayland apps cannot grab keys, so shortcuts are written to Hyprland config (architecture doc). |
 | SET-09 | Sounds: shutter and recording start, stop, pause (bundled, themable, can be turned off) | P0 | |
