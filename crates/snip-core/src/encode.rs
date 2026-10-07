@@ -166,7 +166,7 @@ pub fn flip_horizontal(data: &[u8], w: u32, h: u32, bpp: usize) -> Vec<u8> {
 }
 
 /// Mirror tightly packed pixels top-bottom ("Flip Vertical").
-pub fn flip_vertical(data: &[u8], w: u32, h: u32, bpp: usize) -> Vec<u8> {
+pub fn flip_vertical(data: &[u8], w: u32, bpp: usize) -> Vec<u8> {
     let row = w as usize * bpp;
     data.chunks_exact(row).rev().flatten().copied().collect()
 }
@@ -174,7 +174,7 @@ pub fn flip_vertical(data: &[u8], w: u32, h: u32, bpp: usize) -> Vec<u8> {
 /// Rotate tightly packed pixels 90° clockwise. Returns the new width and height.
 pub fn rotate_right(data: &[u8], w: u32, h: u32, bpp: usize) -> (Vec<u8>, u32, u32) {
     let (l, w2, h2) = rotate_left(data, w, h, bpp);
-    let (flipped, fw, fh) = (flip_horizontal(&flip_vertical(&l, w2, h2, bpp), w2, h2, bpp), w2, h2);
+    let (flipped, fw, fh) = (flip_horizontal(&flip_vertical(&l, w2, bpp), w2, h2, bpp), w2, h2);
     (flipped, fw, fh)
 }
 
@@ -232,7 +232,7 @@ mod editor_transform_tests {
         let (l2, c, d) = rotate_left(&l1, a, b, 1);
         let (l3, e, f) = rotate_left(&l2, c, d, 1);
         assert_eq!((r, rw, rh), (l3, e, f));
-        assert_eq!(flip_vertical(&px, w, h, 1), vec![3, 4, 5, 0, 1, 2]);
+        assert_eq!(flip_vertical(&px, w, 1), vec![3, 4, 5, 0, 1, 2]);
     }
 
     #[test]
