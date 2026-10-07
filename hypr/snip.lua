@@ -16,25 +16,35 @@
 -- history (browse and search past captures), area-pin (capture an area and pin it
 -- in place), pins-toggle (hide or show every pin),
 -- pins-close, pins-unlock (locked pins take no clicks), settings.
+--
+-- Settings › Shortcuts records other keys for any action; snipd binds those
+-- over these defaults (config.toml [shortcuts]), and Restore Defaults calls
+-- snip_bind_defaults() again. A bind's description names its action (the
+-- action's name in snipd), which is how Settings finds the keys.
 
-local function bind(keys, action, description)
+local function bind(keys, action, name)
   pcall(hl.unbind, keys) -- the key may not be bound yet
-  hl.bind(keys, hl.dsp.global("snip:" .. action), { description = "Snip: " .. description })
+  hl.bind(keys, hl.dsp.global("snip:" .. action), { description = "Snip: " .. name })
 end
 
-if snip_keys ~= false then
+function snip_bind_defaults()
+  if snip_keys == false then
+    return
+  end
   -- macOS muscle memory (product spec §7). These replace Omarchy's "move
   -- window to workspace 3/4/5/6"; SUPER+SHIFT+ALT+3..6 (move silently) stay.
-  bind("SUPER + SHIFT + code:12", "fullscreen", "capture fullscreen")
-  bind("SUPER + SHIFT + code:13", "area", "capture area")
-  bind("SUPER + SHIFT + code:14", "all-in-one", "all-in-one")
-  bind("SUPER + SHIFT + code:15", "edit-clipboard", "edit the clipboard's image")
+  bind("SUPER + SHIFT + code:12", "fullscreen", "Capture fullscreen")
+  bind("SUPER + SHIFT + code:13", "area", "Capture area")
+  bind("SUPER + SHIFT + code:14", "all-in-one", "All-In-One")
+  bind("SUPER + SHIFT + code:15", "edit-clipboard", "Edit the image on the clipboard")
 
   if snip_print_keys then
-    bind("PRINT", "area", "capture area")
-    bind("SUPER + CTRL + PRINT", "text", "capture text")
+    bind("PRINT", "area", "Capture area")
+    bind("SUPER + CTRL + PRINT", "text", "Capture text (OCR)")
   end
 end
+
+snip_bind_defaults()
 
 -- Snip's surfaces appear instantly: no layer fade (which would also show up
 -- in the first frames of a recording). snipd re-applies this at runtime too.
