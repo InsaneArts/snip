@@ -192,6 +192,9 @@ pub mod qobject {
         /// (x, y) when `relative`, through Hyprland (a pin's arrow keys)
         #[qinvokable]
         fn move_window(self: &Engine, title: QString, x: i32, y: i32, relative: bool);
+        /// Pin one of Snip's own windows (the editor's "Always on top")
+        #[qinvokable]
+        fn pin_window(self: &Engine, title: QString);
         /// Where one of Snip's own windows is: JSON [x, y], or "null"
         #[qinvokable]
         fn window_position(self: &Engine, title: QString) -> QString;
@@ -711,6 +714,13 @@ impl qobject::Engine {
         let (class, title) = (app_id(), title.to_string());
         std::thread::spawn(move || {
             let _ = snip_hypr::move_window(&class, &title, x, y, relative);
+        });
+    }
+
+    fn pin_window(&self, title: QString) {
+        let (class, title) = (app_id(), title.to_string());
+        std::thread::spawn(move || {
+            let _ = snip_hypr::pin_window(&class, &title);
         });
     }
 

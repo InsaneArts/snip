@@ -157,11 +157,17 @@ pub struct Annotate {
     /// "Auto-expand canvas" (ANN-17): an object drawn past the canvas grows
     /// it, filled with the colour around the image's edge.
     pub auto_expand: bool,
+    /// "Remember if the Background tool was opened" (ANN-18): an editor
+    /// opens with it when the last one closed with it.
+    pub remember_background_tool: bool,
+    /// "Always on top" (ANN-18): the editor is pinned (Hyprland: above
+    /// other windows, on every workspace).
+    pub always_on_top: bool,
 }
 
 impl Default for Annotate {
     fn default() -> Self {
-        Self { object_shadows: true, inverse_arrows: false, smooth_drawing: true, auto_expand: false }
+        Self { object_shadows: true, inverse_arrows: false, smooth_drawing: true, auto_expand: false, remember_background_tool: false, always_on_top: false }
     }
 }
 

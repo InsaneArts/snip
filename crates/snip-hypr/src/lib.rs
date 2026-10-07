@@ -140,6 +140,12 @@ pub fn resize_window(class: &str, title: &str, w: i32, h: i32) -> std::io::Resul
     eval(&format!(r#"hl.dispatch(hl.dsp.window.resize({{ x = {w}, y = {h}, window = "address:0x{:x}" }}))"#, c.address))
 }
 
+/// Pin one of our windows: above the others, on every workspace.
+pub fn pin_window(class: &str, title: &str) -> std::io::Result<String> {
+    let c = window(class, title)?;
+    eval(&format!(r#"hl.dispatch(hl.dsp.window.pin({{ action = "enable", window = "address:0x{:x}" }}))"#, c.address))
+}
+
 /// Move one of our windows to (x, y) in layout px, or by (x, y) when
 /// `relative`: a client can't place itself.
 pub fn move_window(class: &str, title: &str, x: i32, y: i32, relative: bool) -> std::io::Result<String> {
