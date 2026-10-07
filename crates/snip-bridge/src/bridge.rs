@@ -91,6 +91,16 @@ pub mod qobject {
 
         #[qinvokable]
         fn extract_text(self: Pin<&mut Engine>, id: QString);
+        /// Open Snip's editor on a capture (ANN-19).
+        #[qinvokable]
+        fn edit(self: Pin<&mut Engine>, id: QString);
+
+        /// Write an editor's render (handed over by `Platform.grabExact` under
+        /// `token`) and its objects back to the capture (ANN-15), then do
+        /// `action`: "" | "copy" | "save". Answers with editor_done.
+        #[qinvokable]
+        fn editor_commit(self: Pin<&mut Engine>, id: QString, token: i32, doc: QString, action: QString);
+
 
         /// rotate-left | flip-horizontal
         #[qinvokable]
@@ -147,6 +157,14 @@ pub mod qobject {
         /// A result to show on a card: text-copied | qr-copied | no-text | error
         #[qsignal]
         fn card_status(self: Pin<&mut Engine>, id: &QString, status: &QString, detail: &QString);
+
+        /// Open an editor window: {id, image, doc, width, height, title}
+        #[qsignal]
+        fn editor_open(self: Pin<&mut Engine>, editor: &QString);
+
+        /// An editor_commit finished (ok) or failed (detail says why).
+        #[qsignal]
+        fn editor_done(self: Pin<&mut Engine>, id: &QString, action: &QString, ok: bool, detail: &QString);
 
         #[qsignal]
         fn debug_command(self: Pin<&mut Engine>, cmd: &QString);
@@ -361,6 +379,18 @@ impl qobject::Engine {
     fn annotate(self: Pin<&mut Self>, id: QString) {
         if let Some(i) = self.inner() {
             i.annotate(&id.to_string());
+        }
+    }
+
+    fn edit(self: Pin<&mut Self>, id: QString) {
+        if let Some(i) = self.inner() {
+            i.edit(&id.to_string());
+        }
+    }
+
+    fn editor_commit(self: Pin<&mut Self>, id: QString, token: i32, doc: QString, action: QString) {
+        if let Some(i) = self.inner() {
+            i.editor_commit(&id.to_string(), token as u32, doc.to_string(), action.to_string());
         }
     }
 

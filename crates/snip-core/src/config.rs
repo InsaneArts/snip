@@ -18,7 +18,8 @@ pub struct General {
     /// Decided 2026-10-06: Save writes the file *and* copies it.
     pub save_also_copies: bool,
     pub sounds: bool,
-    /// Annotate / double-click until Snip's own editor lands (M2).
+    /// Annotate / double-click: empty opens Snip's editor; a command (say
+    /// "satty --filename") opens that editor with the image path instead.
     pub external_editor: String,
 }
 
@@ -193,7 +194,7 @@ impl Default for General {
             jpg_quality: 90,
             save_also_copies: true,
             sounds: true,
-            external_editor: "tensaku-edit".into(),
+            external_editor: String::new(),
         }
     }
 }

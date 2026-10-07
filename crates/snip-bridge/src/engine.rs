@@ -123,6 +123,13 @@ pub fn card_json(rec: &Record, output: &str) -> Value {
 }
 
 /// Width and height from a PNG's IHDR.
+fn png_file_size(p: &Path) -> Option<(u32, u32)> {
+    use std::io::Read;
+    let mut head = [0u8; 24];
+    std::fs::File::open(p).ok()?.read_exact(&mut head).ok()?;
+    png_size(&head)
+}
+
 fn png_size(b: &[u8]) -> Option<(u32, u32)> {
     if b.len() < 24 || &b[1..4] != b"PNG" {
         return None;
@@ -936,10 +943,11 @@ impl Inner {
         self.closed.lock().unwrap().retain(|i| i != id);
     }
 
-    /// Annotate / double-click: the external editor until M2's editor lands.
+    /// Annotate / double-click: Snip's editor, or the configured external one.
     pub fn annotate(&self, id: &str) {
         let editor = self.cfg().general.external_editor;
         if editor.trim().is_empty() {
+            self.edit(id);
             return;
         }
         if let Ok(p) = self.drag_file(id) {
@@ -951,6 +959,74 @@ impl Inner {
                 spawn_detached(cmd, &refs);
             }
         }
+    }
+
+    /// Open Snip's editor on a capture (ANN-16: its objects stay editable).
+    pub fn edit(&self, id: &str) {
+        let Ok(rec) = self.store.get(id) else { return };
+        let Ok((image, doc)) = self.store.edit_state(id) else { return };
+        let (width, height) = png_file_size(&image).unwrap_or((rec.width, rec.height));
+        let output = self.cursor_output();
+        // QScreen rounds fractional scales up; the window's first size needs the real one
+        let scale = snip_hypr::monitors().into_iter().find(|m| Some(&m.name) == output.as_ref()).map(|m| m.scale).unwrap_or(1.0);
+        let j = json!({
+            "id": id, "image": image, "width": width, "height": height,
+            "doc": doc.and_then(|d| serde_json::from_str::<Value>(&d).ok()),
+            "title": rec.title, "output": output, "scale": scale,
+        })
+        .to_string();
+        trace::trace("editor_open", &format!("\"id\":\"{id}\""));
+        self.ui(move |e| e.editor_open(&QString::from(j.as_str())));
+    }
+
+    /// `snip edit FILE` (ANN-19): the file becomes a capture (the user's file
+    /// is never written to), opened in the editor without a card.
+    pub fn edit_file(self: &Arc<Self>, path: &str) -> Result<Value, String> {
+        let rec = self.import(path)?;
+        self.edit(&rec.id);
+        Ok(serde_json::to_value(&rec).unwrap_or(Value::Null))
+    }
+
+    /// An editor's render and objects go back to its capture (ANN-15), then
+    /// Copy or Save run on the result. QML keeps one commit in flight per
+    /// editor, so they land in order.
+    pub fn editor_commit(self: &Arc<Self>, id: &str, token: u32, doc: String, action: String) {
+        let (me, id) = (self.clone(), id.to_string());
+        std::thread::spawn(move || {
+            let t0 = trace::now_ns();
+            let done = |ok: bool, detail: String| {
+                let (id, action) = (id.clone(), action.clone());
+                me.ui(move |e| e.editor_done(&QString::from(id.as_str()), &QString::from(action.as_str()), ok, &QString::from(detail.as_str())));
+            };
+            let Some(r) = crate::edits::take(token) else { return done(false, "nothing was rendered".into()) };
+            let opaque = r.rgba.chunks_exact(4).all(|p| p[3] == 255);
+            let png = if opaque {
+                let rgb: Vec<u8> = r.rgba.chunks_exact(4).flat_map(|p| [p[0], p[1], p[2]]).collect();
+                encode::encode_png(&rgb, r.width, r.height, false)
+            } else {
+                encode::encode_png(&r.rgba, r.width, r.height, true)
+            };
+            let rec = match me.store.write_edit(&id, png, r.width, r.height, &doc, &me.cfg()) {
+                Ok(rec) => rec,
+                Err(e) => return done(false, e.to_string()),
+            };
+            let _ = std::fs::remove_dir_all(paths::drag_dir().join(&id));
+            me.wake_indexer();
+            let out = me.cards.lock().unwrap().iter().find(|(i, _)| i == &id).map(|(_, o)| o.clone()).unwrap_or_default();
+            let j = card_json(&rec, &out).to_string();
+            let cid = id.clone();
+            me.ui(move |e| e.card_update(&QString::from(cid.as_str()), &QString::from(j.as_str())));
+            trace::trace("edited", &format!("\"id\":\"{id}\",\"w\":{},\"h\":{},\"ms\":{:.1}", r.width, r.height, trace::ms_since(t0)));
+            let res = match action.as_str() {
+                "copy" => me.copy(&id),
+                "save" => me.save(&id).map(|_| ()),
+                _ => Ok(()),
+            };
+            match res {
+                Ok(()) => done(true, String::new()),
+                Err(e) => done(false, e),
+            }
+        });
     }
 
     /// QAO-09 Rotate Left / Flip Horizontal: rewrite the capture (and its
@@ -966,6 +1042,8 @@ impl Inner {
                 _ => return,
             };
             let png = encode::encode_png(&data, w, h, alpha);
+            // the rotated pixels are the new starting point for the editor
+            let _ = me.store.flatten(&id);
             match me.store.replace_image(&id, png, w, h, &me.cfg()) {
                 Ok(rec) => {
                     // the drag copy is stale now; it is recreated on demand
@@ -1024,17 +1102,24 @@ impl Inner {
     }
 
     pub fn open_file(self: &Arc<Self>, path: &str) -> Result<Value, String> {
+        let rec = self.import(path)?;
+        let out = self.cursor_output().unwrap_or_default();
+        self.show_card(&rec, &out);
+        Ok(card_json(&rec, &out))
+    }
+
+    /// An image file as a new capture in history.
+    fn import(&self, path: &str) -> Result<Record, String> {
         let bytes = std::fs::read(path).map_err(|e| format!("{path}: {e}"))?;
         let (w, h) = png_size(&bytes).ok_or("only PNG files can be opened for now")?;
         let title = Path::new(path).file_stem().map(|s| s.to_string_lossy().into_owned());
         let out = self.cursor_output().unwrap_or_default();
         let rec = self
             .store
-            .ingest(bytes, w, h, CaptureMeta { kind: "import".into(), output: out.clone(), app: None, title }, now_secs())
+            .ingest(bytes, w, h, CaptureMeta { kind: "import".into(), output: out, app: None, title }, now_secs())
             .map_err(|e| e.to_string())?;
-        self.show_card(&rec, &out);
         self.wake_indexer();
-        Ok(card_json(&rec, &out))
+        Ok(rec)
     }
 
     // ------------------------------------------------------------------ sound
@@ -1133,6 +1218,7 @@ impl Inner {
                 rx.recv_timeout(Duration::from_secs(590)).unwrap_or_else(|_| Response::err("timed out"))
             }
             Ctl::Open { path } => ok_or(self.open_file(&path)),
+            Ctl::Edit { path } => ok_or(self.edit_file(&path)),
             Ctl::Copy { id } => ok_or(self.resolve_id(id).and_then(|id| self.copy(&id).map(|_| json!(id)))),
             Ctl::Save { id } => ok_or(self.resolve_id(id).and_then(|id| self.save(&id).map(|p| json!(p)))),
             Ctl::Search { query, n } => ok_or(
@@ -1229,6 +1315,11 @@ impl Inner {
             "transform" => {
                 let (Some(id), Some(op)) = (a.first(), a.get(1)) else { return Response::err("transform needs an id and an op") };
                 self.transform(id, op);
+                Response::ok(Value::Null)
+            }
+            "annotate" => {
+                let Some(id) = a.first() else { return Response::err("annotate needs an id") };
+                self.annotate(id);
                 Response::ok(Value::Null)
             }
             "nudge" => {
