@@ -1458,6 +1458,34 @@ def editor_own_wallpaper(s, env):
 
 
 @case
+def editor_auto_balance(s, env):
+    """BG-02 Auto-balance: the plain border around the content is evened out to its
+    widest side, in the border's colour, so the content sits centred."""
+    from PIL import Image
+    im = Image.new("RGB", (200, 120), "white")
+    for x in range(20, 150):                    # content: 20 px from the left, 50 from the right,
+        for y in range(10, 100):                # 10 from the top, 20 from the bottom
+            im.putpixel((x, y), (30, 60, 200) if (x + y) % 7 else (200, 40, 40))
+    png = s.tmp / "balance.png"
+    im.save(png)
+    rec = s.json("edit", str(png))["result"]
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    s.debug("ui", "editor", "bg", '{"kind":"color","value":"#10a050","padding":20,"inset":0,"radius":0,"shadow":0,"ratio":0,"align":"c","balance":true}')
+    st = editor_state(s)
+    assert st["balance"] == {"l": 20, "t": 10, "r": 50, "b": 20, "color": "#ffffff"}, st["balance"]
+    editor_flush(s)
+    out = Image.open(rec["source"]).convert("RGB")
+    assert out.size == (20 + 50 + 130 + 50 + 20, 20 + 50 + 90 + 50 + 20), out.size     # 50 px of white on every side
+    assert out.getpixel((5, 5)) == (16, 160, 80), "the background around it"
+    assert out.getpixel((25, 135)) == (255, 255, 255) and out.getpixel((140, 25)) == (255, 255, 255), "the border, evened out"
+    assert out.crop((50, 60, 250, 180)).tobytes() == im.tobytes(), "the image is exact inside"
+    s.debug("ui", "editor", "bg", '{"balance":false}')
+    editor_flush(s)
+    assert Image.open(rec["source"]).size == (240, 160), "off again: just the padding"
+    close_editor(s)
+
+
+@case
 def editor_add_image(s, env):
     """ANN-12: add an image from a file and from the clipboard; it keeps its shape when
     resized from a corner, and is drawn into the export."""
