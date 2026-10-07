@@ -2045,6 +2045,41 @@ def editor_from_clipboard(s, env):
 
 
 @case
+def project_file(s, env):
+    """ANN-15/16: Save As a .snip project keeps the original, the objects and their files;
+    opening it gives back an editor whose objects are still editable."""
+    import zipfile
+    from PIL import Image
+    base, other = s.tmp / "proj.png", s.tmp / "proj-add.png"
+    noise_png(base, 300, 200, seed=3)
+    Image.new("RGB", (100, 60), (200, 30, 160)).save(other)
+    rec = s.json("edit", str(base))["result"]
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3), "the editor opens"
+    s.debug("ui", "editor", "rect", 20, 20, 80, 50)
+    s.debug("ui", "editor", "drop", str(other), 150, 190)        # an added image, below
+    editor_flush(s)
+    close_editor(s)
+    flat = Image.open(rec["source"]).convert("RGB")
+    snip = s.tmp / "work.snip"
+    out = s.json("debug", "save-as", rec["id"], str(snip))
+    assert out["ok"] and out["result"].endswith("work.snip"), out
+    names = zipfile.ZipFile(snip).namelist()
+    assert {"manifest.json", "source.png", "document.json", "preview.png", "thumb.webp"} <= set(names), names
+    assert any(n.startswith("assets/") for n in names), ("the added image travels with it", names)
+    with zipfile.ZipFile(snip) as z:
+        assert all(i.compress_type == zipfile.ZIP_STORED for i in z.infolist()), "nothing compressed"
+    rec2 = s.json("edit", str(snip))["result"]
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3), "the project opens"
+    st = editor_state(s)
+    assert [i["kind"] for i in st["items"]] == ["rect", "image"], st["items"]
+    assert Image.open(rec2["source"]).convert("RGB").tobytes() == flat.tobytes(), "the same picture"
+    s.debug("ui", "editor", "delete", 0)                          # the objects are objects again
+    editor_flush(s)
+    assert Image.open(rec2["source"]).convert("RGB").getpixel((40, 40)) == Image.open(base).convert("RGB").getpixel((40, 40)), "the rectangle came off"
+    close_editor(s)
+
+
+@case
 def save_as(s, env):
     """QAO-09 / ANN-15 Save As: the format follows the extension, the file becomes the
     capture's saved file and is copied. (The portal dialog itself is checked by hand: it
