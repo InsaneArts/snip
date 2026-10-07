@@ -10,8 +10,8 @@ const USAGE: &str = "usage: snip [--json] <command>
 capture
   area | fullscreen | window | previous | text | all-in-one | area-pin [--monitor NAME] [--cursor | --no-cursor]
   area | fullscreen --delay N   self-timer: N seconds of countdown, then the capture
-  open FILE        add an image as a capture, with a Quick Access card
-  edit FILE        open an image in Snip's editor (as a new capture)
+  open FILE        add an image (or a .snip project) as a capture, with a Quick Access card
+  edit FILE        open an image or a .snip project in Snip's editor (as a new capture)
   edit --clipboard open the image on the clipboard in Snip's editor
 captures (default: the most recent)
   copy [ID]        put a capture on the clipboard

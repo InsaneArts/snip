@@ -1351,8 +1351,14 @@ impl Inner {
         rx.recv_timeout(Duration::from_secs(2)).ok().flatten().map(|(_, b)| b)
     }
 
-    /// An image file as a new capture in history.
+    /// An image file (or a Snip project) as a new capture in history.
     fn import(&self, path: &str) -> Result<Record, String> {
+        if path.to_ascii_lowercase().ends_with(".snip") {
+            let out = self.cursor_output().unwrap_or_default();
+            let rec = self.store.import_project(Path::new(path), &out, now_secs()).map_err(|e| e.to_string())?;
+            self.wake_indexer();
+            return Ok(rec);
+        }
         let bytes = std::fs::read(path).map_err(|e| format!("{path}: {e}"))?;
         let (w, h) = png_size(&bytes).ok_or("only PNG files can be opened for now")?;
         let title = Path::new(path).file_stem().map(|s| s.to_string_lossy().into_owned());
