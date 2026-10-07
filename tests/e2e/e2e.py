@@ -790,6 +790,7 @@ def editor_draws_with_pointer(s, env):
     b = editor_state(s)["items"][0]
     mx, my = (b["x1"] + 2 * b["cx"] + b["x2"]) / 4, (b["y1"] + 2 * b["cy"] + b["y2"]) / 4
     s.drag(*at(mx, my), *at(mx, my + 50), steps=4)     # its middle is the bend handle
+    time.sleep(0.2)                                     # the release reaches the editor after the drag call returns
     c = editor_state(s)["items"][0]
     assert abs(c["y1"] - b["y1"]) < 1 and c["cy"] - b["cy"] > 80, (b, c)
     n = len(s.traces("copied"))
