@@ -12,6 +12,7 @@ capture
   area | fullscreen --delay N   self-timer: N seconds of countdown, then the capture
   open FILE        add an image as a capture, with a Quick Access card
   edit FILE        open an image in Snip's editor (as a new capture)
+  edit --clipboard open the image on the clipboard in Snip's editor
 captures (default: the most recent)
   copy [ID]        put a capture on the clipboard
   save [ID]        save to the export folder (and copy)
@@ -54,6 +55,7 @@ fn main() -> ExitCode {
             let delay = flag(&mut args, "--delay").and_then(|v| v.parse::<u32>().ok());
             (Request::Capture { mode: cmd.clone(), monitor, cursor, delay }, Duration::from_secs(600))
         }
+        "edit" if arg1.as_deref() == Some("--clipboard") => (Request::EditClipboard, Duration::from_secs(10)),
         "open" | "edit" => {
             let Some(p) = arg1 else {
                 eprintln!("snip: {cmd} needs a file");

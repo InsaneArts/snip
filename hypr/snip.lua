@@ -11,7 +11,8 @@
 --
 -- Every binding dispatches a global shortcut to the running snipd
 -- (hl.dsp.global): no process is spawned, so the overlay appears instantly.
--- Actions: area, fullscreen, window, previous, text, all-in-one, restore, close-all.
+-- Actions: area, fullscreen, window, previous, text, all-in-one, restore, close-all,
+-- timer-area, timer-fullscreen, edit-clipboard (open the clipboard's image in the editor).
 
 local function bind(keys, action, description)
   pcall(hl.unbind, keys) -- the key may not be bound yet
