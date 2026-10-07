@@ -397,7 +397,10 @@ Window {
                 case Qt.Key_Z: shift ? ed.redo() : ed.undo(); break
                 case Qt.Key_Y: ed.redo(); break
                 case Qt.Key_S: shift ? ed.saveAsDialog() : ed.flush("save"); break
-                case Qt.Key_C: ed.flush("copy"); break
+                // with an object selected Ctrl+C copies it; Ctrl+Shift+C always copies the image
+                case Qt.Key_C: (!shift && ed.selectedObj) ? ed.copyObjects() : ed.flush("copy"); break
+                case Qt.Key_V: ed.pasteObjects(); break
+                case Qt.Key_D: ed.duplicateSelected(); break
                 case Qt.Key_0: ed.zoomFit(); break
                 case Qt.Key_1: ed.zoomTo(1); break
                 case Qt.Key_Plus: case Qt.Key_Equal: ed.zoomStep(1); break
@@ -442,6 +445,23 @@ Window {
             e.accepted = true
         }
         Keys.onReleased: (e) => { if (e.key === Qt.Key_Space && !e.isAutoRepeat) spaceHeld = false }
+    }
+    // Select's commands (CleanShot): Ctrl+C / Ctrl+V objects, Ctrl+D duplicates
+    property int pasteCount: 0
+    function copyObjects() {
+        controller.objectClipboard = [Ed.copy(selectedObj)]
+        pasteCount = 0
+    }
+    function pasteObjects() {
+        const objs = controller.objectClipboard || []
+        if (!objs.length) return
+        pasteCount++
+        const off = 16 * pasteCount * unit
+        setItems(doc.items.concat(objs.map(o => Ed.moved(o, off, off))))
+        selected = doc.items.length - 1
+    }
+    function duplicateSelected() {
+        if (selectedObj) addItem(Ed.moved(selectedObj, 16 * unit, 16 * unit))
     }
     function nudge(dx, dy) {
         if (selectedObj) replaceItem(selected, Ed.moved(selectedObj, dx, dy))
@@ -739,8 +759,13 @@ Window {
                 const i = itemAt(p)
                 if (i >= 0) {
                     ed.selected = i
-                    gesture = "move"
-                    pressObj = ed.doc.items[i]; ed.draftIndex = i; ed.draft = Ed.copy(pressObj)
+                    pressObj = ed.doc.items[i]
+                    if (m.modifiers & Qt.AltModifier) {    // Alt-drag leaves the original and moves a copy
+                        gesture = "copy"; ed.draftIndex = -1
+                    } else {
+                        gesture = "move"; ed.draftIndex = i
+                    }
+                    ed.draft = Ed.copy(pressObj)
                     return
                 }
                 ed.selected = -1
@@ -809,8 +834,10 @@ Window {
                     ed.cropDraft = Ed.clampRect(r, ed.imgW, ed.imgH)
                     return
                 }
-                if (gesture === "move" || gesture === "place") {
-                    ed.draft = Ed.moved(pressObj, p.x - pressAt.x, p.y - pressAt.y)
+                if (gesture === "move" || gesture === "copy" || gesture === "place") {
+                    let dx = p.x - pressAt.x, dy = p.y - pressAt.y
+                    if (shift && gesture !== "place") { if (Math.abs(dx) > Math.abs(dy)) dy = 0; else dx = 0 }   // Shift locks an axis
+                    ed.draft = Ed.moved(pressObj, dx, dy)
                 } else if (gesture === "handle") {
                     ed.draft = Ed.withHandle(pressObj, handle, p.x, p.y, pressBox)
                 } else if (gesture === "highlight") {
@@ -871,6 +898,8 @@ Window {
                     if (!Ed.tooSmall(d)) ed.addItem(d)
                 } else if (g === "place") {
                     ed.addItem(d)
+                } else if (g === "copy") {
+                    if (JSON.stringify(d) !== JSON.stringify(pressObj)) ed.addItem(d)
                 } else if (i >= 0 && JSON.stringify(d) !== JSON.stringify(ed.doc.items[i])) {
                     ed.replaceItem(i, d)
                 }
