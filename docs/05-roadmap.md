@@ -86,7 +86,7 @@ Built: `snipd` (Rust core + Qt Quick UI in one process), `snip` CLI, `hypr/snip.
 | QAO-01…07, 10 | ✅ | Hover keys (Ctrl+C/S/W/E, Space) verified with real key events; focus returns to the app. Copy closes the card (Alt keeps it). |
 | QAO-08 gestures | ⚠️ | Touchpad swipes implemented, untested (no touchpad on the dev machine). |
 | QAO-09 menu | ⚠️ | Copy, Save/Show in Files, Annotate, Extract Text, Rotate Left, Flip Horizontal, Preview, Trash, Close, Close All, Save All, Hide. Missing: Scale, Resize, Open With, Print, Save As. |
-| QAO-11 | ⏭ M2 | Needs Snip's editor. Annotate opens `general.external_editor` (default `tensaku-edit`) until then. |
+| QAO-11 | ✅ | Edits in Snip's editor update the card (M2). |
 | Lifecycle, history retention | ✅ | Capture → history only; Copy → clipboard; Save → folder + clipboard; hourly sweep; "Never" deletes on card close. |
 | SET-03…07, 09 | ✅ / ⚠️ | Rules, template naming, export folder, PNG/JPG/WebP, clipboard modes, shutter sound. SET-04 UTC and `@2x` options missing. |
 | OMA-01, 02, 06 | ✅ | Live theme (inotify + `configreloaded`), Lua module, `snip open/edit FILE`. |
@@ -111,6 +111,15 @@ Built: `snipd` (Rust core + Qt Quick UI in one process), `snip` CLI, `hypr/snip.
 - Window shots "With wallpaper" and "Transparent" with shadow (CAP-05 options, BG-04)
 - Pins: PIN-01 to PIN-08
 - Project format v1 (Snip's own op-log format)
+
+### M2 status (2026-10-07)
+
+| Area | Status | Notes |
+|---|---|---|
+| Editor window (ANN-01, 14, 15, 19) | ✅ first slice | CleanShot's layout ([docs/design/editor.md](design/editor.md)); zoom (fit, steps, Ctrl+scroll at the pointer), pan; undo/redo; Save, Copy, Drag Me; edits written back on their own. `snip edit FILE`; the card's pencil and double-click. |
+| Objects (ANN-02, 03, 04, 05, 08) | ✅ first slice | Arrow (drag its middle to bend it), rectangle, text, counter; move, handles, nudge, delete; colour and size apply to the selection. Still to add: ellipse, line, filled shapes, text styles, Alt-duplicate, copy/paste of objects. |
+| Preview == export | ✅ | `Platform.grabExact`: the same scene, one item unit per pixel at any fractional scale; e2e checks every pixel outside the drawn object, and undo restores all of them. |
+| Project format (ANN-16) | ✅ | `edit.json` (objects) and `original.png` next to the capture; reopening keeps objects editable; rotate/flip flatten. |
 
 **Exit:**
 - Preview == export.

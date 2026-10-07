@@ -2,7 +2,7 @@
 
 CleanShot X's screenshot workflow for [Omarchy](https://omarchy.org) and Hyprland. Snip has an instant frozen selection overlay and floating Quick Access cards. It reads text and QR codes and keeps a searchable capture history. It follows your Omarchy theme and Hyprland's corner rounding.
 
-**Status:** M1 (capture core and Quick Access) is in daily use from source. The editor, backgrounds and pins come in M2; history UI and scrolling capture in M3; recording in M4 ([roadmap](docs/05-roadmap.md)).
+**Status:** M1 (capture core and Quick Access) is in daily use from source. M2 has started with the editor; backgrounds and pins follow; history UI and scrolling capture in M3; recording in M4 ([roadmap](docs/05-roadmap.md)).
 
 ## What works today
 
@@ -19,6 +19,7 @@ CleanShot X's screenshot workflow for [Omarchy](https://omarchy.org) and Hyprlan
   - drag out, context menu, preview, auto-close;
   - CleanShot's motion, measured from its demos.
 - **Capture lifecycle:** a capture goes to Snip's history only. Copy puts it on the clipboard. Save writes it to your folder and also copies it. Snip's own UI is never in a capture.
+- **Editor:** arrows (drag the middle to bend), rectangles, text and counters, with undo, zoom, Copy, Save and Drag Me. Open it from a card (pencil or double-click) or with `snip edit FILE`. Edits go back to the capture and stay editable.
 - **History search:** `snip search connection refused` finds captures by the text in them.
 - **Formats:** PNG, JPG and WebP. Live config in `~/.config/snip/config.toml`.
 
@@ -43,7 +44,7 @@ scripts/dev.sh stop     # stop it and restore Hyprland's own bindings
 | SUPER+SHIFT+4 | Capture area (hold Space for a window) |
 | SUPER+SHIFT+5 | All-In-One (area for now) |
 
-The `snip` CLI talks to the running daemon: `snip area`, `snip text`, `snip copy`, `snip save`, `snip list`, `snip search TEXT`, `snip --help`.
+The `snip` CLI talks to the running daemon: `snip area`, `snip text`, `snip edit FILE`, `snip copy`, `snip save`, `snip list`, `snip search TEXT`, `snip --help`.
 
 ## Docs
 
