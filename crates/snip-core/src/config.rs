@@ -118,7 +118,8 @@ pub struct Clipboard {
     pub mode: ClipboardMode,
     /// Also offer the file's path as text, so pasting where only text is
     /// accepted (terminals, plain text fields) gives the path instead of
-    /// nothing. Claude Code turns a pasted image path into an attachment.
+    /// nothing. Off by default (D38): browsers then hand web apps the text
+    /// too (Zen lists it first), and many paste the path, not the image.
     pub text_path: bool,
     /// Offer copies with x-kde-passwordManagerHint so Omarchy's clipboard
     /// history skips them (SET-07b).
@@ -282,7 +283,7 @@ impl Default for History {
 
 impl Default for Clipboard {
     fn default() -> Self {
-        Self { mode: ClipboardMode::Image, text_path: true, sensitive: false }
+        Self { mode: ClipboardMode::Image, text_path: false, sensitive: false }
     }
 }
 
@@ -409,6 +410,7 @@ mod tests {
         let c = Config::default();
         assert_eq!(c.after_capture.screenshot, vec![AfterCapture::ShowQao]);
         assert!(c.general.save_also_copies);
+        assert!(!c.clipboard.text_path, "D38: Copy offers the image only");
         assert_eq!(c.history.retention, Retention::Week1);
         assert_eq!(c.quick_access.position, Side::Left);
     }
