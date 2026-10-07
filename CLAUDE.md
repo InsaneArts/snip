@@ -95,6 +95,7 @@ What cost us hours before:
 - **Windows** created by a `Loader` never map: create them with `Component.createObject`.
 - **QObjects returned to QML** need `CppOwnership`, or the GC deletes Qt's real `QScreen`. Pass the real `QScreen*` to LayerShellQt (`Platform.screen(name)`).
 - **Hyprland fades unmapped layers** out for ~150 ms, even with `no_anim`. Clear content first, then unmap. Snip's UI goes transparent and waits for `Platform.notifyNextFrame` before any capture.
+- **A `visible` binding that is false for even one instant** unmaps the layer, and Hyprland then fades out a snapshot of it. Change state so the window stays mapped throughout; never reset everything and then re-enable it in the same handler.
 - **Physical pixel mapping** belongs in reactive QML (`toPhys` in `Overlay.qml`). A cached C++ call keeps a stale scale from before the first configure.
 - **Render loop**: force `QSG_RENDER_LOOP=threaded`, because Qt picks the basic loop on NVIDIA (125 fps cap). Unset `QT_QPA_PLATFORMTHEME` (gtk3 costs ~90 ms at start).
 - **cxx-qt**: the bridge crate name must be snake_case (`snip_bridge`) or its headers are not exported. A Rust staticlib carries no native link deps, so link them in CMake (sqlite3).
