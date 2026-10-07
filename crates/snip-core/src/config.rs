@@ -231,6 +231,9 @@ pub struct Config {
     pub clipboard: Clipboard,
     pub capture: Capture,
     pub ocr: Ocr,
+    /// Settings › Shortcuts (SET-08): an action's key over snip.lua's
+    /// default ("SUPER + SHIFT + code:13"; "" for none). snipd binds them.
+    pub shortcuts: std::collections::BTreeMap<String, String>,
 }
 
 impl Default for General {
@@ -353,6 +356,23 @@ pub fn set_value(text: &str, dotted: &str, value: toml_edit::Item) -> Result<Str
     Ok(doc.to_string())
 }
 
+/// Remove one dotted key (or a whole table: "shortcuts") from the user's
+/// file, preserving the rest.
+pub fn remove_value(text: &str, dotted: &str) -> Result<String, String> {
+    let mut doc: toml_edit::DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| e.to_string())?;
+    let mut parts = dotted.split('.').collect::<Vec<_>>();
+    let key = parts.pop().ok_or("empty key")?;
+    let mut table = doc.as_table_mut();
+    for p in parts {
+        match table.get_mut(p).and_then(|i| i.as_table_mut()) {
+            Some(t) => table = t,
+            None => return Ok(doc.to_string()),
+        }
+    }
+    table.remove(key);
+    Ok(doc.to_string())
+}
+
 /// The settings window's write (SET-02): one setting from JSON (a bool,
 /// number, string or list of strings). The file must still be a valid
 /// config afterwards (known key, right type), or nothing changes.
@@ -425,5 +445,18 @@ mod tests {
         assert_eq!(Config::parse(&out).0.quick_access.size, 320);
         assert!(set_json(&out, "quick_access.position", &serde_json::json!("middle")).is_err());
         assert!(set_json(&out, "general.nope", &serde_json::json!(1)).is_err());
+    }
+
+    #[test]
+    fn shortcuts_are_set_and_removed() {
+        let src = "# mine\n[general]\nsounds = true\n";
+        let out = set_json(src, "shortcuts.all-in-one", &serde_json::json!("SUPER + SHIFT + code:14")).unwrap();
+        let out = set_json(&out, "shortcuts.history", &serde_json::json!("")).unwrap();
+        let c = Config::parse(&out).0;
+        assert_eq!(c.shortcuts.get("all-in-one").map(String::as_str), Some("SUPER + SHIFT + code:14"));
+        assert_eq!(c.shortcuts.get("history").map(String::as_str), Some(""));
+        let out = remove_value(&out, "shortcuts").unwrap();
+        assert!(Config::parse(&out).0.shortcuts.is_empty() && out.contains("# mine") && out.contains("sounds = true"), "{out}");
+        assert_eq!(remove_value(&out, "shortcuts").unwrap(), out, "nothing to remove");
     }
 }
