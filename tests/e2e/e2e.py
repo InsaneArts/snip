@@ -1387,6 +1387,48 @@ def editor_background(s, env):
 
 
 @case
+def editor_background_presets(s, env):
+    """BG-03: a background saved as a named preset comes back in any editor; "Save Changes"
+    updates it, "Apply Previous Settings" brings the last background, presets can go."""
+    from PIL import Image
+    a, b = s.tmp / "pa.png", s.tmp / "pb.png"
+    noise_png(a, 200, 120, seed=1)
+    noise_png(b, 160, 100, seed=2)
+    s.json("edit", str(a))
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    s.debug("ui", "editor", "bg", '{"kind":"gradient","value":3,"padding":40,"radius":12,"shadow":0}')
+    s.debug("ui", "editor", "bg-preset-save", "Blog", "post")
+    st = editor_state(s)
+    assert st["bgPresets"] == ["Blog post"] and st["bgPreset"] == "Blog post" and not st["bgPresetChanged"], st["bgPresets"]
+    s.debug("ui", "editor", "bg", '{"padding":20}')
+    assert editor_state(s)["bgPresetChanged"], "an edited preset shows it"
+    s.debug("ui", "editor", "bg-preset-save", "Blog", "post")    # Save Changes
+    assert not editor_state(s)["bgPresetChanged"] and editor_state(s)["bgPresets"] == ["Blog post"]
+    s.debug("ui", "editor", "bg", "none")
+    s.debug("ui", "editor", "bg-preset", "Blog", "post")
+    bg = editor_state(s)["bg"]
+    assert (bg["kind"], bg["value"], bg["padding"], bg["radius"]) == ("gradient", 3, 20, 12), bg
+    s.debug("ui", "editor", "bg", '{"kind":"color","value":"#10a050","padding":30}')
+    close_editor(s)
+
+    rec = s.json("edit", str(b))["result"]                       # another editor, another image
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    st = editor_state(s)
+    assert st["bg"] is None and st["bgPresets"] == ["Blog post"], "presets are kept, nothing is applied by itself"
+    s.debug("ui", "editor", "bg-previous")
+    bg = editor_state(s)["bg"]
+    assert (bg["kind"], bg["value"], bg["padding"]) == ("color", "#10a050", 30), bg
+    s.debug("ui", "editor", "bg-preset", "Blog", "post")
+    editor_flush(s)
+    out = Image.open(rec["source"]).convert("RGB")
+    assert out.size == (200, 140), out.size
+    s.debug("ui", "editor", "bg-preset-delete", "Blog", "post")
+    st = editor_state(s)
+    assert st["bgPresets"] == [] and st["bgPreset"] == "", st
+    close_editor(s)
+
+
+@case
 def editor_add_image(s, env):
     """ANN-12: add an image from a file and from the clipboard; it keeps its shape when
     resized from a corner, and is drawn into the export."""
