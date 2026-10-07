@@ -31,6 +31,8 @@ public:
   // Input region = union of `rects` (logical, window coordinates); clicks
   // elsewhere fall through to the windows below.
   Q_INVOKABLE void setInputRects(QWindow* w, const QVariantList& rects);
+  // Back to the whole window taking input.
+  Q_INVOKABLE void clearInputRects(QWindow* w);
 
   // Position a layer-shell window at logical (x, y) of its output (margins).
   Q_INVOKABLE void placeLayer(QWindow* w, int x, int y);

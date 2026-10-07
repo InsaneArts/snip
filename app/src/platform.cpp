@@ -78,6 +78,13 @@ Platform::setInputRects(QWindow* w, const QVariantList& rects)
 }
 
 void
+Platform::clearInputRects(QWindow* w)
+{
+  if (w)
+    w->setMask(QRegion());
+}
+
+void
 Platform::placeLayer(QWindow* w, int x, int y)
 {
   if (auto* lw = LayerShellQt::Window::get(w))
