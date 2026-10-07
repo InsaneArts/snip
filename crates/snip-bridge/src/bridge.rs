@@ -272,6 +272,12 @@ pub mod qobject {
         #[qsignal]
         fn card_status(self: Pin<&mut Engine>, id: &QString, status: &QString, detail: &QString);
 
+        /// Render a new screenshot with the auto-applied background (BG-03):
+        /// a card's JSON plus `bg` (sizes in points) and its output's `scale`;
+        /// answered with editor_commit(id, token, doc, "auto-bg")
+        #[qsignal]
+        fn background_auto(self: Pin<&mut Engine>, capture: &QString);
+
         /// Open a pin (PIN-01): a card's JSON plus the scale of its output
         #[qsignal]
         fn pin_open(self: Pin<&mut Engine>, pin: &QString);
