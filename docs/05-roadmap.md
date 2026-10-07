@@ -127,7 +127,7 @@ Built: `snipd` (Rust core + Qt Quick UI in one process), `snip` CLI, `hypr/snip.
 | Annotate settings (ANN-17, 18) | ✅ | `[annotate]` in the config: `object_shadows` (on), `inverse_arrows`, `smooth_drawing` (on), `auto_expand` (objects past the canvas grow it, one undo step), `remember_background_tool`, `always_on_top` (Hyprland pin). |
 | Pins (PIN-01…08) | ✅ | `snip pin [ID]`, the card's pin (Ctrl+P), the editor's pin button. A floating, pinned window (every workspace of its monitor, above fullscreen) at the capture's own size: drag to move, scroll to fade, Ctrl+scroll to zoom, middle-click to close; hover chrome (close, zoom); menu: Copy, Save, Annotate, Close, Close All Pins. Arrow keys nudge (Shift: 10 px), a grip drags the image out, `snip:pins-toggle` / `snip:pins-close` and `snip pins toggle|close`. Lock (click-through, fades under the pointer; `snip pins unlock`). Capture Area & Pin (`snip area-pin`, `snip:area-pin`) pins the area in place; `snip pin FILE`. Look from `[pins]`: corner_radius, shadow, border. |
 | Preview == export | ✅ | `Platform.grabExact`: the same scene, one item unit per pixel at any fractional scale; e2e checks every pixel outside the drawn object, and undo restores all of them. |
-| Project format (ANN-16) | ✅ | `edit.json` (objects) and `original.png` next to the capture; reopening keeps objects editable; rotate/flip flatten. |
+| Project format (ANN-16) | ✅ | `edit.json` (objects) and `original.png` next to the capture; reopening keeps objects editable; rotate/flip flatten. Save As `.snip` (a zip: original, objects, their files, preview, thumbnail) and `snip edit/open FILE.snip` bring it back editable. |
 
 **Exit:**
 - Preview == export.
