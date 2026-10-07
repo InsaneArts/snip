@@ -82,6 +82,9 @@ public:
   // Add image (ANN-12): the desktop's open dialog for images. Answers with
   // fileChosen(token, path) like saveFileDialog.
   Q_INVOKABLE void openImageDialog(int token, const QString& title);
+  // Settings › Export location: the desktop's folder chooser, starting in
+  // `folder`. Answers with fileChosen(token, path) like saveFileDialog.
+  Q_INVOKABLE void openFolderDialog(int token, const QString& title, const QString& folder);
   // An image file's size without decoding it ({width, height}; 0 x 0 if unreadable).
   Q_INVOKABLE QSize imageSize(const QString& path) const;
   // Tests: cancel every open dialog (portal Request.Close).
