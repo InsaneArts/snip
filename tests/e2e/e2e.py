@@ -892,6 +892,20 @@ def editor_pins(s, env):
 
 
 @case
+def editor_floats(s, env):
+    """The editor floats, centred, above the tiled windows: Snip's window rule matches its
+    title (rules match the whole title, "Snip Editor — <name>"). The rule tags it."""
+    from PIL import Image
+    png = s.tmp / "floats.png"
+    Image.new("RGB", (300, 200), "white").save(png)
+    s.json("edit", str(png))
+    assert wait_for(lambda: editor_window(), 5), "the editor opens"
+    w = editor_window()
+    assert any(t.rstrip("*") == "snip-editor" for t in w["tags"]) and w["floating"], (w["title"], w["tags"], w["floating"])
+    close_editor(s)
+
+
+@case
 def editor_round_trip(s, env):
     """ANN-15/16/19: snip edit FILE opens the editor; the export is pixel-exact outside the
     drawn object at a fractional scale; undo restores every pixel; the original and the
