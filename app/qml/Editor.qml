@@ -239,7 +239,50 @@ Window {
         const next = Object.assign({}, doc)
         if (patch === null) delete next.bg
         else next.bg = Object.assign({}, doc.bg || Ed.defaultBackground(unit), patch)
-        if (JSON.stringify(next) !== JSON.stringify(doc)) commit(next)
+        if (JSON.stringify(next) === JSON.stringify(doc)) return
+        commit(next)
+        if (next.bg) storeBg({ previous: bgPoints(next.bg) })
+    }
+
+    // Presets and "Apply Previous Settings" (BG-03), shared by every editor
+    // through backgrounds.json; sizes are kept in points to suit any scale
+    property var bgStore: JSON.parse(Engine.backgrounds() || "{}")
+    readonly property var bgPresets: bgStore.presets || []
+    property string bgPreset: ""                    // the preset applied last here
+    readonly property bool bgPresetChanged: {
+        const p = bgPresets.find(p => p.name === bgPreset)
+        return !!p && JSON.stringify(doc.bg ? bgPoints(doc.bg) : null) !== JSON.stringify(p.bg)
+    }
+    function bgScaled(bg, f) {
+        const o = Object.assign({}, bg)
+        for (const key of ["padding", "inset", "radius"]) if (o[key] !== undefined) o[key] = Math.round(o[key] * f * 100) / 100
+        return o
+    }
+    function bgPoints(bg) { return bgScaled(bg, 1 / unit) }
+    function bgPixels(bg) { const o = bgScaled(bg, unit); for (const key of ["padding", "inset", "radius"]) if (o[key] !== undefined) o[key] = Math.round(o[key]); return o }
+    function storeBg(patch) {
+        // read again first: another editor may have changed it
+        bgStore = Object.assign({}, JSON.parse(Engine.backgrounds() || "{}"), patch)
+        Engine.setBackgrounds(JSON.stringify(bgStore))
+    }
+    function applyBg(points) { setBg(Object.assign(Ed.defaultBackground(unit), bgPixels(points))) }
+    function applyPreviousBg() { if (bgStore.previous) { applyBg(bgStore.previous); bgPreset = "" } }
+    function applyBgPreset(name) {
+        const p = bgPresets.find(p => p.name === name)
+        if (p) { applyBg(p.bg); bgPreset = name }
+    }
+    function saveBgPreset(name) {
+        name = name.trim()
+        if (!name) return
+        if (!doc.bg) setBg({})
+        const kept = JSON.parse(Engine.backgrounds() || "{}").presets || []
+        const i = kept.findIndex(p => p.name === name), entry = { name: name, bg: bgPoints(doc.bg) }
+        storeBg({ presets: i >= 0 ? kept.map((p, j) => j === i ? entry : p) : kept.concat([entry]) })
+        bgPreset = name
+    }
+    function deleteBgPreset(name) {
+        storeBg({ presets: (JSON.parse(Engine.backgrounds() || "{}").presets || []).filter(p => p.name !== name) })
+        if (bgPreset === name) bgPreset = ""
     }
     function previewBg(patch) {
         if (!doc.bg) setBg({})
@@ -477,6 +520,8 @@ Window {
         textEdit.insert(textEdit.cursorPosition, e)
         textEdit.forceActiveFocus()
     }
+
+    function focusKeys() { keys.forceActiveFocus() }
 
     // ---------------------------------------------------------------- keys
     FocusScope {
@@ -1265,7 +1310,7 @@ Window {
 
     // ---------------------------------------------------------------- dropdowns
     function openMenuNamed(name, anchorItem) {
-        openMenu({ color: colorMenu, size: sizeMenu, style: styleMenu, level: levelMenu, zoom: zoomMenu, arrow: arrowMenu, text: textMenu, dim: dimMenu,
+        openMenu({ color: colorMenu, size: sizeMenu, style: styleMenu, level: levelMenu, presets: presetsMenu, zoom: zoomMenu, arrow: arrowMenu, text: textMenu, dim: dimMenu,
                    counter: counterMenu, opacity: opacityMenu, ratio: ratioMenu, resize: resizeMenu, addImage: addImageMenu }[name], anchorItem)
     }
     property Item openedMenu: null
@@ -1602,6 +1647,44 @@ Window {
         }
     }
 
+    component MenuRow: Rectangle {
+        id: menuRow
+        property string text: ""
+        property bool enabledRow: true
+        signal activated()
+        width: 270; height: 30; radius: 8
+        color: enabledRow && rowMa.containsMouse ? Theme.controlHover : "transparent"
+        Text { x: 12; anchors.verticalCenter: parent.verticalCenter; width: parent.width - 48; elide: Text.ElideRight
+               text: menuRow.text; color: menuRow.enabledRow ? Theme.text : Theme.textSecondary
+               font.family: Theme.fontUi; font.pixelSize: 13 }
+        MouseArea { id: rowMa; anchors.fill: parent; hoverEnabled: true; enabled: menuRow.enabledRow
+                    cursorShape: Qt.PointingHandCursor; onClicked: menuRow.activated() }
+    }
+
+    // the Background tool's presets (BG-03)
+    Menu {
+        id: presetsMenu
+        MenuRow { text: "Apply Previous Settings"; enabledRow: !!ed.bgStore.previous
+                  onActivated: { ed.applyPreviousBg(); ed.openedMenu = null } }
+        Rectangle { visible: ed.bgPresets.length > 0; width: 270; height: 1; color: Theme.hairline }
+        Repeater {
+            model: ed.bgPresets
+            delegate: MenuRow {
+                required property var modelData
+                text: modelData.name
+                onActivated: { ed.applyBgPreset(modelData.name); ed.openedMenu = null }
+                Icon { visible: ed.bgPreset === parent.modelData.name; anchors { right: parent.right; rightMargin: 36; verticalCenter: parent.verticalCenter }
+                       name: "check"; size: 14; color: Theme.accent }
+                ToolButton { anchors { right: parent.right; rightMargin: 2; verticalCenter: parent.verticalCenter }
+                             implicitWidth: 28; icon: "trash"; tip: "Delete preset"; onClicked: ed.deleteBgPreset(parent.modelData.name) }
+            }
+        }
+        Rectangle { width: 270; height: 1; color: Theme.hairline }
+        MenuRow { visible: ed.bgPresetChanged; text: "Save Changes to “" + ed.bgPreset + "”"
+                  onActivated: { ed.saveBgPreset(ed.bgPreset); ed.openedMenu = null } }
+        MenuRow { text: "Add New Preset…"; onActivated: { ed.openedMenu = null; bgPanel.naming = true } }
+    }
+
     Menu {
         id: emojiMenu
         readonly property var found: {
@@ -1740,6 +1823,10 @@ Window {
         case "crop-ratio": setCropRatio(n(1)); break
         case "transform": transformImage(a[1], n(2), n(3)); break
         case "bg": setBg(a[1] === "none" ? null : JSON.parse(a.slice(1).join(" "))); break
+        case "bg-preset": applyBgPreset(a.slice(1).join(" ")); break
+        case "bg-preset-save": saveBgPreset(a.slice(1).join(" ")); break
+        case "bg-preset-delete": deleteBgPreset(a.slice(1).join(" ")); break
+        case "bg-previous": applyPreviousBg(); break
         case "color": setColor(a[1]); break
         case "tool": setTool(a[1]); break
         case "undo": undo(); break
@@ -1762,6 +1849,7 @@ Window {
                 selectionBox: { x: selectionBox.x, y: selectionBox.y, w: selectionBox.width, h: selectionBox.height },
                 words: words ? words.length : -1, fill: doc.fill || "", shownX: shown.x, shownY: shown.y,
                 imgW: imgW, imgH: imgH, base: doc.base || "", bg: doc.bg || null, exportRect: exportRect,
+                bgPresets: bgPresets.map(p => p.name), bgPreset: bgPreset, bgPresetChanged: bgPresetChanged,
                 shadows: annotateCfg.object_shadows !== false, ink: ink, savedColors: savedColors, picking: picking,
                 counterLabels: doc.items.map((o, i) => o.kind === "counter" ? Ed.counterLabel(doc, Ed.counterNumber(doc.items, i), o.style) : null).filter(l => l !== null)
             }).slice(1, -1))
