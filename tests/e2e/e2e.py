@@ -1113,6 +1113,11 @@ def editor_keyboard(s, env):
     editor_flush(s)
     px = Image.open(rec["source"]).convert("RGB")
     assert any(px.getpixel((x, y))[1] < 100 for x in range(60, 200) for y in range(85, 115)), "the text should be drawn"
+    s.move(w["at"][0] - mon["x"] + 42, w["at"][1] - mon["y"] + st["winH"] - 25)   # the zoom capsule, bottom left
+    s.click(); time.sleep(0.2)
+    assert editor_state(s)["menuOpen"], "the zoom menu should open"
+    s.debug("ui", "editor", "keys", "{Escape}")     # close the menu
+    assert not editor_state(s)["menuOpen"] and editor_window(), "Escape closes the menu first, not the editor"
     s.debug("ui", "editor", "keys", "{Escape}")     # deselect
     s.debug("ui", "editor", "keys", "{Escape}")     # close
     assert wait_for(lambda: editor_window() is None, 5), "Escape with nothing selected closes the editor"
