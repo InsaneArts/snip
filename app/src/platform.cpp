@@ -4,6 +4,7 @@
 #include <LayerShellQt/window.h>
 #include <QDBusConnection>
 #include <QDBusMessage>
+#include <QDBusUnixFileDescriptor>
 #include <QDrag>
 #include <QFile>
 #include <QGuiApplication>
@@ -257,6 +258,25 @@ Platform::saveFileDialog(int token, const QString& title, const QString& name, c
   dir.append('\0');
   opts[QStringLiteral("current_folder")] = dir;
   portalFileRequest(this, token, QStringLiteral("SaveFile"), title, opts);
+}
+
+void
+Platform::openWith(const QString& path)
+{
+  if (qEnvironmentVariableIsSet("SNIP_NO_PORTALS"))
+    return;
+  QFile f(path);
+  if (!f.open(QIODevice::ReadOnly))
+    return;
+  QVariantMap opts;
+  opts[QStringLiteral("ask")] = true;
+  QDBusMessage call = QDBusMessage::createMethodCall(QStringLiteral("org.freedesktop.portal.Desktop"),
+                                                     QStringLiteral("/org/freedesktop/portal/desktop"),
+                                                     QStringLiteral("org.freedesktop.portal.OpenURI"),
+                                                     QStringLiteral("OpenFile"));
+  // the descriptor is duplicated into the message, so the file can close
+  call << QString() << QVariant::fromValue(QDBusUnixFileDescriptor(f.handle())) << opts;
+  QDBusConnection::sessionBus().call(call, QDBus::NoBlock);
 }
 
 void
