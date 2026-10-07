@@ -2041,6 +2041,7 @@ Window {
                 originX: originX, originY: originY + view.y, k: k, winW: width, winH: height,
                 ready: base.status === Image.Ready, editingText: editingText, typed: textEdit.text, active: ed.active, menuOpen: openedMenu !== null, toolbarNeeds: toolbar.needed,
                 cropCancelAt: tool === "crop" ? cropCancelButton.mapToItem(null, cropCancelButton.width / 2, cropCancelButton.height / 2) : null,
+                cropCancelHovered: cropCancelButton.hovered,
                 emojiButton: emojiButton.visible ? emojiButton.mapToItem(null, 11, 11) : null,
                 selectionBox: { x: selectionBox.x, y: selectionBox.y, w: selectionBox.width, h: selectionBox.height },
                 words: words ? words.length : -1, fill: doc.fill || "", shownX: shown.x, shownY: shown.y,

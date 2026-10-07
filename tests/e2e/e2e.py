@@ -1424,7 +1424,9 @@ def editor_crop_bar(s, env):
     s.debug("ui", "editor", "tool", "crop")                    # the bar's buttons take real clicks
     s.debug("ui", "editor", "crop", 30, 30, 120, 90)
     w, mon, at = editor_window(), env.monitor(), editor_state(s)["cropCancelAt"]
-    s.move(w["at"][0] - mon["x"] + at["x"], w["at"][1] - mon["y"] + at["y"]); time.sleep(0.2); s.click()
+    s.move(w["at"][0] - mon["x"] + at["x"], w["at"][1] - mon["y"] + at["y"])
+    assert wait_for(lambda: editor_state(s)["cropCancelHovered"], 2), "the pointer is on Cancel"
+    s.click()
     st = editor_state(s)
     assert st["tool"] != "crop" and st["crop"] == {"x": -20, "y": -20, "w": 340, "h": 240}, ("Cancel clicked", st["tool"], st["crop"])
     close_editor(s)

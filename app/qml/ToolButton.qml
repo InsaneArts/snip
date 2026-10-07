@@ -12,6 +12,7 @@ Item {
     property bool tipAbove: false
     property bool iconFilled: false
     property real leftPad: 0           // room for content drawn before the glyph (the colour dot)
+    readonly property bool hovered: ma.containsMouse
     signal clicked()
 
     implicitWidth: label !== "" || chevron ? row.implicitWidth + 16 + leftPad : 34
