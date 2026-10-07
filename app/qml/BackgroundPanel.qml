@@ -24,7 +24,8 @@ Rectangle {
     component Tile: Rectangle {
         property bool current: false
         signal picked()
-        width: 50; height: 34; radius: 7
+        // five to a row, filling the panel
+        width: Math.floor((col.width - 4 * 6) / 5); height: Math.round(width * 0.68); radius: 7
         border.width: current ? 2 : 1
         border.color: current ? Theme.accent : Theme.hairline
         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: parent.picked() }
@@ -95,7 +96,7 @@ Rectangle {
                         current: !!panel.bg && panel.bg.kind === "gradient" && panel.bg.value === index
                         BackgroundLayer {
                             bg: ({ kind: "gradient", value: parent.index, padding: 0, inset: 0, radius: 0, shadow: 0 })
-                            rect: ({ x: 2, y: 2, w: 46, h: 30 })
+                            rect: ({ x: 2, y: 2, w: parent.width - 4, h: parent.height - 4 })
                             inner: ({ x: 0, y: 0, w: 0, h: 0 })
                         }
                         onPicked: panel.ed.setBg({ kind: "gradient", value: index })
