@@ -33,6 +33,11 @@ pub enum Request {
         #[serde(default)]
         id: Option<String>,
     },
+    /// Pin a capture (default: the most recent) above every window (PIN-01)
+    Pin {
+        #[serde(default)]
+        id: Option<String>,
+    },
     /// Add an image file as a capture with a Quick Access card
     Open { path: String },
     /// Add an image file as a capture and open it in Snip's editor (ANN-19;

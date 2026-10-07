@@ -16,6 +16,7 @@ capture
 captures (default: the most recent)
   copy [ID]        put a capture on the clipboard
   save [ID]        save to the export folder (and copy)
+  pin [ID]         float it above every window (drag to move, scroll: opacity, Ctrl+scroll: size)
   list [-n N]      recent captures from history
   search TEXT [-n N]  find captures by the text in them (and window title/app)
   restore          re-open the last closed Quick Access card
@@ -67,6 +68,7 @@ fn main() -> ExitCode {
         }
         "copy" => (Request::Copy { id: arg1 }, Duration::from_secs(10)),
         "save" => (Request::Save { id: arg1 }, Duration::from_secs(10)),
+        "pin" => (Request::Pin { id: arg1 }, Duration::from_secs(5)),
         "search" => {
             let n = flag(&mut args, "-n").and_then(|v| v.parse().ok()).unwrap_or(10);
             let query = args.iter().skip(1).cloned().collect::<Vec<_>>().join(" ");
