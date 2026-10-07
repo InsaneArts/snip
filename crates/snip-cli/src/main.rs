@@ -24,6 +24,7 @@ captures (default: the most recent)
   close-all        close every Quick Access card
 daemon
   status | reload | quit
+  --version        the version this is
 ";
 
 fn main() -> ExitCode {
@@ -95,6 +96,10 @@ fn main() -> ExitCode {
         "quit" => (Request::Quit, Duration::from_secs(5)),
         "ping" => (Request::Ping, Duration::from_secs(2)),
         "debug" => (Request::Debug { op: arg1.unwrap_or_default(), args: args.iter().skip(2).cloned().collect() }, Duration::from_secs(10)),
+        "-V" | "--version" | "version" => {
+            println!("snip {}", env!("SNIP_VERSION"));
+            return ExitCode::SUCCESS;
+        }
         "-h" | "--help" | "help" => {
             print!("{USAGE}");
             return ExitCode::SUCCESS;
