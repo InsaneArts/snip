@@ -156,6 +156,10 @@ QtObject {
         function onPinOpen(json) { root.openPin(JSON.parse(json)) }
         function onHistoryOpen(output) { root.history.open(output) }
         function onSettingsOpen(tab) { root.openSettings(tab) }
+        // scrolling capture (SCR-01): Quick Access stays out of the way meanwhile
+        function onScrollOpen(json) { root.quickAccess.capturing = true; root.scrollHud.open(JSON.parse(json)) }
+        function onScrollStatus(json) { root.scrollHud.status(JSON.parse(json)) }
+        function onScrollClose() { root.scrollHud.close(); root.quickAccess.capturing = false }
         function onBackgroundAuto(json) {
             const r = root.renderComponent.createObject(null, { capture: JSON.parse(json), token: root.nextToken() })
             r.done.connect(() => r.destroy())
@@ -179,6 +183,7 @@ QtObject {
         if (a[0] === "close-pins") { closePins(); return }
         if (a[0] === "history") { history.debug(a.slice(1)); return }
         if (a[0] === "settings") { if (settingsWindow) settingsWindow.debug(a.slice(1)); return }
+        if (a[0] === "scroll") { scrollHud.debug(a.slice(1)); return }
         if (a[0] === "pin") {
             const p = pins[pins.length - 1]
             if (p) p.debug(a.slice(1))
@@ -241,6 +246,7 @@ QtObject {
     property Countdown countdown: Countdown {}
     property Preview preview: Preview {}
     property History history: History { controller: root }
+    property ScrollHud scrollHud: ScrollHud { controller: root }
 
     // Editors, one per capture: opening one again brings it forward.
     property var editors: ({})
