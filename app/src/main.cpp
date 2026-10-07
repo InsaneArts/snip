@@ -6,6 +6,7 @@
 #include <QQuickWindow>
 #include <cstdio>
 
+#include "redact.h"
 #include "snip_bridge/src/bridge.cxxqt.h"
 
 int
@@ -40,6 +41,7 @@ main(int argc, char* argv[])
   }
 
   QQmlApplicationEngine engine;
+  engine.addImageProvider(QStringLiteral("snip-redact"), new RedactProvider);
   engine.setInitialProperties({ { QStringLiteral("mode"), mode } });
   engine.loadFromModule("Snip.Ui", "Main");
   if (engine.rootObjects().isEmpty())
