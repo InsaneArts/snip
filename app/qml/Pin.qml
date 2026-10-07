@@ -46,9 +46,15 @@ Window {
         case "close": close_(); break
         case "close-all": controller.closePins(); break
         case "lock": lock(); break
+        case "text": Engine.extractText(capture.id); break
         }
     }
     function zoomBy(f) { zoom = Math.max(0.1, Math.min(4, zoom * f)) }
+    // Copy Text's result (it comes as a card's status): a toast here
+    function status(st, detail) {
+        const said = { "text-copied": "Copied " + detail, "qr-copied": "Copied " + detail, "no-text": "No text found", "error": detail }[st]
+        if (said) controller.toast.show(said, capture.output)
+    }
     // PIN-07: hidden pins come back where they were (Hyprland would centre them)
     property var hiddenAt: null
     function hide() {
@@ -330,6 +336,7 @@ Window {
                 { label: "Copy", key: "Ctrl+C", action: "copy", icon: "copy" },
                 { label: "Save", key: "Ctrl+S", action: "save", icon: "save" },
                 { label: "Annotate", key: "Ctrl+E", action: "annotate", icon: "pencil" },
+                { label: "Copy Text", key: "", action: "text", icon: "scan-text" },
                 { label: "Lock (Click Through)", key: "", action: "lock", icon: "lock" },
                 { sep: true },
                 { label: "Close", key: "Ctrl+W", action: "close", icon: "x" },
