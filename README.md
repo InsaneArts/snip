@@ -22,7 +22,8 @@ CleanShot X's screenshot workflow for [Omarchy](https://omarchy.org) and Hyprlan
 - **Editor:** CleanShot's Annotate tools: arrows (four styles; drag the middle to bend), rectangles, ellipses, lines, text in seven styles with emoji, counters, pencil, a highlighter that snaps to text lines, spotlight, Pixelate/Text shape/Blur/Black out that really hide what is under them, crop and resize, added images and the Background tool; with undo, zoom, Copy, Save, Save As and Drag Me. Open it from a card (pencil or double-click), with `snip edit FILE`, or on whatever image is on the clipboard with `snip edit --clipboard`. Edits go back to the capture and stay editable.
 - **History search:** `snip search connection refused` finds captures by the text in them.
 - **History window:** `snip history` (or bind `snip:history`) shows past captures across the top of the screen. Type to search their text, Enter restores one to Quick Access, double-click annotates it, drag it out.
-- **Formats:** PNG, JPG and WebP. Live config in `~/.config/snip/config.toml`.
+- **Settings:** `snip settings` (or bind `snip:settings`) opens CleanShot's settings tabs. They write `~/.config/snip/config.toml` and keep your comments; editing the file by hand works too, live.
+- **Formats:** PNG, JPG and WebP.
 
 ## Run it from source
 
