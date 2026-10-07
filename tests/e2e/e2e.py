@@ -2028,6 +2028,29 @@ def editor_auto_expand(s, env):
 
 
 @case
+def editor_remembers_tool(s, env):
+    """The next editor starts with the tool the last one used (CleanShot does): text, the
+    counter, the arrow... Crop and the Background tool are modes, not remembered."""
+    from PIL import Image
+    png = s.tmp / "tool.png"
+    Image.new("RGB", (300, 200), "white").save(png)
+
+    def editor(steps=()):
+        s.json("edit", str(png))
+        assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3), "the editor opens"
+        tool = editor_state(s)["tool"]
+        for t in steps:
+            s.debug("ui", "editor", "tool", t)
+        close_editor(s)
+        return tool
+
+    editor(["counter"])
+    assert editor(["text", "crop"]) == "counter", "the last one's tool"
+    assert editor() == "text", "crop isn't remembered: the tool before it is"
+    editor(["arrow"])
+
+
+@case
 def editor_window_settings(s, env):
     """ANN-18: "Always on top" pins the editor (Hyprland); "Remember if the Background
     tool was opened" opens the next editor with it."""
@@ -2310,6 +2333,7 @@ def main():
             s.cli("debug", "ui", "close-editors", check=False)   # a failed case must not leave its editor to the next
             s.cli("debug", "ui", "close-pins", check=False)
             time.sleep(0.2)
+            (s.tmp / "data/snip/editor.json").unlink(missing_ok=True)   # each case's editor starts with the arrow
     finally:
         pid = s.proc.pid if s.proc else None
         s.stop()
