@@ -422,9 +422,17 @@ Window {
                 }
                 Section {
                     label: "Window capture"
-                    Check { key: "capture.window_shadow"; text: "Keep the transparent background" }
+                    Choice { key: "capture.window_desktop"; options: [[false, "Window only"], [true, "With the desktop"]] }
+                    Note { text: win.value("capture.window_desktop") ? "The window as it is on screen, with what's around it: the wallpaper, other windows, the bar."
+                                                                      : "The window alone, from its own buffer." }
+                    Column {
+                        spacing: 8
+                        enabled: win.value("capture.window_desktop") !== true
+                        opacity: enabled ? 1 : 0.45
+                        Check { key: "capture.window_shadow"; text: "Keep the transparent background" }
+                        Check { key: "capture.window_rounding"; text: "Keep the window's rounded corners" }
+                    }
                     Note { text: "Hold Shift when you click a window to do the opposite." }
-                    Check { key: "capture.window_rounding"; text: "Keep the window's rounded corners" }
                 }
                 Section {
                     label: "Self-timer"
