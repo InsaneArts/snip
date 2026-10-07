@@ -86,11 +86,20 @@ Window {
     property var sizeIndex: Object.assign({}, Ed.defaultSize)
     readonly property string sizeKind: tool === "select" ? (selectedObj ? selectedObj.kind : "arrow") : tool
     function sizeFor(kind) { return Math.round(Ed.sizes[kind][sizeIndex[kind]] * unit) }
+    property string redactStyle: "pixelate"   // CleanShot's default (D26)
+    property string toolBeforeCrop: "arrow"
 
     function setTool(t) {
         finishText()
+        if (t === "crop" && tool !== "crop") toolBeforeCrop = tool
         tool = t
         if (t !== "select") selected = -1
+    }
+    function setRedactStyle(st) {
+        redactStyle = st
+        if (selectedObj && selectedObj.kind === "redact" && selectedObj.style !== st) {
+            const o = Ed.copy(selectedObj); o.style = st; replaceItem(selected, o)
+        }
     }
     // colour and size apply to the selection too, as in CleanShot
     function setColor(c) {
@@ -117,7 +126,19 @@ Window {
     readonly property var shownSelection: draft && draftIndex === selected ? draft : selectedObj
 
     // ---------------------------------------------------------------- view
-    readonly property var shown: doc.crop ? doc.crop : ({ x: 0, y: 0, w: imgW, h: imgH })
+    readonly property var full: ({ x: 0, y: 0, w: imgW, h: imgH })
+    // what is exported (the crop) and what is on screen (all of it while cropping)
+    readonly property var exportRect: doc.crop || full
+    readonly property var shown: tool === "crop" ? full : exportRect
+    property var cropDraft: null
+    readonly property var cropShown: cropDraft || doc.crop || full
+    function setCrop(r) {
+        r = Ed.clampRect(r, imgW, imgH)
+        if (r.w < 4 || r.h < 4) return
+        const c = r.x === 0 && r.y === 0 && r.w === imgW && r.h === imgH ? null : r
+        if (JSON.stringify(c) !== JSON.stringify(doc.crop)) commit({ v: 1, items: doc.items, crop: c })
+    }
+    function cropDone() { setTool(toolBeforeCrop === "crop" ? "arrow" : toolBeforeCrop) }
     property real zoom: 1               // 1 = 100 %: one image px per device px
     property bool fit: true
     readonly property real k: zoom / dpr // view px per image px
@@ -181,7 +202,7 @@ Window {
         commitAction = action
         commitDoc = JSON.stringify(doc)
         commitToken = controller.nextToken()
-        Platform.grabExact(exportRoot, shown.w, shown.h, commitToken)
+        Platform.grabExact(exportRoot, exportRect.w, exportRect.h, commitToken)
     }
     Connections {
         target: Platform
@@ -310,6 +331,11 @@ Window {
                 return
             }
             const nudge = shift ? 10 : 1
+            if (ed.tool === "crop" && (e.key === Qt.Key_Escape || e.key === Qt.Key_Return || e.key === Qt.Key_Enter)) {
+                ed.cropDone()
+                e.accepted = true
+                return
+            }
             switch (e.key) {
             case Qt.Key_Escape:
                 if (ed.selected >= 0) ed.selected = -1
@@ -322,6 +348,8 @@ Window {
             case Qt.Key_R: ed.setTool("rect"); break
             case Qt.Key_T: ed.setTool("text"); break
             case Qt.Key_N: ed.setTool("counter"); break
+            case Qt.Key_P: ed.setTool("redact"); break
+            case Qt.Key_C: ed.setTool("crop"); break
             case Qt.Key_Left: ed.nudge(-nudge, 0); break
             case Qt.Key_Right: ed.nudge(nudge, 0); break
             case Qt.Key_Up: ed.nudge(0, -nudge); break
@@ -360,15 +388,21 @@ Window {
             anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter }
             spacing: 10
             Group {
+                ToolButton { icon: "crop"; tip: "Crop (C)"; selected: ed.tool === "crop"; onClicked: ed.tool === "crop" ? ed.cropDone() : ed.setTool("crop") }
+            }
+            Group {
                 ToolButton { icon: "pointer"; tip: "Select (V)"; selected: ed.tool === "select"; onClicked: ed.setTool("select") }
                 ToolButton { icon: "arrow"; tip: "Arrow (A)"; selected: ed.tool === "arrow"; onClicked: ed.setTool("arrow") }
                 ToolButton { icon: "square"; tip: "Rectangle (R)"; selected: ed.tool === "rect"; onClicked: ed.setTool("rect") }
                 ToolButton { icon: "text"; tip: "Text (T)"; selected: ed.tool === "text"; onClicked: ed.setTool("text") }
+                ToolButton { icon: "pixelate"; tip: "Pixelate (P)"; selected: ed.tool === "redact"; onClicked: ed.setTool("redact") }
                 ToolButton { icon: "counter"; tip: "Counter (N)"; selected: ed.tool === "counter"; onClicked: ed.setTool("counter") }
             }
             Group {
+                visible: ed.tool !== "crop"
                 Item {
                     id: swatchButton
+                    visible: ed.sizeKind !== "redact"
                     width: 50; height: 32
                     Rectangle {
                         anchors.fill: parent
@@ -384,6 +418,13 @@ Window {
                     Icon { x: 32; anchors.verticalCenter: parent.verticalCenter; name: "chevron-down"; size: 11; stroke: 2.2; color: Theme.textSecondary }
                     MouseArea { id: swatchMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
                                 onClicked: ed.openMenu(colorMenu, swatchButton) }
+                }
+                ToolButton {
+                    id: styleButton
+                    visible: ed.sizeKind === "redact"
+                    label: Ed.redactStyles.find(r => r.id === (ed.selectedObj && ed.selectedObj.kind === "redact" ? ed.selectedObj.style : ed.redactStyle)).label
+                    chevron: true
+                    onClicked: ed.openMenu(styleMenu, styleButton)
                 }
                 ToolButton {
                     id: sizeButton
@@ -435,11 +476,13 @@ Window {
             // ignores its scale)
             Item {
                 id: exportRoot
+                // the grab ignores this position and scale: it renders the crop
+                x: (ed.exportRect.x - ed.shown.x) * ed.k; y: (ed.exportRect.y - ed.shown.y) * ed.k
                 scale: ed.k
                 transformOrigin: Item.TopLeft
                 Item {
                     id: content
-                    x: -ed.shown.x; y: -ed.shown.y
+                    x: -ed.exportRect.x; y: -ed.exportRect.y
                     Image {
                         id: base
                         width: ed.imgW; height: ed.imgH
@@ -456,12 +499,14 @@ Window {
                             required property var modelData
                             required property int index
                             o: modelData
+                            base: ed.capture.image || ""
                             number: Ed.counterNumber(ed.doc.items, index)
                             visible: index !== ed.draftIndex
                         }
                     }
                     EditorItem {
                         o: ed.draft
+                        base: ed.capture.image || ""
                         visible: ed.draft !== null && !ed.editingText
                         number: ed.draft && ed.draft.kind === "counter"
                                 ? (ed.draftIndex >= 0 ? Ed.counterNumber(ed.doc.items, ed.draftIndex) : Ed.counterNumber(ed.doc.items, ed.doc.items.length - 1) + 1) : 1
@@ -486,6 +531,7 @@ Window {
                 EditorItem {
                     visible: ed.shownSelection !== null && !ed.editingText && ed.shownSelection.kind !== "text"
                     o: ed.shownSelection
+                    base: ed.capture.image || ""
                     number: ed.selected >= 0 ? Ed.counterNumber(ed.doc.items, ed.selected) : 1
                 }
                 // text being typed, exactly where it will be drawn
@@ -537,12 +583,81 @@ Window {
             }
         }
 
+        // crop: the rest dimmed, a frame with handles, size and Done
+        Item {
+            id: cropUi
+            anchors.fill: parent
+            visible: ed.tool === "crop"
+            readonly property var a: ed.toView(ed.cropShown.x, ed.cropShown.y)
+            readonly property var b: ed.toView(ed.cropShown.x + ed.cropShown.w, ed.cropShown.y + ed.cropShown.h)
+            readonly property var i0: ed.toView(0, 0)
+            readonly property var i1: ed.toView(ed.imgW, ed.imgH)
+            readonly property color dim: Qt.rgba(0, 0, 0, 0.55)
+            Rectangle { x: cropUi.i0.x; y: cropUi.i0.y; width: cropUi.i1.x - cropUi.i0.x; height: cropUi.a.y - cropUi.i0.y; color: cropUi.dim }
+            Rectangle { x: cropUi.i0.x; y: cropUi.b.y; width: cropUi.i1.x - cropUi.i0.x; height: cropUi.i1.y - cropUi.b.y; color: cropUi.dim }
+            Rectangle { x: cropUi.i0.x; y: cropUi.a.y; width: cropUi.a.x - cropUi.i0.x; height: cropUi.b.y - cropUi.a.y; color: cropUi.dim }
+            Rectangle { x: cropUi.b.x; y: cropUi.a.y; width: cropUi.i1.x - cropUi.b.x; height: cropUi.b.y - cropUi.a.y; color: cropUi.dim }
+            Rectangle {
+                x: cropUi.a.x - 1; y: cropUi.a.y - 1
+                width: cropUi.b.x - cropUi.a.x + 2; height: cropUi.b.y - cropUi.a.y + 2
+                color: "transparent"
+                border.width: 1.5; border.color: "white"
+                // thirds
+                Repeater {
+                    model: 2
+                    Rectangle { required property int index; x: parent.width * (index + 1) / 3; y: 1; width: 1; height: parent.height - 2; color: Qt.rgba(1, 1, 1, 0.35) }
+                }
+                Repeater {
+                    model: 2
+                    Rectangle { required property int index; y: parent.height * (index + 1) / 3; x: 1; height: 1; width: parent.width - 2; color: Qt.rgba(1, 1, 1, 0.35) }
+                }
+            }
+            Repeater {
+                model: Ed.cropHandles(ed.cropShown)
+                delegate: Rectangle {
+                    required property var modelData
+                    readonly property var at: ed.toView(modelData.x, modelData.y)
+                    readonly property bool corner: modelData.name.length === 2
+                    x: at.x - width / 2; y: at.y - height / 2
+                    width: corner ? 14 : (modelData.name === "t" || modelData.name === "b" ? 22 : 6)
+                    height: corner ? 14 : (modelData.name === "l" || modelData.name === "r" ? 22 : 6)
+                    radius: 3
+                    color: "white"
+                    border.width: 1; border.color: Qt.rgba(0, 0, 0, 0.25)
+                }
+            }
+            Rectangle {
+                id: cropBar
+                anchors.horizontalCenter: parent.horizontalCenter
+                y: 12
+                width: cropRow.implicitWidth + 16; height: 36
+                radius: height / 2
+                color: Theme.light ? "#ffffff" : Qt.lighter(Theme.surface, 1.2)
+                border.width: 1; border.color: Theme.hairline
+                Row {
+                    id: cropRow
+                    anchors.centerIn: parent
+                    spacing: 6
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        leftPadding: 8; rightPadding: 4
+                        text: Math.round(ed.cropShown.w) + " × " + Math.round(ed.cropShown.h)
+                        color: Theme.textSecondary
+                        font.family: Theme.fontUi; font.pixelSize: 13; font.features: { "tnum": 1 }
+                    }
+                    ToolButton { label: "Reset"; onClicked: { ed.setCrop(ed.full) } }
+                    ToolButton { label: "Done"; selected: true; onClicked: ed.cropDone() }
+                }
+            }
+        }
+
         MouseArea {
             id: pointer
             anchors.fill: parent
             hoverEnabled: true
             acceptedButtons: Qt.LeftButton | Qt.MiddleButton
             cursorShape: gesture === "pan" || keys.spaceHeld ? Qt.ClosedHandCursor
+                       : ed.tool === "crop" ? Qt.CrossCursor
                        : hoverHandle !== "" ? Qt.SizeAllCursor
                        : hoverItem >= 0 ? Qt.OpenHandCursor
                        : ed.tool === "text" ? Qt.IBeamCursor : ed.tool === "select" ? Qt.ArrowCursor : Qt.CrossCursor
@@ -558,6 +673,13 @@ Window {
             property string hoverHandle: ""
             property int hoverItem: -1
 
+            function cropHandleAt(vx, vy) {
+                for (const h of Ed.cropHandles(ed.cropShown)) {
+                    const v = ed.toView(h.x, h.y)
+                    if (Math.hypot(v.x - vx, v.y - vy) <= 12) return h.name
+                }
+                return ""
+            }
             function handleAt(vx, vy) {
                 if (!ed.selectedObj) return ""
                 for (const h of Ed.handles(ed.selectedObj)) {
@@ -585,6 +707,15 @@ Window {
                 const p = ed.toImage(m.x, m.y)
                 pressAt = p
                 if (ed.editingText) ed.finishText()
+                if (ed.tool === "crop") {
+                    const r = ed.cropShown
+                    handle = cropHandleAt(m.x, m.y)
+                    gesture = handle !== "" ? "crop-handle"
+                            : p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h ? "crop-move" : "crop-new"
+                    pressObj = Object.assign({ kind: "rect" }, r)
+                    ed.cropDraft = Ed.copy(r)
+                    return
+                }
                 const h = handleAt(m.x, m.y)
                 if (h !== "") {
                     gesture = "handle"; handle = h
@@ -608,6 +739,10 @@ Window {
                 case "rect":
                     ed.draft = { kind: "rect", x: p.x, y: p.y, w: 0, h: 0, color: c, size: ed.sizeFor("rect") }
                     gesture = "draw"; break
+                case "redact":
+                    ed.draft = { kind: "redact", x: Math.round(p.x), y: Math.round(p.y), w: 0, h: 0, style: ed.redactStyle,
+                                 seed: Math.floor(Math.random() * 1e9) }
+                    gesture = "draw"; break
                 case "counter":
                     ed.draft = { kind: "counter", x: p.x, y: p.y, color: c, size: ed.sizeFor("counter") }
                     pressObj = ed.draft
@@ -629,6 +764,17 @@ Window {
                 }
                 const p = ed.toImage(m.x, m.y)
                 const shift = (m.modifiers & Qt.ShiftModifier) !== 0
+                if (gesture.startsWith("crop")) {
+                    let r
+                    if (gesture === "crop-handle") r = Ed.withHandle(pressObj, handle, p.x, p.y)
+                    else if (gesture === "crop-move") {
+                        const dx = Math.max(-pressObj.x, Math.min(ed.imgW - pressObj.x - pressObj.w, p.x - pressAt.x))
+                        const dy = Math.max(-pressObj.y, Math.min(ed.imgH - pressObj.y - pressObj.h, p.y - pressAt.y))
+                        r = Ed.moved(pressObj, dx, dy)
+                    } else r = Ed.normRect(pressAt.x, pressAt.y, p.x, p.y)
+                    ed.cropDraft = Ed.clampRect(r, ed.imgW, ed.imgH)
+                    return
+                }
                 if (gesture === "move" || gesture === "place") {
                     ed.draft = Ed.moved(pressObj, p.x - pressAt.x, p.y - pressAt.y)
                 } else if (gesture === "handle") {
@@ -651,13 +797,19 @@ Window {
                         const r = Ed.normRect(pressAt.x, pressAt.y, x, y)
                         d.x = r.x; d.y = r.y; d.w = r.w; d.h = r.h
                     }
-                    ed.draft = d
+                    ed.draft = d.kind === "redact" ? Ed.whole(d) : d
                 }
             }
             onReleased: (m) => {
                 const g = gesture
                 gesture = ""
                 if (g === "pan" || g === "") return
+                if (g.startsWith("crop")) {
+                    const r = ed.cropDraft
+                    ed.cropDraft = null
+                    if (r) ed.setCrop(r)
+                    return
+                }
                 const d = ed.draft, i = ed.draftIndex
                 ed.draft = null
                 ed.draftIndex = -1
@@ -831,6 +983,22 @@ Window {
     }
 
     Menu {
+        id: styleMenu
+        Repeater {
+            model: Ed.redactStyles
+            delegate: Rectangle {
+                required property var modelData
+                readonly property bool current: (ed.selectedObj && ed.selectedObj.kind === "redact" ? ed.selectedObj.style : ed.redactStyle) === modelData.id
+                width: 112; height: 30; radius: 15
+                color: current ? Theme.controlPressed : stMa.containsMouse ? Theme.controlHover : "transparent"
+                Text { anchors.centerIn: parent; text: parent.modelData.label; color: Theme.text; font.family: Theme.fontUi; font.pixelSize: 13 }
+                MouseArea { id: stMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                            onClicked: { ed.setRedactStyle(parent.modelData.id); ed.openedMenu = null } }
+            }
+        }
+    }
+
+    Menu {
         id: zoomMenu
         Repeater {
             model: [{ t: "Fit", z: 0 }, { t: "50%", z: 0.5 }, { t: "100%", z: 1 }, { t: "200%", z: 2 }]
@@ -854,6 +1022,8 @@ Window {
         case "rect": addItem({ kind: "rect", x: n(1), y: n(2), w: n(3), h: n(4), color: ink, size: sizeFor("rect") }); break
         case "counter": addItem({ kind: "counter", x: n(1), y: n(2), color: ink, size: sizeFor("counter") }); break
         case "text": addItem({ kind: "text", x: n(1), y: n(2), text: a.slice(3).join(" "), color: ink, size: sizeFor("text") }); break
+        case "redact": addItem({ kind: "redact", x: n(1), y: n(2), w: n(3), h: n(4), style: a[5] || redactStyle, seed: a[6] ? n(6) : 1 }); break
+        case "crop": a[1] === "reset" ? setCrop(full) : setCrop({ x: n(1), y: n(2), w: n(3), h: n(4) }); break
         case "color": setColor(a[1]); break
         case "tool": setTool(a[1]); break
         case "undo": undo(); break

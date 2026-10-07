@@ -7,6 +7,7 @@
 //   rect    {kind, x, y, w, h, color, size}
 //   text    {kind, x, y, text, color, size}               size = font px
 //   counter {kind, x, y, color, size}                     centre; size = diameter
+//   redact  {kind, x, y, w, h, style, seed}               pixelate | blur | black
 //
 // Counters are numbered by their order in the document, so deleting one
 // renumbers the rest (ANN-08).
@@ -60,7 +61,7 @@ function handles(o) {
         var m = arrowAt(o, 0.5)
         return [{ name: "start", x: o.x1, y: o.y1 }, { name: "end", x: o.x2, y: o.y2 }, { name: "mid", x: m.x, y: m.y }]
     }
-    if (o.kind === "rect")
+    if (o.kind === "rect" || o.kind === "redact")
         return [{ name: "tl", x: o.x, y: o.y }, { name: "tr", x: o.x + o.w, y: o.y },
                 { name: "bl", x: o.x, y: o.y + o.h }, { name: "br", x: o.x + o.w, y: o.y + o.h }]
     return []
@@ -81,14 +82,32 @@ function withHandle(o, h, x, y) {
         n.cx = o.cx + dx / 2; n.cy = o.cy + dy / 2
         return n
     }
-    if (n.kind === "rect") {
+    if (n.kind === "rect" || n.kind === "redact") {
         var x1 = o.x, y1 = o.y, x2 = o.x + o.w, y2 = o.y + o.h
         if (h === "tl") { x1 = x; y1 = y } else if (h === "tr") { x2 = x; y1 = y }
         else if (h === "bl") { x1 = x; y2 = y } else if (h === "br") { x2 = x; y2 = y }
+        else if (h === "t") y1 = y; else if (h === "b") y2 = y
+        else if (h === "l") x1 = x; else if (h === "r") x2 = x
         var r = normRect(x1, y1, x2, y2)
         n.x = r.x; n.y = r.y; n.w = r.w; n.h = r.h
+        if (n.kind === "redact") n = whole(n)
     }
     return n
+}
+
+// Redaction regions sit on whole pixels, so their tiles line up with the
+// image (and so does a crop).
+function whole(r) {
+    var n = copy(r)
+    var x2 = Math.round(r.x + r.w), y2 = Math.round(r.y + r.h)
+    n.x = Math.round(r.x); n.y = Math.round(r.y); n.w = x2 - n.x; n.h = y2 - n.y
+    return n
+}
+
+function clampRect(r, w, h) {
+    var x1 = Math.max(0, Math.min(w, r.x)), y1 = Math.max(0, Math.min(h, r.y))
+    var x2 = Math.max(0, Math.min(w, r.x + r.w)), y2 = Math.max(0, Math.min(h, r.y + r.h))
+    return whole({ x: x1, y: y1, w: x2 - x1, h: y2 - y1 })
 }
 
 // Does a click at (x, y) (image px) land on o? `tol` widens thin strokes;
@@ -109,6 +128,8 @@ function hits(o, x, y, tol, box) {
     }
     if (o.kind === "counter")
         return dist(x, y, o.x, o.y) <= o.size / 2 + tol
+    if (o.kind === "redact")
+        return x >= o.x - tol && x <= o.x + o.w + tol && y >= o.y - tol && y <= o.y + o.h + tol
     if (o.kind === "text" && box)
         return x >= o.x - tol && x <= o.x + box.width + tol && y >= o.y - tol && y <= o.y + box.height + tol
     return false
@@ -117,7 +138,7 @@ function hits(o, x, y, tol, box) {
 // A drag shorter than this (image px) makes no object.
 function tooSmall(o) {
     if (o.kind === "arrow") return dist(o.x1, o.y1, o.x2, o.y2) < o.size * 2
-    if (o.kind === "rect") return o.w < 3 || o.h < 3
+    if (o.kind === "rect" || o.kind === "redact") return o.w < 3 || o.h < 3
     return false
 }
 
@@ -125,4 +146,14 @@ function counterNumber(items, index) {
     var n = 0
     for (var i = 0; i <= index; i++) if (items[i].kind === "counter") n++
     return n
+}
+
+var redactStyles = [{ id: "pixelate", label: "Pixelate" }, { id: "blur", label: "Blur" }, { id: "black", label: "Black out" }]
+
+// Crop handles: corners and edge middles.
+function cropHandles(r) {
+    var cx = r.x + r.w / 2, cy = r.y + r.h / 2
+    return [{ name: "tl", x: r.x, y: r.y }, { name: "t", x: cx, y: r.y }, { name: "tr", x: r.x + r.w, y: r.y },
+            { name: "r", x: r.x + r.w, y: cy }, { name: "br", x: r.x + r.w, y: r.y + r.h }, { name: "b", x: cx, y: r.y + r.h },
+            { name: "bl", x: r.x, y: r.y + r.h }, { name: "l", x: r.x, y: cy }]
 }
