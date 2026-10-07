@@ -368,7 +368,9 @@ def first_card_is_warm(s, env):
     ms = ([e for e in s.traces("qao_motion") if e["id"] == rec["id"]][0]["t_ns"] - t0) / 1e6
     print(f"      first card moving after {ms:.1f} ms")
     s.cli("close-all"); time.sleep(0.6)
-    assert ms < 60, ms
+    # nested, the output draws at 15 fps while unfocused: a frame can add 67 ms
+    # to the ~9 ms it takes (the cold path took ~90 ms even on a real output)
+    assert ms < (80 if OUT == Nested.OUTPUT else 60), ms
 
 
 @case
