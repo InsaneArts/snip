@@ -20,6 +20,7 @@ jpeg-encoder = "0.7"
 rqrr = "0.11"
 qrcode = { version = "0.14", default-features = false }
 image-webp = "0.2"
+zip = { version = "2", default-features = false }
 rustix = { version = "1", features = ["fs", "mm", "time", "pipe", "net", "process"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 ulid = "1"

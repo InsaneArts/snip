@@ -10,6 +10,7 @@ pub mod history;
 pub mod naming;
 pub mod ocr;
 pub mod paths;
+pub mod project;
 pub mod qr;
 pub mod redact;
 pub mod store;

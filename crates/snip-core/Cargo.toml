@@ -17,6 +17,7 @@ rqrr.workspace = true
 rustix.workspace = true
 chrono.workspace = true
 ulid.workspace = true
+zip.workspace = true
 
 [dev-dependencies]
 qrcode.workspace = true
