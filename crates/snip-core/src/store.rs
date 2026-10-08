@@ -170,7 +170,7 @@ impl Store {
             counter: if cfg.general.file_name.contains("%i") { self.next_counter() } else { 0 },
             random: id.chars().rev().take(4).collect(),
         };
-        let stem = naming::render(&cfg.general.file_name, now, &ctx);
+        let stem = cfg.file_stem(now, rec.scale, &ctx);
         let fmt = cfg.export_format();
         let out = crate::encode::transcode(&bytes, fmt).map_err(|e| StoreError::Io(std::io::Error::other(e)))?;
         let path = naming::unique_path(&dir, &stem, fmt.ext());

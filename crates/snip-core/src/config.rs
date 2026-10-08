@@ -21,6 +21,10 @@ pub struct General {
     /// Annotate / double-click: empty opens Snip's editor; a command (say
     /// "satty --filename") opens that editor with the image path instead.
     pub external_editor: String,
+    /// SET-04: the time in file names is UTC
+    pub utc_time: bool,
+    /// SET-04: file names of HiDPI captures end in "@2x" (their scale)
+    pub scale_suffix: bool,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -272,6 +276,8 @@ impl Default for General {
             save_also_copies: true,
             sounds: true,
             external_editor: String::new(),
+            utc_time: false,
+            scale_suffix: false,
         }
     }
 }
@@ -356,6 +362,13 @@ impl Config {
         crate::paths::expand(&self.general.export_dir)
     }
 
+    /// SET-04: a capture's file name, without its extension.
+    pub fn file_stem(&self, at: chrono::DateTime<chrono::Local>, scale: f64, ctx: &crate::naming::NameContext) -> String {
+        let t = if self.general.utc_time { at.naive_utc() } else { at.naive_local() };
+        let stem = crate::naming::render(&self.general.file_name, t, ctx);
+        if self.general.scale_suffix { stem + &crate::naming::scale_suffix(scale) } else { stem }
+    }
+
     pub fn export_format(&self) -> crate::encode::Export {
         match self.general.format {
             ImageFormat::Png => crate::encode::Export::Png,
@@ -425,6 +438,19 @@ pub fn set_json(text: &str, dotted: &str, value: &serde_json::Value) -> Result<S
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn file_stem_in_utc_and_with_the_scale() {
+        let at = chrono::DateTime::from_timestamp(1_791_400_000, 0).unwrap().with_timezone(&chrono::Local);
+        let ctx = crate::naming::NameContext::default();
+        let mut c = Config::default();
+        c.general.file_name = "Shot %H.%M".into();
+        assert_eq!(c.file_stem(at, 2.0, &ctx), at.format("Shot %H.%M").to_string());
+        c.general.utc_time = true;
+        c.general.scale_suffix = true;
+        assert_eq!(c.file_stem(at, 2.0, &ctx), at.naive_utc().format("Shot %H.%M@2x").to_string());
+        assert_eq!(c.file_stem(at, 1.0, &ctx), at.naive_utc().format("Shot %H.%M").to_string(), "no suffix at 1x");
+    }
 
     #[test]
     fn defaults_follow_decisions() {

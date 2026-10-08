@@ -477,10 +477,12 @@ Window {
                     Field { id: nameField; key: "general.file_name"; placeholder: "Snip %y-%m-%d at %H.%M.%S" }
                     Note {
                         readonly property string ext: ({ png: ".png", jpg: ".jpg", webp: ".webp" })[win.value("general.format")] || ".png"
-                        text: Engine.fileNamePreview(nameField.text) + ext
+                        text: Engine.fileNamePreview(nameField.text, win.value("general.utc_time") === true, win.value("general.scale_suffix") === true) + ext
                         color: Theme.text
                     }
                     Note { text: "%y %m %d date, %H %M %S time, %n month, %w weekday, %p AM/PM,\n%t window title, %a app, %r random, %i counter" }
+                    Check { key: "general.utc_time"; text: "Use UTC time" }
+                    Check { key: "general.scale_suffix"; text: "Add @2x to HiDPI captures (their scale: @1.25x, @2x…)" }
                 }
                 Section {
                     label: "Clipboard"

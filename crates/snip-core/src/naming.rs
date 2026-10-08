@@ -2,7 +2,7 @@
 //! %y year, %m month, %n month name, %d day, %w weekday, %H hour, %M minute,
 //! %S second, %p AM/PM, %t window title, %a app name, %r random, %i counter.
 
-use chrono::{DateTime, Datelike, Local, Timelike};
+use chrono::{Datelike, NaiveDateTime, Timelike};
 
 pub const DEFAULT_TEMPLATE: &str = "Snip %y-%m-%d at %H.%M.%S";
 
@@ -35,7 +35,8 @@ fn sanitize(s: &str) -> String {
     out
 }
 
-pub fn render(template: &str, now: DateTime<Local>, ctx: &NameContext) -> String {
+/// `now` is local time, or UTC with the UTC option (see `Config::file_stem`).
+pub fn render(template: &str, now: NaiveDateTime, ctx: &NameContext) -> String {
     let mut out = String::new();
     let mut chars = template.chars().peekable();
     while let Some(c) = chars.next() {
@@ -68,6 +69,12 @@ pub fn render(template: &str, now: DateTime<Local>, ctx: &NameContext) -> String
     sanitize(&out)
 }
 
+/// SET-04: "@2x" for a capture at scale 2 ("@1.25x" at 1.25), nothing at 1.
+pub fn scale_suffix(scale: f64) -> String {
+    let s = (scale * 100.0).round() / 100.0;
+    if s > 1.0 { format!("@{s}x") } else { String::new() }
+}
+
 /// Pick a non-existing path `dir/stem.ext`, appending " (2)", " (3)", ... on
 /// collision. Never overwrites.
 pub fn unique_path(dir: &std::path::Path, stem: &str, ext: &str) -> std::path::PathBuf {
@@ -87,10 +94,9 @@ pub fn unique_path(dir: &std::path::Path, stem: &str, ext: &str) -> std::path::P
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::TimeZone;
 
-    fn t() -> DateTime<Local> {
-        Local.with_ymd_and_hms(2026, 10, 6, 21, 5, 9).unwrap()
+    fn t() -> NaiveDateTime {
+        chrono::NaiveDate::from_ymd_opt(2026, 10, 6).unwrap().and_hms_opt(21, 5, 9).unwrap()
     }
 
     #[test]
@@ -109,6 +115,13 @@ mod tests {
         assert_eq!(render("%a %t #%i %r %p", t(), &ctx), "code main.rs — ~-src-snip- VS Code #42 x7k2 PM");
         assert_eq!(render("100%% %q", t(), &ctx), "100% %q");
         assert_eq!(render("../..", t(), &ctx), "Snip");
+    }
+
+    #[test]
+    fn scale_suffixes() {
+        assert_eq!(scale_suffix(2.0), "@2x");
+        assert_eq!(scale_suffix(1.25), "@1.25x");
+        assert_eq!(scale_suffix(1.0), "");
     }
 
     #[test]

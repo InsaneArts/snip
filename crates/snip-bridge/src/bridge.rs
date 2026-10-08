@@ -196,7 +196,7 @@ pub mod qobject {
         fn set_setting(self: Pin<&mut Engine>, key: QString, value: QString) -> QString;
         /// Settings › File name: a capture taken now, named by `pattern`
         #[qinvokable]
-        fn file_name_preview(self: &Engine, pattern: QString) -> QString;
+        fn file_name_preview(self: &Engine, pattern: QString, utc: bool, scale_suffix: bool) -> QString;
         /// Settings › History: the space history takes, in bytes (HIS-02)
         #[qinvokable]
         fn history_bytes(self: &Engine) -> f64;
@@ -807,9 +807,13 @@ impl qobject::Engine {
         QString::from(r.and_then(|r| r.err()).unwrap_or_default().as_str())
     }
 
-    fn file_name_preview(&self, pattern: QString) -> QString {
+    fn file_name_preview(&self, pattern: QString, utc: bool, scale_suffix: bool) -> QString {
         let ctx = snip_core::naming::NameContext { window_title: Some("Firefox".into()), app_name: Some("firefox".into()), counter: 1, random: "k3x9".into() };
-        QString::from(snip_core::naming::render(&pattern.to_string(), chrono::Local::now(), &ctx).as_str())
+        // as Save would name a capture on the monitor in use
+        let mut cfg = snip_core::config::Config::default();
+        cfg.general = snip_core::config::General { file_name: pattern.to_string(), utc_time: utc, scale_suffix, ..cfg.general };
+        let scale = self.inner().map_or(1.0, |i| i.cursor_scale());
+        QString::from(cfg.file_stem(chrono::Local::now(), scale, &ctx).as_str())
     }
 
     fn history_bytes(&self) -> f64 {
