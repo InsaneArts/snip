@@ -71,9 +71,13 @@ public:
   // {ctrl+shift+z}, {ctrl+s} and the like name keys.
   Q_INVOKABLE void sendKeys(QWindow* w, const QString& keys);
 
+  // QAO-03: Alt is held now (known while one of Snip's windows has the keyboard)
+  Q_INVOKABLE bool altHeld() const;
+
   // Save As (QAO-09, ANN-15): the desktop's own save dialog, through the
   // xdg-desktop-portal FileChooser. Answers with fileChosen(token, path);
-  // the path is empty when cancelled or when there is no portal.
+  // the path is empty when cancelled or when there is no portal. With
+  // SNIP_NO_PORTALS set (tests) every file dialog answers cancelled at once.
   Q_INVOKABLE void saveFileDialog(int token, const QString& title, const QString& name, const QString& folder);
   // "Open With…" (CleanShot's share): the desktop's app chooser for a file,
   // through the OpenURI portal. Nothing happens with SNIP_NO_PORTALS set

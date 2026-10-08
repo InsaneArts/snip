@@ -789,6 +789,33 @@ def menu_closes_on_any_click(s, env):
 
 
 @case
+def alt_save_asks_where(s, env):
+    """QAO-03: on a hovered card Ctrl+S saves; with Alt (Ctrl+Alt+S, or Alt held on Save)
+    it asks where instead. (Alt with a click needs a real keyboard: checked by hand.)"""
+    s.cli("close-all"); time.sleep(0.3)
+    png = s.tmp / "altsave.png"
+    make_text_png(png, ["alt save"])
+    open_card(s, png); time.sleep(0.5)
+    mon = env.monitor()
+    ch = round(280 * 0.705)
+    files = lambda: set(s.export.iterdir()) if s.export.exists() else set()
+    there = files()
+    try:
+        s.move(24 + 140, mon["height"] / mon["scale"] - 24 - ch / 2); time.sleep(0.6)   # resting on it: the keyboard comes
+        n = len(s.traces("save_as_dialog"))
+        s.debug("ui", "qa-keys", "{ctrl+alt+s}")
+        assert wait_for(lambda: len(s.traces("save_as_dialog")) > n, 2), "Ctrl+Alt+S asks where"
+        assert files() == there, "and doesn't save to the folder"
+        s.debug("ui", "qa-keys", "{ctrl+s}")
+        assert wait_for(lambda: files() - there, 2), "Ctrl+S saves"
+        assert len(s.traces("save_as_dialog")) == n + 1, "without asking"
+    finally:
+        for f in files() - there:                                   # later cases expect it as it was
+            f.unlink()
+        s.cli("close-all"); time.sleep(0.6)
+
+
+@case
 def cursor_toggle(s, env):
     """--cursor paints the pointer into a capture, --no-cursor leaves it out (CAP-11).
     Hyprland draws no pointer on headless outputs (grim -c shows none either), so this
