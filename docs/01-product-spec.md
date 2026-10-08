@@ -189,7 +189,7 @@ What follows from this:
 | QAO-06 | Stacking: newest on top, newest-capture indicator, up to N visible (default 5, rest collapsed into "+k") | P0 | Save All and Close All. Close All needs no confirmation, because everything stays in history. It asks only when history is set to *Never*. |
 | QAO-07 | Auto-close after an interval, with action **Close** (default; the capture stays in history) or **Save and Close** | P0 | Hovering pauses the timer. |
 | QAO-08 | Swipe right or left to dismiss; swipe down to hide all; a hotkey brings them back | P0 | Touchpad scroll gestures on the surface. Ctrl+W and the close button work everywhere. |
-| QAO-09 | Context menu: Annotate, Pin, Rotate, Flip, Scale to 1×, Resize…, Extract text, Preview, Show in Files, Open With ▸, Save As…, Print…, Move to Trash, Hide, Close, Close All, Save All | P0 | "Show in Files" uses `org.freedesktop.FileManager1`. "Open With" uses the MIME database. |
+| QAO-09 | Context menu: Annotate, Pin, Rotate, Flip, Scale to 1×, Resize…, Extract text, Preview, Show in Files, Open With ▸, Save As…, Print…, Move to Trash, Hide, Close, Close All, Save All | P0 | "Show in Files" uses `org.freedesktop.FileManager1`. "Open With" uses the OpenURI portal's app chooser. Scale to 1× shows only for a HiDPI capture. Resize… is a W × H form in the menu, proportions locked. Print… goes through the Print portal: the image as a PDF, fitted to the page, at most 144 dpi. |
 | QAO-10 | Restore the last closed capture (hotkey) | P0 | Backed by history. |
 | QAO-11 | Edits made in the editor update the card | P0 | |
 
@@ -215,7 +215,7 @@ A normal floating window (Hyprland rule: float, centred, with optional pin / alw
 | ANN-19 | **Edit any image**: open a file or **the image on the clipboard** in the editor (`snip edit FILE`, `snip edit --clipboard`, a bindable action), and act as Omarchy's screenshot editor (OMA-06). The most-voted Linux request (flameshot#240) | P0 |
 | ANN-13 | Colour picker: 10 swatches, 10 saved colours, HSV and alpha, hex, **eyedropper that picks from anywhere on screen** (uses our freeze overlay) | P0 |
 | ANN-14 | Undo/redo for every operation (Ctrl+Z, Ctrl+Shift+Z) | P0 |
-| ANN-15 | Output: **Ctrl+S Save** = export folder plus clipboard (§5.0); Ctrl+Shift+S Save As (PNG, JPG, WebP, **project file**; also copies); **Ctrl+Shift+C Copy** = clipboard only, then closes (Alt keeps the editor open); "Drag me" handle; Pin; Print. Edits are written back to the history entry automatically. | P0 |
+| ANN-15 | Output: **Ctrl+S Save** = export folder plus clipboard (§5.0); Ctrl+Shift+S Save As (PNG, JPG, WebP, **project file**; also copies); **Ctrl+Shift+C Copy** = clipboard only, then closes (Alt keeps the editor open); "Drag me" handle; Pin; Print. Edits are written back to the history entry automatically. | P0 | Print prints the edited image, as Print… on a card does (QAO-09). |
 | ANN-16 | **Project format** (re-editable, non-destructive): see the architecture doc. Opening a capture from the QAO or history keeps its objects editable. | P0 |
 | ANN-17 | Auto-expand canvas when drawing outside it (setting) | P0 |
 | ANN-18 | Settings: inverse arrow, smooth drawing, object shadows, remember background tool, always on top | P0 |
