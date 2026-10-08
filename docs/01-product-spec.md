@@ -249,10 +249,10 @@ A normal floating window (Hyprland rule: float, centred, with optional pin / alw
 | ID | Feature | Pri | Notes |
 |---|---|---|---|
 | OCR-01 | Select a region and copy the recognised text; toast "Text copied" or "No text detected" | P0 | On-device only. |
-| OCR-02 | Keep line breaks: setting plus separate hotkeys (with or without line breaks) | P0 | |
-| OCR-03 | QR and barcode detection: show the decoded value; "Open link?" with an Always/Never preference | P0 | 2D codes by default; 1D codes opt-in (they false-positive on dense UI). Values are copied as **sensitive**, because OTP URIs are secrets and Omarchy's clipboard history skips sensitive entries. |
+| OCR-02 | Keep line breaks: setting plus separate hotkeys (with or without line breaks) | P0 | `ocr.keep_line_breaks` (on); the actions `text-lines` and `text-one-line` (`snip text --line-breaks / --one-line`). Joining keeps paragraphs and mends hyphen breaks. |
+| OCR-03 | QR and barcode detection: show the decoded value; "Open link?" with an Always/Never preference | P0 | 2D codes by default; 1D codes opt-in (they false-positive on dense UI). Values are copied as **sensitive**, because OTP URIs are secrets and Omarchy's clipboard history skips sensitive entries. QR via `rqrr`; Data Matrix, Aztec and PDF417 always, 1D with `ocr.barcodes`, via `rxing`. "Open link?" sits above the toast; `ocr.open_links` = ask, always or never. |
 | OCR-04 | Languages: automatic, or a pinned list. **Georgian, Cyrillic and CJK supported** | P0 | **Spike S07:** Tesseract + `tessdata_fast` + upscale/invert + TSV clean-up gives 0 % CER on Georgian, 2.5 % on Russian, 0–2 % on UI text, 6.6 % on mixed Georgian/English, at about 50–65 ms per region. CJK still needs testing. |
-| OCR-05 | Link detection in the result (setting) | P0 | |
+| OCR-05 | Link detection in the result (setting) | P0 | `ocr.detect_links` (on): http(s) and `www.` addresses; the first goes to "Open link?" (OCR-03). |
 | OCR-06 | OCR from a file, the clipboard, a pin, a QAO card or a video frame | P0 | |
 
 ### 5.8 Scrolling capture (SCR)
@@ -319,7 +319,7 @@ A normal floating window (Hyprland rule: float, centred, with optional pin / alw
 | SET-07b | "Keep captures out of clipboard history" | P1 | Mostly not needed, because nothing is copied automatically (§5.0). Kept as an opt-in for users who turn on auto-copy: copies are then offered with `x-kde-passwordManagerHint`, which Omarchy's clipboard history skips. Default **off**. |
 | SET-08 | Shortcuts: a recorder that writes Hyprland Lua binds, detects conflicts with Omarchy's binds, and restores defaults | P1 | Wayland apps cannot grab keys, so shortcuts are written to Hyprland config (architecture doc). |
 | SET-09 | Sounds: shutter and recording start, stop, pause (bundled, themable, can be turned off) | P0 | |
-| API-01 | `snip <command> [args]` CLI covering the full CleanShot URL API (`capture-area --x --y --w --h --monitor --action`, `pin --file`, `record-screen`, `capture-text --file`, `open-annotate`, `add-qao --file`, `open-history`, `restore-recent`, `open-settings --tab`…) | P0 | Built so far: `area --x --y --w --h --monitor --action`, `fullscreen --all`, `text --file / --clipboard`, `pin FILE`, `history`, `settings TAB`, `restore`. |
+| API-01 | `snip <command> [args]` CLI covering the full CleanShot URL API (`capture-area --x --y --w --h --monitor --action`, `pin --file`, `record-screen`, `capture-text --file`, `open-annotate`, `add-qao --file`, `open-history`, `restore-recent`, `open-settings --tab`…) | P0 | Built so far: `area --x --y --w --h --monitor --action`, `fullscreen --all`, `text --file / --clipboard / --line-breaks / --one-line`, `pin FILE`, `history`, `settings TAB`, `restore`. |
 | API-02 | `snip://` URL scheme handler, with consent on first use from each caller | P2 | Low value on Linux; the CLI covers it. |
 | API-03 | JSON output (`--json`) and a stable exit-code contract for scripting | P0 | |
 
