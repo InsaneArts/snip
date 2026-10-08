@@ -1384,7 +1384,7 @@ def history_window(s, env):
     assert wait_for(lambda: layer_mapped("snip-history"), 3), "the history band shows"
     st = history_state(s)
     assert st["open"] and st["items"][:3] == [r["id"] for r in reversed(recs)], (st["items"][:3], [r["id"] for r in recs])
-    s.debug("ui", "history", "keys", "{Right}{Return}")       # the second newest: zebra
+    s.debug("ui", "history", "keys", "{Right}{Right}{Return}")  # nothing chosen at first; the second newest: zebra
     assert wait_for(lambda: recs[1]["id"] in s.json("status")["result"]["cards"], 3), "Enter restores it to Quick Access"
     st = history_state(s)
     assert st["open"] and st["restored"] == [recs[1]["id"]], st
@@ -1399,10 +1399,51 @@ def history_window(s, env):
     assert wait_for(lambda: not layer_mapped("snip-history"), 3), "Esc closes it"
     s.json("history")
     assert wait_for(lambda: history_state(s)["open"], 3)
+    s.debug("ui", "history", "keys", "{Right}")                 # choose the newest
     s.debug("ui", "history", "annotate")
     assert wait_for(lambda: editor_window(), 5), "Annotate opens the editor"
     assert not history_state(s)["open"], "and the band goes"
     close_editor(s)
+
+
+def history_click(s, name):
+    """Click a control of the history band with the pointer."""
+    n = len(s.traces("history_where"))
+    s.debug("ui", "history", "where", name)
+    assert wait_for(lambda: len(s.traces("history_where")) > n, 2), "no history_where"
+    p = s.traces("history_where")[-1]
+    assert p["x"] >= 0, (name, "isn't shown")
+    s.move(p["x"], p["y"]); s.click()
+
+
+@case
+def history_click_selects(s, env):
+    """A click on a capture in history selects it and shows its Restore button; a second
+    click deselects it. Only Restore brings its card back (the product owner: "only on
+    restore button click it need to show floating window")."""
+    recs = []
+    for k in range(2):
+        png = s.tmp / f"sel-{k}.png"
+        noise_png(png, 160, 100, seed=40 + k)
+        recs.append(open_card(s, png))
+        time.sleep(0.2)
+    s.cli("close-all")
+    s.json("history")
+    assert wait_for(lambda: history_state(s)["open"], 3), "the history opens"
+    assert history_state(s)["current"] == -1, "nothing chosen at first"
+    history_click(s, "thumb:1")
+    assert wait_for(lambda: history_state(s)["current"] == 1, 2), "a click selects"
+    time.sleep(0.4)
+    assert s.json("status")["result"]["cards"] == [] and history_state(s)["restored"] == [], "and restores nothing"
+    history_click(s, "thumb:1")
+    assert wait_for(lambda: history_state(s)["current"] == -1, 2), "a second click deselects"
+    time.sleep(0.6)                                                 # past the double-click time (that annotates)
+    history_click(s, "thumb:1")
+    assert wait_for(lambda: history_state(s)["current"] == 1, 2)
+    history_click(s, "restore:1")
+    assert wait_for(lambda: recs[0]["id"] in s.json("status")["result"]["cards"], 3), "Restore brings its card back"
+    assert history_state(s)["open"], "the band stays for more"
+    s.debug("ui", "history", "keys", "{Escape}")
 
 
 @case
@@ -1418,7 +1459,7 @@ def history_delete(s, env):
     s.json("history")
     assert wait_for(lambda: history_state(s)["open"], 3), "the history opens"
     newest = recs[-1]["id"]
-    s.debug("ui", "history", "keys", "{Backspace}")
+    s.debug("ui", "history", "keys", "{Right}{Backspace}")      # choose the newest, then delete
     assert history_state(s)["asking"] == newest, "it asks first"
     s.debug("ui", "history", "keys", "{Escape}")
     st = history_state(s)

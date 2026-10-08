@@ -36,7 +36,7 @@ Window {
         query = ""
         restored = {}
         asking = ""
-        current = 0
+        current = -1
         reload()
         visible = true
         keys.forceActiveFocus()
@@ -47,10 +47,10 @@ Window {
     }
     function reload() {
         items = JSON.parse(Engine.history(query, 200))
-        current = Math.max(0, Math.min(current, items.length - 1))
+        current = current < 0 ? -1 : Math.min(current, items.length - 1)
         list.positionViewAtIndex(current, ListView.Contain)
     }
-    onQueryChanged: if (visible) { current = 0; searchTimer.restart() }
+    onQueryChanged: if (visible) { current = query === "" ? -1 : 0; searchTimer.restart() }
     Timer { id: searchTimer; interval: 120; onTriggered: hist.reload() }
 
     readonly property var item: current >= 0 && current < items.length ? items[current] : null
@@ -229,6 +229,7 @@ Window {
 
                 Item {
                     id: thumb
+                    objectName: "thumb:" + entry.index
                     width: parent.width; height: entry.th
                     layer.enabled: true
                     layer.effect: MultiEffect { shadowEnabled: true; shadowBlur: 0.5; shadowOpacity: 0.3; shadowVerticalOffset: 3 }
@@ -267,9 +268,9 @@ Window {
                     spacing: 2
                     Text {
                         width: parent.width; elide: Text.ElideRight
-                        text: entry.focused ? "⏎ Restore" : hist.ago(entry.modelData.created)
-                        color: entry.focused ? Theme.accent : Theme.text
-                        font.family: Theme.fontUi; font.pixelSize: 12; font.weight: entry.focused ? Font.DemiBold : Font.Normal
+                        text: hist.ago(entry.modelData.created)
+                        color: Theme.text
+                        font.family: Theme.fontUi; font.pixelSize: 12
                     }
                     Text {
                         width: parent.width; elide: Text.ElideRight
@@ -283,9 +284,11 @@ Window {
                     acceptedButtons: Qt.LeftButton | Qt.RightButton
                     property point at
                     property bool dragged: false
+                    property bool wasChosen: false
                     onPressed: (m) => {
-                        at = Qt.point(m.x, m.y); dragged = false; hist.current = entry.index
+                        at = Qt.point(m.x, m.y); dragged = false; wasChosen = entry.focused
                         if (m.button === Qt.RightButton) {
+                            hist.current = entry.index
                             const p = mapToItem(null, m.x, m.y)
                             menu.x = Math.min(hist.width - menu.width - 8, p.x); menu.y = p.y
                             menu.visible = true
@@ -297,8 +300,20 @@ Window {
                         const path = Engine.dragFile(entry.modelData.id)
                         if (path) Platform.startDrag(thumb, path, entry.modelData.path)
                     }
-                    onClicked: (m) => { if (!dragged && m.button === Qt.LeftButton) hist.restore(entry.index) }
+                    // a click chooses it (again: lets it go); only Restore brings its card back
+                    onClicked: (m) => { if (!dragged && m.button === Qt.LeftButton) hist.current = wasChosen ? -1 : entry.index }
                     onDoubleClicked: hist.annotate(entry.index)
+                }
+                TextButton {
+                    objectName: "restore:" + entry.index
+                    visible: entry.focused
+                    anchors.horizontalCenter: thumb.horizontalCenter
+                    anchors.bottom: thumb.bottom
+                    anchors.bottomMargin: 10
+                    primary: true
+                    text: "Restore"
+                    tip: "Back to Quick Access (Enter)"
+                    onClicked: hist.restore(entry.index)
                 }
             }
         }
@@ -360,12 +375,27 @@ Window {
     }
 
     // test hooks (snip debug ui history ...)
+    function find(item, name) {
+        if (item.objectName === name && item.visible) return item
+        for (const c of item.children) {
+            const f = c.visible ? find(c, name) : null
+            if (f) return f
+        }
+        return null
+    }
     function debug(a) {
         switch (a[0]) {
         case "keys": Platform.sendKeys(hist, a.slice(1).join(" ")); break
         case "annotate": annotate(current); break
         case "act": act(a[1], current); break
         case "clear": asking = "all"; break
+        case "where": {
+            // a control's centre on the output (logical px), for a click
+            const it = find(contentItem, a[1])
+            const p = it ? it.mapToItem(contentItem, it.width / 2, it.height / 2) : null
+            Engine.log("history_where", JSON.stringify({ name: a[1], x: p ? p.x : -1, y: p ? p.y : -1 }).slice(1, -1))
+            break
+        }
         case "state":
             Engine.log("history_state", JSON.stringify({ open: visible, items: items.map(i => i.id), current: current, query: query,
                                                         restored: Object.keys(restored), asking: asking, menu: menu.visible }).slice(1, -1))
