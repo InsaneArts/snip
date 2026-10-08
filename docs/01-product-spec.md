@@ -299,7 +299,7 @@ A normal floating window (Hyprland rule: float, centred, with optional pin / alw
 
 | ID | Feature | Pri |
 |---|---|---|
-| HIS-01 | A strip across the top of the screen with large thumbnails; filters (All, Screenshots, Videos, GIFs, Projects); arrow keys, Space to preview; a click selects a capture (a second click deselects it), and its **Restore** button or Enter restores it to the QAO with objects still editable (D39) | P0 |
+| HIS-01 | A strip across the top of the screen with large thumbnails; filters (All, Screenshots, Videos, GIFs, Projects); arrow keys, Space to preview; a click selects a capture (a second click deselects it), and its **Restore** button or Enter restores it to the QAO with objects still editable (D39) | P0 | Built: All, Screenshots (no editable objects) and Projects (objects still editable); Videos and GIFs come with recording (M4). |
 | HIS-02 | Retention: 1 day, 3 days, **1 week (default)**, 1 month, Forever, or Never (Never turns history off and brings back the close confirmations). Settings show how much space history uses and offer "Clear history". | P0 |
 | HIS-03 | Delete with Backspace (optional confirmation); Clear all | P0 |
 | HIS-04 | History is **the default home of every capture** (§5.0). It stores originals plus project data (never just the flattened export) in `~/.local/share/snip/history/`. Unsaved captures are not in the user's folders. | P0 |
