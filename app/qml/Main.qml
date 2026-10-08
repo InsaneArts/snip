@@ -205,7 +205,8 @@ QtObject {
             const o = activeOverlay
             Engine.log("overlay_state", JSON.stringify({ open: overlayOpen, shown: overlayShown, windowMode: windowMode,
                 spaceHeld: spaceHeld, active: o ? o.outputName : null, pressed: o ? o.pressed : null,
-                dragging: o ? o.dragging : null, moving: o ? o.moving : null, hovered: o ? o.hovered : null }).slice(1, -1))
+                dragging: o ? o.dragging : null, moving: o ? o.moving : null, hovered: o ? o.hovered : null,
+                size: o ? o.sizeText(o.phys) : null }).slice(1, -1))
             return
         }
         const map = { "Escape": Qt.Key_Escape, "space": Qt.Key_Space, "Return": Qt.Key_Return, "Tab": Qt.Key_Tab,

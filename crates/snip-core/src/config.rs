@@ -229,6 +229,8 @@ pub struct Capture {
     pub crosshair: Crosshair,
     /// SEL-05: loupe with pixel grid and hex colour (shown with the crosshair).
     pub magnifier: bool,
+    /// SEL-03: the size readout in logical px instead of physical
+    pub logical_size: bool,
     /// CAP-05: window captures keep their transparent background; Shift in
     /// window mode inverts this (with wallpaper comes with M2's Background tool).
     pub window_shadow: bool,
@@ -329,6 +331,7 @@ impl Default for Capture {
             keep_warm_minutes: 10,
             crosshair: Crosshair::Ctrl,
             magnifier: true,
+            logical_size: false,
             window_shadow: true,
             window_rounding: true,
             window_desktop: false,

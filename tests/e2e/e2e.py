@@ -378,6 +378,35 @@ def first_card_is_warm(s, env):
 
 
 @case
+def size_readout(s, env):
+    """SEL-03: the size pill shows physical px (at 1.25: 250 × 100 for 200 × 80 logical), or
+    logical px with capture.logical_size."""
+    def readout():
+        p = s.bg("area"); time.sleep(0.5)
+        s.move(100, 100); s.debug("down"); s.move(200, 140); s.move(300, 180); time.sleep(0.2)
+        n = len(s.traces("overlay_state"))
+        s.debug("ui", "state")
+        assert wait_for(lambda: len(s.traces("overlay_state")) > n, 2)
+        size = s.traces("overlay_state")[-1]["size"]
+        s.debug("up")
+        finish(p)
+        return size
+
+    cfg = s.tmp / "cfg/snip/config.toml"
+    before = cfg.read_text()
+    try:
+        assert readout() == "250 × 100", "physical px"
+        cfg.write_text(before.replace("[capture]\n", "[capture]\nlogical_size = true\n", 1) if "[capture]\n" in before
+                       else before + "\n[capture]\nlogical_size = true\n")
+        time.sleep(0.8)
+        assert readout() == "200 × 80", "logical px"
+    finally:
+        cfg.write_text(before)
+        time.sleep(0.8)
+        s.cli("close-all")
+
+
+@case
 def area_exact_size(s, env):
     """500x300 logical at 1.25 -> exactly 625x375 physical, file matches."""
     r, code = area(s, 100, 100, 600, 400)
