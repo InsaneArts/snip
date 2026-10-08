@@ -1170,7 +1170,28 @@ impl Inner {
         }
         if rules.contains(&AfterCapture::ShowQao) || rules.is_empty() {
             self.show_card(rec, output);
+        } else if !rules.contains(&AfterCapture::Annotate) && !rules.contains(&AfterCapture::Pin) {
+            self.notify_capture(&rec.id, rules.contains(&AfterCapture::Save));
         }
+    }
+
+    /// OMA-05: no card shows the capture, so a notification does, with the
+    /// image; a click brings the card back. Tests (SNIP_NO_PORTALS) only trace it.
+    fn notify_capture(&self, id: &str, saved: bool) {
+        let Ok(rec) = self.store.get(id) else { return };
+        let (title, body) = match rec.saved.as_ref().filter(|_| saved) {
+            Some(p) => ("Screenshot saved", p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()),
+            None => ("Screenshot copied", format!("{} × {}", rec.width, rec.height)),
+        };
+        trace::trace("notified", &format!("\"id\":\"{id}\",\"title\":{},\"body\":{}", js(title), js(&body)));
+        if std::env::var_os("SNIP_NO_PORTALS").is_some() {
+            return;
+        }
+        // the CLI beside this snipd (a checkout's build, or the package's)
+        let snip = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join("snip"))).filter(|p| p.exists());
+        let snip = snip.map_or_else(|| "snip".to_string(), |p| p.to_string_lossy().into_owned());
+        let image = rec.source.to_string_lossy();
+        spawn_detached("omarchy-notification-send", &["--app-name", "Snip", "-g", "󰹑", "--image", &image, title, &body, "--exec", &snip, "restore", id]);
     }
 
     fn show_card(&self, rec: &Record, output: &str) {
@@ -1992,6 +2013,13 @@ impl Inner {
                     .map_err(|e| e.to_string()),
             ),
             Ctl::List { n } => ok_or(self.store.recent(n).map(|v| serde_json::to_value(v).unwrap_or(Value::Null)).map_err(|e| e.to_string())),
+            Ctl::RestoreCard { id } => match self.store.get(&id) {
+                Ok(_) => {
+                    self.restore_card(&id);
+                    Response::ok(Value::Null)
+                }
+                Err(e) => Response::err(e.to_string()),
+            },
             Ctl::RestoreLast => {
                 // QML decides: un-hide hidden cards, else reopen the last closed one
                 self.ui(|e| e.cards_command(&QString::from("restore")));
