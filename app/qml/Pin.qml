@@ -32,9 +32,20 @@ Window {
     width: Math.round(baseW * zoom + 2 * margin)
     height: Math.round(baseH * zoom + 2 * margin)
     // Hyprland keeps a floating window's size: ask it for the new one
-    onWidthChanged: if (visible) resizeTimer.restart()
-    onHeightChanged: if (visible) resizeTimer.restart()
+    onWidthChanged: sized()
+    onHeightChanged: sized()
     Timer { id: resizeTimer; interval: 16; onTriggered: Engine.resizeWindow(pin.title, pin.width, pin.height) }
+    // PIN-04: a corner drag is Hyprland's own resize; the image fits the size
+    // it gives (its proportions kept), and once the drag stops the window
+    // takes the image's exact size.
+    property bool cornerResizing: false
+    function sized() {
+        if (!visible) return
+        if (!cornerResizing) { resizeTimer.restart(); return }
+        zoom = Math.max(0.1, Math.min(4, (width - 2 * margin) / baseW, (height - 2 * margin) / baseH))
+        resizeDone.restart()
+    }
+    Timer { id: resizeDone; interval: 250; onTriggered: { pin.cornerResizing = false; resizeTimer.restart() } }
 
     function close_() { if (lockLayer) lockLayer.destroy(); visible = false; finished() }
     function act(action) {
@@ -240,6 +251,32 @@ Window {
         }
     }
 
+    // PIN-04: the corners resize it
+    Repeater {
+        model: [Qt.TopEdge | Qt.LeftEdge, Qt.TopEdge | Qt.RightEdge, Qt.BottomEdge | Qt.LeftEdge, Qt.BottomEdge | Qt.RightEdge]
+        MouseArea {
+            required property int modelData
+            readonly property bool atLeft: modelData & Qt.LeftEdge
+            readonly property bool atTop: modelData & Qt.TopEdge
+            objectName: "corner-" + (atTop ? "top" : "bottom") + "-" + (atLeft ? "left" : "right")
+            z: 2
+            width: 18
+            height: 18
+            x: (atLeft ? frame.x : frame.x + frame.width) - width / 2
+            y: (atTop ? frame.y : frame.y + frame.height) - height / 2
+            hoverEnabled: true
+            cursorShape: atLeft === atTop ? Qt.SizeFDiagCursor : Qt.SizeBDiagCursor
+            onPressed: {
+                pin.cornerResizing = true
+                resizeDone.restart()
+                pin.startSystemResize(modelData)
+                // Hyprland has the pointer now: this press never sees its release
+                enabled = false
+                Qt.callLater(() => enabled = true)
+            }
+        }
+    }
+
     // hover chrome, as CleanShot's: close at the top left, the zoom at the top
     Item {
         anchors.fill: frame
@@ -307,9 +344,23 @@ Window {
     }
 
     // test hooks (snip debug ui pin ...)
+    function find(item, name) {
+        if (item.objectName === name && item.visible) return item
+        for (const c of item.children) {
+            const f = c.visible ? find(c, name) : null
+            if (f) return f
+        }
+        return null
+    }
     function debug(a) {
         switch (a[0]) {
         case "zoom": zoom = parseFloat(a[1]); break
+        case "where": {
+            const it = find(contentItem, a[1])
+            const p = it ? it.mapToItem(contentItem, it.width / 2, it.height / 2) : null
+            Engine.log("pin_where", JSON.stringify({ name: a[1], x: p ? p.x : -1, y: p ? p.y : -1 }).slice(1, -1))
+            break
+        }
         case "fade": fade = parseFloat(a[1]); break
         case "act": act(a[1]); break
         case "keys": Platform.sendKeys(pin, a.slice(1).join(" ")); break

@@ -876,6 +876,55 @@ def card_scale_resize_print(s, env):
 
 
 @case
+def pin_corner_resize(s, env):
+    """PIN-04: dragging a pin's corner resizes it, its proportions kept; the opposite
+    corner stays where it was."""
+    png = s.tmp / "corner.png"
+    noise_png(png, 500, 300, seed=8)
+    rec = s.json("open", str(png))["result"]
+    s.cli("close-all")
+    s.json("pin", rec["id"])
+    assert wait_for(lambda: pin_windows(), 3), "a pin window opens"
+    time.sleep(0.4)
+    mon = env.monitor()
+
+    def corner(name):
+        n = len(s.traces("pin_where"))
+        s.debug("ui", "pin", "where", name)
+        assert wait_for(lambda: len(s.traces("pin_where")) > n, 2)
+        b, w = s.traces("pin_where")[-1], pin_windows()[0]
+        return w["at"][0] - mon["x"] + b["x"], w["at"][1] - mon["y"] + b["y"]
+
+    def box():
+        w = pin_windows()[0]
+        return w["at"][0], w["at"][1], w["at"][0] + w["size"][0], w["at"][1] + w["size"][1]
+
+    def settled(z0):
+        st = pin_state(s)
+        w = pin_windows()[0]
+        return st["zoom"] != z0 and tuple(w["size"]) == (st["w"], st["h"])
+
+    z0 = pin_state(s)["zoom"]
+    x0, y0, x1, y1 = box()
+    x, y = corner("corner-bottom-right")
+    s.drag(x, y, x + 100, y + 60, steps=10)
+    assert wait_for(lambda: settled(z0), 3), (pin_state(s), pin_windows()[0]["size"])
+    st = pin_state(s)
+    assert st["zoom"] > z0 * 1.1, st
+    assert abs((st["w"] - 32) / (st["h"] - 32) - 500 / 300) < 0.02, ("proportions kept", st)
+    assert box()[:2] == (x0, y0), ("the top left stays", box(), (x0, y0))
+
+    z1 = st["zoom"]
+    x0, y0, x1, y1 = box()
+    x, y = corner("corner-top-left")
+    s.drag(x, y, x + 80, y + 48, steps=10)
+    assert wait_for(lambda: settled(z1) and pin_state(s)["zoom"] < z1, 3), pin_state(s)
+    bx = box()
+    assert abs(bx[2] - x1) <= 4 and abs(bx[3] - y1) <= 4, ("the bottom right stays", bx, (x1, y1))
+    s.debug("ui", "close-pins")
+
+
+@case
 def cursor_toggle(s, env):
     """--cursor paints the pointer into a capture, --no-cursor leaves it out (CAP-11).
     Hyprland draws no pointer on headless outputs (grim -c shows none either), so this
