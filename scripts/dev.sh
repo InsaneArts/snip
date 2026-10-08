@@ -59,6 +59,8 @@ case "${1:-run}" in
     ninja -C build
     write_unit
     write_desktop
+    # one Snip at a time: an installed one (scripts/install.sh) steps aside
+    systemctl --user disable --now --quiet snipd 2>/dev/null || true
     systemctl --user enable --quiet "$UNIT"
     systemctl --user reset-failed "$UNIT" 2>/dev/null || true
     systemctl --user restart "$UNIT"
