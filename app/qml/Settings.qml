@@ -423,6 +423,11 @@ Window {
                     Check { key: "capture.show_cursor"; text: "Show the pointer in screenshots" }
                 }
                 Section {
+                    label: "Desktop"
+                    Check { key: "capture.hide_desktop"; text: "Hide desktop clutter while capturing" }
+                    Note { text: "Screenshots show the wallpaper where the bar is, and leave pins out." }
+                }
+                Section {
                     label: "Window capture"
                     Choice { key: "capture.window_desktop"; options: [[false, "Window only"], [true, "With the desktop"]] }
                     Note { text: win.value("capture.window_desktop") ? "The window as it is on screen, with what's around it: the wallpaper, other windows, the bar."

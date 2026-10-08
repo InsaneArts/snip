@@ -231,11 +231,11 @@ Window {
     // unmapping, draw the stack fully transparent and let the capture go
     // once that frame is on screen. The stack returns when the capture is
     // done (or, for a selection, when the overlay closes).
-    property int captureRequest: 0
+    property var captureReady: null          // called once the stack is off screen
     property bool awaitSwap: false
-    function prepareCapture(req) {
-        captureRequest = req
-        if (!visible) { Engine.captureReady(req); return }
+    function prepareCapture(ready) {
+        captureReady = ready
+        if (!visible) { ready(); return }
         capturing = true
         awaitSwap = true
         Platform.notifyNextFrame(qa)
@@ -245,7 +245,7 @@ Window {
         if (!awaitSwap) return
         awaitSwap = false
         captureGo.stop()
-        Engine.captureReady(captureRequest)
+        captureReady()
     }
     Connections {
         target: Platform

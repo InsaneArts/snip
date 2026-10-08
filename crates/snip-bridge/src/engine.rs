@@ -19,7 +19,7 @@ use snip_core::geometry::Rect;
 use snip_core::history::Record;
 use snip_core::store::{CaptureMeta, Store};
 use snip_core::trace::{self, js};
-use snip_core::{encode, naming, ocr, paths, qr, theme, window};
+use snip_core::{desktop, encode, naming, ocr, paths, qr, theme, window};
 use snip_hypr::Client;
 use snip_ipc::{Request as Ctl, Response};
 use snip_wayland::{CaptureResult, Event, Features, Frame, OutputInfo, Request as Wl, Source};
@@ -106,6 +106,8 @@ pub struct Inner {
     /// What the capture under way does instead of the After Capture rules
     /// (CAP-02 variants, `--action`)
     capture_action: Mutex<Option<AfterCapture>>,
+    /// CAP-12: the wallpaper and the bands cut from it, until it changes
+    cover: Mutex<Option<Cover>>,
     /// OCR-02: the capture under way keeps (Some(true)) or joins line breaks,
     /// whatever ocr.keep_line_breaks says ("text-lines", "text-one-line")
     line_breaks: Mutex<Option<bool>>,
@@ -125,6 +127,14 @@ fn cancelled() -> Response {
 
 fn now_secs() -> i64 {
     chrono::Local::now().timestamp()
+}
+
+/// CAP-12: the decoded wallpaper (its path and mtime) and the bands cut from
+/// it, by output size and band.
+struct Cover {
+    key: (PathBuf, std::time::SystemTime),
+    wall: Arc<desktop::Wallpaper>,
+    blocks: HashMap<(i32, i32, i32, i32, i32, i32), Arc<Vec<u8>>>,
 }
 
 pub fn card_json(rec: &Record, output: &str) -> Value {
@@ -188,6 +198,7 @@ impl Inner {
             index_wake: Mutex::new(None),
             countdown: Mutex::new(None),
             capture_action: Mutex::new(None),
+            cover: Mutex::new(None),
             line_breaks: Mutex::new(None),
             scroll: Mutex::new(None),
         }))
@@ -446,11 +457,49 @@ impl Inner {
         self.capture_clean(req, Source::Outputs(Some(vec![output])), cursor.unwrap_or_else(|| self.cfg().capture.show_cursor));
     }
 
+    /// CAP-12: paint the wallpaper over the bands bars reserve, on every
+    /// whole-output frame (not a window's own buffer, not under a fullscreen
+    /// window). Before anyone sees the frames: the overlay shows it too.
+    fn cover_desktop(&self, frames: &[Frame]) {
+        let t0 = trace::now_ns();
+        let key = std::fs::canonicalize(theme::current_dir().join("background"))
+            .ok()
+            .and_then(|p| std::fs::metadata(&p).and_then(|m| m.modified()).ok().map(|t| (p, t)));
+        let Some(key) = key else { return };
+        let mut cache = self.cover.lock().unwrap();
+        if cache.as_ref().is_none_or(|c| c.key != key) {
+            let Some(wall) = desktop::load(&key.0) else {
+                trace::warn("cover_wallpaper", &format!("\"path\":{}", js(&key.0.to_string_lossy())));
+                return;
+            };
+            *cache = Some(Cover { key, wall: Arc::new(wall), blocks: HashMap::new() });
+        }
+        let Some(c) = cache.as_mut() else { return };
+        let mons = snip_hypr::monitors();
+        let fullscreen: Vec<i64> = snip_hypr::clients().into_iter().filter(|c| c.fullscreen).map(|c| c.workspace).collect();
+        let mut n = 0;
+        for f in frames {
+            let Some(m) = mons.iter().find(|m| m.name == f.output && (m.width, m.height) == (f.buf.width as i32, f.buf.height as i32)) else { continue };
+            if fullscreen.contains(&m.active_workspace) {
+                continue;
+            }
+            let (uw, uh) = f.upright_size();
+            for band in desktop::bands(m.reserved, uw, uh, f.scale) {
+                let wall = c.wall.clone();
+                let block = c.blocks.entry((uw, uh, band.x, band.y, band.w, band.h)).or_insert_with(|| Arc::new(desktop::cover_block(&wall, uw, uh, band)));
+                desktop::paint(f, band, block);
+                n += 1;
+            }
+        }
+        trace::trace("desktop_covered", &format!("\"bands\":{n},\"ms\":{:.1}", trace::ms_since(t0)));
+    }
+
     /// Screen captures never contain Snip's own cards (CleanShot hides its
     /// UI from captures). With cards on screen, QML unmaps the stack first and
-    /// calls `capture_ready` once that is committed.
+    /// calls `capture_ready` once that is committed. With Hide desktop clutter
+    /// (CAP-12) QML hides the pins as well.
     fn capture_clean(self: &Arc<Self>, req: u64, source: Source, cursor: bool) {
-        if self.cards.lock().unwrap().is_empty() {
+        if self.cards.lock().unwrap().is_empty() && !self.cfg().capture.hide_desktop {
             self.wl(Wl::Capture { request: req, source, cursor });
             return;
         }
@@ -490,6 +539,9 @@ impl Inner {
         if let Pending::Scroll { tx } = p {
             let _ = tx.send(r);
             return;
+        }
+        if self.cfg().capture.hide_desktop {
+            self.cover_desktop(&r.frames);
         }
         // The stack comes back now, except for a selection: then it returns
         // when the overlay closes (QML), so it can't flash in between.

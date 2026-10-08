@@ -240,6 +240,9 @@ pub struct Capture {
     /// the window as it is on screen with the desktop around it (wallpaper,
     /// other windows, the bar), not the clean window. Shift inverts it.
     pub window_desktop: bool,
+    /// CAP-12 Hide desktop clutter: screen captures show the wallpaper where
+    /// bars are, and no pins (cards never show)
+    pub hide_desktop: bool,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -335,6 +338,7 @@ impl Default for Capture {
             window_shadow: true,
             window_rounding: true,
             window_desktop: false,
+            hide_desktop: false,
         }
     }
 }

@@ -81,6 +81,29 @@ Window {
     }
     readonly property bool shown: visible || (locked && lockLayer.visible)
 
+    // CAP-12: with Hide desktop clutter, pins aren't in captures: drawn
+    // transparent, then `ready` once that frame is on screen
+    property bool capturing: false
+    property var captureReady: null
+    function hideForCapture(ready) {
+        capturing = true
+        captureReady = ready
+        Platform.notifyNextFrame(locked ? lockLayer : pin)
+        captureGo.restart()             // if no frame comes
+    }
+    function captureHidden() {
+        if (!captureReady) return
+        const ready = captureReady
+        captureReady = null
+        captureGo.stop()
+        ready()
+    }
+    Connections {
+        target: Platform
+        function onFramePresented(w) { if (w === pin || (pin.locked && w === pin.lockLayer)) pin.captureHidden() }
+    }
+    Timer { id: captureGo; interval: 250; onTriggered: pin.captureHidden() }
+
     // PIN-05: locked, the pin is a layer surface in the same place with an
     // empty input region (Hyprland ignores those on windows: spike S04), so
     // clicks reach what is under it; it fades while the pointer is over it.
@@ -124,8 +147,8 @@ Window {
             Face {
                 x: pin.margin; y: pin.margin
                 width: pin.width - 2 * pin.margin; height: pin.height - 2 * pin.margin
-                opacity: pin.fade * (pin.lockHover ? 0.15 : 1)
-                Behavior on opacity { NumberAnimation { duration: 120 } }
+                opacity: pin.capturing ? 0 : pin.fade * (pin.lockHover ? 0.15 : 1)
+                Behavior on opacity { enabled: !pin.capturing; NumberAnimation { duration: 120 } }
                 source: pin.imageUrl
                 radius: pin.radius
                 shadow: pin.look.shadow !== false
@@ -212,7 +235,7 @@ Window {
         id: frame
         x: pin.margin; y: pin.margin
         width: pin.width - 2 * pin.margin; height: pin.height - 2 * pin.margin
-        opacity: pin.fade
+        opacity: pin.capturing ? 0 : pin.fade
         source: pin.imageUrl
         radius: pin.radius
         shadow: pin.look.shadow !== false
@@ -280,7 +303,7 @@ Window {
     // hover chrome, as CleanShot's: close at the top left, the zoom at the top
     Item {
         anchors.fill: frame
-        visible: area.containsMouse || closeHover.hovered || gripHover.hovered || lockHover_.hovered
+        visible: !pin.capturing && (area.containsMouse || closeHover.hovered || gripHover.hovered || lockHover_.hovered)
         FrostButton {
             x: 8; y: 8; icon: "x"
             HoverHandler { id: closeHover }
@@ -368,7 +391,7 @@ Window {
             Engine.log("pin_state", JSON.stringify({ id: capture.id, zoom: zoom, fade: fade, w: width, h: height,
                                                     baseW: baseW, baseH: baseH, margin: margin, menu: menuPopup.visible,
                                                     locked: locked, lockHover: lockHover, shown: shown, radius: radius,
-                                                    shadow: look.shadow !== false }).slice(1, -1))
+                                                    shadow: look.shadow !== false, capturing: capturing }).slice(1, -1))
             break
         }
     }
