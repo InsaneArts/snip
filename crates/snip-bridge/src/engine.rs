@@ -101,6 +101,9 @@ pub struct Inner {
     /// Wakes the history indexer (HIS-05)
     index_wake: Mutex<Option<mpsc::Sender<()>>>,
     countdown: Mutex<Option<Countdown>>,
+    /// What the capture under way does instead of the After Capture rules
+    /// (CAP-02 variants, `--action`)
+    capture_action: Mutex<Option<AfterCapture>>,
     /// A scrolling capture (SCR-01), from the chosen area until Done
     scroll: Mutex<Option<scroll::Scroll>>,
 }
@@ -178,6 +181,7 @@ impl Inner {
             deferred: Mutex::new(HashMap::new()),
             index_wake: Mutex::new(None),
             countdown: Mutex::new(None),
+            capture_action: Mutex::new(None),
             scroll: Mutex::new(None),
         }))
     }
@@ -276,12 +280,16 @@ impl Inner {
     /// An action by its shortcut id ("area", "settings"…), as its key runs it.
     pub fn shortcut(self: &Arc<Self>, id: &str) {
         match id {
-            "area" | "fullscreen" | "window" | "previous" | "text" | "all-in-one" | "area-pin" | "scroll" => self.begin(id, None, None, None, 0),
+            "area" | "fullscreen" | "window" | "previous" | "text" | "all-in-one" | "area-pin" | "scroll" => self.begin(id, None, None, None, 0, None),
+            // CAP-02: Capture Area & Copy / & Save / & Annotate
+            "area-copy" => self.begin("area", None, None, None, 0, Some(AfterCapture::Copy)),
+            "area-save" => self.begin("area", None, None, None, 0, Some(AfterCapture::Save)),
+            "area-annotate" => self.begin("area", None, None, None, 0, Some(AfterCapture::Annotate)),
             "scroll-go" => self.scroll_go(),
             "scroll-cancel" => self.scroll_cancel(),
             "timer-area" | "timer-fullscreen" => {
                 let delay = self.cfg().capture.timer_seconds;
-                self.begin(&id["timer-".len()..], None, None, None, delay)
+                self.begin(&id["timer-".len()..], None, None, None, delay, None)
             }
             "restore" => self.ui(|e| e.cards_command(&QString::from("restore"))),
             "close-all" => self.ui(|e| e.cards_command(&QString::from("close-all"))),
@@ -307,9 +315,11 @@ impl Inner {
     /// Start a capture. `waiter` gets the outcome (the CLI blocks on it).
     /// `delay` > 0 runs the self-timer (area: after the selection; fullscreen:
     /// right away).
-    pub fn begin(self: &Arc<Self>, mode: &str, monitor: Option<String>, cursor: Option<bool>, waiter: Option<Waiter>, delay: u32) {
+    #[allow(clippy::too_many_arguments)]
+    pub fn begin(self: &Arc<Self>, mode: &str, monitor: Option<String>, cursor: Option<bool>, waiter: Option<Waiter>, delay: u32, action: Option<AfterCapture>) {
         let t0 = trace::now_ns();
         self.skip_preset.store(false, Ordering::Relaxed);
+        *self.capture_action.lock().unwrap() = action;
         // CAP-11: the pointer in screen captures (config, or per capture)
         let cursor = cursor.unwrap_or_else(|| self.cfg().capture.show_cursor);
         let delay = delay.min(60);
@@ -906,9 +916,20 @@ impl Inner {
         true
     }
 
-    /// SET-03 After Capture rules (default: only the Quick Access card).
+    /// SET-03 After Capture rules (default: only the Quick Access card), or a
+    /// variant's own action (CAP-02).
     fn after_capture(self: &Arc<Self>, rec: &Record, output: &str) {
-        let rules = self.cfg().after_capture.screenshot;
+        let cfg = self.cfg().after_capture;
+        let mut rules = cfg.screenshot;
+        if let Some(a) = self.capture_action.lock().unwrap().take() {
+            if cfg.variants_ignore_rules {
+                rules.clear();
+            }
+            rules.push(a);
+        }
+        if rules.contains(&AfterCapture::Pin) {
+            let _ = self.pin(&rec.id);
+        }
         if rules.contains(&AfterCapture::Save) {
             let _ = self.save(&rec.id);
         } else if rules.contains(&AfterCapture::Copy) {
@@ -1442,7 +1463,7 @@ impl Inner {
     /// Answered with editor_screenshot (an empty path when cancelled).
     pub fn editor_screenshot(self: &Arc<Self>, token: i32) {
         let (tx, rx) = mpsc::channel();
-        self.begin("insert", None, None, Some(tx), 0);
+        self.begin("insert", None, None, Some(tx), 0, None);
         let me = self.clone();
         std::thread::spawn(move || {
             let path = rx.recv().ok().filter(|r| r.ok).and_then(|r| r.result.as_str().map(String::from)).unwrap_or_default();
@@ -1454,7 +1475,7 @@ impl Inner {
     /// magnifier; a click answers editor_color with "#rrggbb" ("" if cancelled).
     pub fn editor_pick_color(self: &Arc<Self>, token: i32) {
         let (tx, rx) = mpsc::channel();
-        self.begin("pick", None, None, Some(tx), 0);
+        self.begin("pick", None, None, Some(tx), 0, None);
         let me = self.clone();
         std::thread::spawn(move || {
             let c = rx.recv().ok().filter(|r| r.ok).and_then(|r| r.result.as_str().map(String::from)).unwrap_or_default();
@@ -1671,9 +1692,13 @@ impl Inner {
         };
         match req {
             Ctl::Ping => Response::ok(json!("pong")),
-            Ctl::Capture { mode, monitor, cursor, delay } => {
+            Ctl::Capture { mode, monitor, cursor, delay, action } => {
+                let action = match action.map(|a| serde_json::from_value::<AfterCapture>(json!(a))) {
+                    Some(Err(_)) => return Response::err("--action is copy, save, annotate or pin"),
+                    a => a.and_then(Result::ok),
+                };
                 let (tx, rx) = mpsc::channel();
-                self.begin(&mode, monitor, cursor, Some(tx), delay.unwrap_or(0));
+                self.begin(&mode, monitor, cursor, Some(tx), delay.unwrap_or(0), action);
                 rx.recv_timeout(Duration::from_secs(590)).unwrap_or_else(|_| Response::err("timed out"))
             }
             Ctl::Open { path } => ok_or(self.open_file(&path)),

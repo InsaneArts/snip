@@ -22,6 +22,10 @@ pub enum Request {
         /// Self-timer (CAP-06): seconds of countdown before the capture
         #[serde(default, skip_serializing_if = "Option::is_none")]
         delay: Option<u32>,
+        /// CAP-02 / API-01: then copy | save | annotate | pin (instead of the
+        /// After Capture rules, unless `after_capture.variants_ignore_rules` is off)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        action: Option<String>,
     },
     /// Copy a capture (default: the most recent) to the clipboard
     Copy {
@@ -167,7 +171,7 @@ mod tests {
 
     #[test]
     fn wire_format_is_stable() {
-        let r = Request::Capture { mode: "area".into(), monitor: None, cursor: None, delay: None };
+        let r = Request::Capture { mode: "area".into(), monitor: None, cursor: None, delay: None, action: None };
         assert_eq!(serde_json::to_string(&r).unwrap(), r#"{"cmd":"capture","mode":"area","monitor":null}"#);
         let parsed: Request = serde_json::from_str(r#"{"cmd":"copy"}"#).unwrap();
         assert_eq!(parsed, Request::Copy { id: None });

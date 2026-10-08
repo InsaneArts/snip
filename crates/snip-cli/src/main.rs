@@ -10,6 +10,7 @@ const USAGE: &str = "usage: snip [--json] <command>
 
 capture
   area | fullscreen | window | previous | text | all-in-one | area-pin [--monitor NAME] [--cursor | --no-cursor]
+                   [--action copy|save|annotate|pin]   then that, instead of the After Capture rules
   scroll           scrolling capture: choose the area, Start, scroll, Done (Enter; Esc cancels)
   area | fullscreen --delay N   self-timer: N seconds of countdown, then the capture
   open FILE        add an image (or a .snip project) as a capture, with a Quick Access card
@@ -61,7 +62,8 @@ fn main() -> ExitCode {
                 None
             };
             let delay = flag(&mut args, "--delay").and_then(|v| v.parse::<u32>().ok());
-            (Request::Capture { mode: cmd.clone(), monitor, cursor, delay }, Duration::from_secs(600))
+            let action = flag(&mut args, "--action");
+            (Request::Capture { mode: cmd.clone(), monitor, cursor, delay, action }, Duration::from_secs(600))
         }
         "edit" if arg1.as_deref() == Some("--clipboard") => (Request::EditClipboard, Duration::from_secs(10)),
         "open" | "edit" => {
