@@ -331,7 +331,7 @@ A normal floating window (Hyprland rule: float, centred, with optional pin / alw
 | OMA-02 | Keybinding module `require("snip")` for `hyprland.lua`, offered during onboarding, which replaces Omarchy's PRINT bindings | P0 |
 | OMA-03 | Entries in the Omarchy capture menu (`SUPER+CTRL+C`) | P1 |
 | OMA-04 | Bar widget: recording timer and stop button; optional capture button | P1 |
-| OMA-05 | Notifications through omarchy-shell (with image and click action) as a fallback when the QAO is off | P0 |
+| OMA-05 | Notifications through omarchy-shell (with image and click action) as a fallback when the QAO is off | P0 | Built: when the After Capture rules (or & Copy / & Save) show no card, editor or pin, `omarchy-notification-send` says "Screenshot copied" (its size) or "Screenshot saved" (its file name), with the image; a click runs `snip restore ID`, which brings the card back. |
 | OMA-06 | Works as `OMARCHY_SCREENSHOT_EDITOR`, so Omarchy's own flow can open our editor | P0 |
 | OMA-07 | `.desktop` handlers: "Annotate with Snip", "Pin with Snip" for images | P1 |
 | OMA-08 | **Bar icon** (D35): a tray icon (StatusNotifierItem) with Snip's logo, drawn in the bar's colours. A click opens CleanShot's menu, in CleanShot's order (its MainMenu.nib): All-In-One, Capture Area, Capture Previous Area, Capture Fullscreen, Capture Window, Self-Timer, Scrolling Capture, Capture Text (each with its key); Open…, Open from Clipboard, Pin to the Screen…, Capture History…, Restore Recently Closed; Settings…, About Snip, Quit Snip. Record Screen, Hide Desktop Icons and Check for Updates join when Snip has them | P0 |
