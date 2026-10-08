@@ -531,7 +531,8 @@ impl Inner {
                 let (rgba, w, h) = encode::composite(&parts);
                 let png = encode::encode_png(&rgba, w, h, true);
                 let output = self.cursor_output().unwrap_or_default();
-                let meta = CaptureMeta { kind: "fullscreen".into(), output: output.clone(), app: None, title: None };
+                let scale = r.frames.iter().map(|f| f.scale).fold(1.0, f64::max);
+                let meta = CaptureMeta { kind: "fullscreen".into(), scale, output: output.clone(), app: None, title: None };
                 self.ingest(png, w, h, meta, &output, waiter);
             }
             Pending::Window { waiter, client, output, shadow, fallback, rect } => {
@@ -778,7 +779,7 @@ impl Inner {
             &format!("\"w\":{},\"h\":{},\"crop_ms\":{:.2},\"encode_ms\":{:.2},\"bytes\":{}", e.width, e.height, e.crop_ms, e.encode_ms, e.png.len()),
         );
         let (app, title) = self.window_meta_at(output, rect, frame.scale);
-        let meta = CaptureMeta { kind: kind.trim_end_matches("-pin").into(), output: output.into(), app, title };
+        let meta = CaptureMeta { kind: kind.trim_end_matches("-pin").into(), scale: frame.scale, output: output.into(), app, title };
         if kind == "area-pin" {
             // where the area was, in layout px: the pin goes right there
             let origin = self.outputs.lock().unwrap().iter().find(|o| o.name == output).map(|o| (o.logical.x, o.logical.y)).unwrap_or((0, 0));
@@ -896,7 +897,7 @@ impl Inner {
         let (out, ow, oh) = window::decorate(rgba, w, h, corners, shadow);
         let png = encode::encode_png(&out, ow, oh, true);
         trace::trace("window_encoded", &format!("\"w\":{ow},\"h\":{oh},\"ms\":{:.1}", trace::ms_since(t0)));
-        let meta = CaptureMeta { kind: "window".into(), output: output.into(), app: Some(client.class.clone()), title: Some(client.title.clone()) };
+        let meta = CaptureMeta { kind: "window".into(), scale, output: output.into(), app: Some(client.class.clone()), title: Some(client.title.clone()) };
         self.ingest(png, ow, oh, meta, output, waiter);
     }
 
@@ -1547,7 +1548,7 @@ impl Inner {
         let rec = if mime == "image/png" {
             let (w, h) = png_size(&bytes).ok_or("the clipboard image is not a valid PNG")?;
             let out = self.cursor_output().unwrap_or_default();
-            let meta = CaptureMeta { kind: "clipboard".into(), output: out, app: None, title: Some("Clipboard".into()) };
+            let meta = CaptureMeta { kind: "clipboard".into(), scale: 1.0, output: out, app: None, title: Some("Clipboard".into()) };
             let rec = self.store.ingest(bytes, w, h, meta, now_secs()).map_err(|e| e.to_string())?;
             self.wake_indexer();
             rec
@@ -1607,7 +1608,7 @@ impl Inner {
         let out = self.cursor_output().unwrap_or_default();
         let rec = self
             .store
-            .ingest(bytes, w, h, CaptureMeta { kind: "import".into(), output: out, app: None, title }, now_secs())
+            .ingest(bytes, w, h, CaptureMeta { kind: "import".into(), scale: 1.0, output: out, app: None, title }, now_secs())
             .map_err(|e| e.to_string())?;
         self.wake_indexer();
         Ok(rec)

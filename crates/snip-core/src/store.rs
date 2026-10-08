@@ -20,6 +20,8 @@ const EDIT: &str = "edit.json";
 #[derive(Clone, Debug, Default)]
 pub struct CaptureMeta {
     pub kind: String,
+    /// physical px per logical px (1 for imports)
+    pub scale: f64,
     pub output: String,
     pub app: Option<String>,
     pub title: Option<String>,
@@ -111,6 +113,7 @@ impl Store {
             kind: meta.kind,
             width,
             height,
+            scale: meta.scale,
             output: meta.output,
             source,
             saved: None,
@@ -221,7 +224,7 @@ impl Store {
         let p = crate::project::read(path)?;
         let (_, w, h, _) = crate::encode::decode_png(&p.preview).map_err(|e| StoreError::Io(std::io::Error::other(e)))?;
         let title = path.file_stem().map(|s| s.to_string_lossy().into_owned());
-        let rec = self.ingest(p.preview, w, h, CaptureMeta { kind: "import".into(), output: output.into(), app: None, title }, now_secs)?;
+        let rec = self.ingest(p.preview, w, h, CaptureMeta { kind: "import".into(), scale: 1.0, output: output.into(), app: None, title }, now_secs)?;
         let dir = rec.source.parent().unwrap_or(Path::new(".")).to_path_buf();
         atomic_write(&dir.join(ORIGINAL), &p.source)?;
         atomic_write(&dir.join(EDIT), p.document.as_bytes())?;

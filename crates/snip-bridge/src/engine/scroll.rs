@@ -250,7 +250,8 @@ impl Inner {
         let alpha = rgba.chunks_exact(4).any(|p| p[3] != 255);
         let data = if alpha { rgba } else { rgba.chunks_exact(4).flat_map(|p| [p[0], p[1], p[2]]).collect() };
         let png = encode::encode_png(&data, w, h, alpha);
-        let meta = CaptureMeta { kind: "scroll".into(), output: s.output.clone(), app: s.app, title: s.title };
+        let scale = if s.logical.2 > 0.0 { w as f64 / s.logical.2 } else { 1.0 };
+        let meta = CaptureMeta { kind: "scroll".into(), scale, output: s.output.clone(), app: s.app, title: s.title };
         self.ingest(png, w, h, meta, &s.output, s.waiter);
     }
 }
