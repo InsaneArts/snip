@@ -64,6 +64,8 @@ pub enum Request {
     },
     /// Show the capture history window (HIS-01)
     History,
+    /// Show the first-run Welcome (OMA-02)
+    Welcome,
     /// Show the settings window (SET-02), on a tab
     Settings {
         #[serde(default)]

@@ -6,3 +6,4 @@ mod edits;
 mod engine;
 mod frames;
 mod watch;
+mod welcome;

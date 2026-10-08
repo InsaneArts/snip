@@ -24,6 +24,7 @@ captures (default: the most recent)
   search TEXT [-n N]  find captures by the text in them (and window title/app)
   history          browse and search past captures (Enter restores one)
   settings [TAB]   open Settings (general, quick-access, screenshots, annotate, advanced, about)
+  welcome          show the first-run Welcome again (Snip's keys, start at login)
   restore          re-open the last closed Quick Access card
   close-all        close every Quick Access card
 daemon
@@ -95,6 +96,7 @@ fn main() -> ExitCode {
         }
         "history" => (Request::History, Duration::from_secs(5)),
         "settings" => (Request::Settings { tab: arg1 }, Duration::from_secs(5)),
+        "welcome" => (Request::Welcome, Duration::from_secs(5)),
         "restore" => (Request::RestoreLast, Duration::from_secs(5)),
         "close-all" => (Request::CloseAll, Duration::from_secs(5)),
         "status" => (Request::Status, Duration::from_secs(5)),

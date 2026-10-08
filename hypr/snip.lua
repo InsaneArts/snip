@@ -59,6 +59,7 @@ hl.window_rule({ match = { title = "^Snip Editor.*" }, float = true, center = tr
 
 -- Settings float too, centred, as on macOS.
 hl.window_rule({ match = { title = "^Snip Settings$" }, float = true, center = true, opacity = "1 1", tag = "+snip-settings" })
+hl.window_rule({ match = { title = "^Welcome to Snip$" }, float = true, center = true, opacity = "1 1", tag = "+snip-welcome" })
 
 -- Pins float above every window, on every workspace of their monitor, and
 -- draw their own corners and shadow. (Rule patterns match the whole title.)
