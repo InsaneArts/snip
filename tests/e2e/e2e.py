@@ -118,6 +118,8 @@ class Snip:
         )
         (self.tmp / "cfg/snip").mkdir(parents=True)
         self.write_config("")
+        (self.tmp / "data/snip").mkdir(parents=True)
+        (self.tmp / "data/snip/welcomed").touch()       # the first-run Welcome stays shut (welcome_first_run opens it)
         self.proc = None
         self.log = self.tmp / "snipd.err"
 
@@ -999,6 +1001,63 @@ def launcher_starts_snip(s, env):
         s.cli("quit", check=False)                                 # the CLI's own Snip goes; the suite's comes back
         wait_for(lambda: s.cli("ping", check=False).returncode != 0, 5)
         s.start()
+
+
+def welcome_client():
+    return next((c for c in hypr_json("clients") if c["class"] == "snip-e2e" and c["title"] == "Welcome to Snip"), None)
+
+
+def welcome_state(s):
+    n = len(s.traces("welcome_state"))
+    s.debug("ui", "welcome", "state")
+    assert wait_for(lambda: len(s.traces("welcome_state")) > n, 2), "no welcome_state"
+    return s.traces("welcome_state")[-1]
+
+
+def welcome_click(s, env, name):
+    n = len(s.traces("welcome_where"))
+    s.debug("ui", "welcome", "where", name)
+    assert wait_for(lambda: len(s.traces("welcome_where")) > n, 2), "no welcome_where"
+    p = s.traces("welcome_where")[-1]
+    assert p["x"] >= 0, (name, "isn't shown")
+    w, mon = welcome_client(), env.monitor()
+    s.move(w["at"][0] - mon["x"] + p["x"], w["at"][1] - mon["y"] + p["y"])
+    s.click()
+
+
+@case
+def welcome_first_run(s, env):
+    """OMA-02: on Snip's first start the Welcome opens by itself, floating. Use these keys
+    adds one line to hyprland.lua (once) and the keys work at once; Get Started closes it
+    for good; `snip welcome` shows it again."""
+    hypr = s.tmp / "cfg/hypr"
+    hypr.mkdir(parents=True, exist_ok=True)
+    (hypr / "hyprland.lua").write_text("-- my config\n")
+    marker = s.tmp / "data/snip/welcomed"
+    s.cli("quit")
+    assert wait_for(lambda: s.cli("ping", check=False).returncode != 0, 5)
+    marker.unlink()
+    s.start()
+    try:
+        assert wait_for(lambda: welcome_client(), 8), "the Welcome opens on the first start"
+        w = welcome_client()
+        assert any(t.rstrip("*") == "snip-welcome" for t in w["tags"]) and w["floating"], (w["tags"], w["floating"])
+        assert wait_for(lambda: welcome_state(s)["st"].get("keysInConfig") is False, 2), welcome_state(s)
+        welcome_click(s, env, "use-keys")
+        assert wait_for(lambda: "snip.lua" in (hypr / "hyprland.lua").read_text(), 3), "the line is added"
+        text = (hypr / "hyprland.lua").read_text()
+        assert text.startswith("-- my config\n") and text.count("snip.lua") == 1, text
+        assert wait_for(lambda: binds_for("Snip: Capture area"), 3), "the keys work at once"
+        assert wait_for(lambda: welcome_state(s)["st"]["keysInConfig"] is True, 2), "and it says so"
+        welcome_click(s, env, "welcome-done")
+        assert wait_for(lambda: not welcome_client(), 3) and marker.exists(), "Get Started closes it for good"
+        s.cli("welcome")
+        assert wait_for(lambda: welcome_client(), 5), "snip welcome shows it again"
+    finally:
+        s.debug("ui", "welcome", "close")
+        marker.touch()
+        for code in (12, 13, 14, 15):                                  # snip.lua's keys go again
+            hypr_eval(f'pcall(hl.unbind, "SUPER + SHIFT + code:{code}")')
 
 
 @case
