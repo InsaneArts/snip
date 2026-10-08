@@ -535,6 +535,8 @@ def capture_variants(s, env):
     assert rec["id"] not in s.status()["cards"], "and no card"
     rec = capture("--action", "save")
     assert wait_for(lambda: any(s.export.glob("*.png")), 3), "& Save: in the export folder"
+    for f in s.export.glob("*.png"):                               # later cases expect it empty
+        f.unlink()
     rec = capture("--action", "annotate")
     assert wait_for(lambda: editor_window(), 5), "& Annotate: the editor"
     close_editor(s)
