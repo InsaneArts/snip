@@ -1284,6 +1284,44 @@ def settings_click(s, env, name):
 
 
 @case
+def history_filters(s, env):
+    """HIS-01: History's filters: All, Screenshots (plain captures) and Projects (objects
+    still editable)."""
+    s.cli("close-all"); time.sleep(0.3)
+    plain = s.json("fullscreen", "--monitor", OUT)["result"]
+    png = s.tmp / "project.png"
+    make_text_png(png, ["a project"])
+    s.json("edit", str(png))
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3), "the editor opens"
+    s.debug("ui", "editor", "rect", "20", "20", "80", "40")
+    editor_flush(s)
+    project = editor_state(s)["id"]
+    close_editor(s)
+    s.cli("close-all")
+    s.cli("history")
+    assert wait_for(lambda: history_state(s)["open"], 3)
+
+    def pick(name):
+        n = len(s.traces("history_where"))
+        s.debug("ui", "history", "where", name)
+        assert wait_for(lambda: len(s.traces("history_where")) > n, 2)
+        b = s.traces("history_where")[-1]
+        assert b["x"] >= 0, (name, "isn't shown")
+        s.move(b["x"], b["y"]); time.sleep(0.1); s.click()
+
+    shown = lambda: history_state(s)["items"]
+    assert plain["id"] in shown() and project in shown(), "All"
+    pick("filter-projects")
+    assert wait_for(lambda: project in shown() and plain["id"] not in shown(), 2), ("Projects", shown())
+    pick("filter-screenshots")
+    assert wait_for(lambda: plain["id"] in shown() and project not in shown(), 2), ("Screenshots", shown())
+    pick("filter-all")
+    assert wait_for(lambda: plain["id"] in shown() and project in shown(), 2), ("All again", shown())
+    s.debug("ui", "history", "keys", "{Escape}")
+    assert wait_for(lambda: not history_state(s)["open"], 2)
+
+
+@case
 def launcher_starts_snip(s, env):
     """OMA-09: Snip in the launcher runs `snip settings`, which works even when Snip isn't
     running (quit from its menu, say): the CLI starts it, then Settings opens."""

@@ -1094,6 +1094,7 @@ impl Inner {
                     let mut j = card_json(r, "");
                     j["title"] = json!(r.title);
                     j["app"] = json!(r.app);
+                    j["project"] = json!(self.store.is_project(r));
                     j
                 })
                 .collect(),
