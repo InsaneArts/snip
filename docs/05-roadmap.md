@@ -176,7 +176,7 @@ What the 2026-10-08 audit of the spec found unbuilt, in batches:
   - A link in a code or the text asks "Open link?": Open, Always, Never (OCR-03, OCR-05).
 - **Polish:**
   - ✅ UTC and `@2x` in file names (SET-04); history keeps each capture's scale.
-  - Alt+Save asks where (QAO-03).
+  - ✅ Alt+Save asks where (QAO-03), and Ctrl+Alt+S. Tests never open the desktop's file dialogs now.
   - Scale to 1×, Resize… and Print… on cards (QAO-09); Print in the editor (ANN-15).
   - Resizing a pin from its corners (PIN-04).
   - History filters (HIS-01).
