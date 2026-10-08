@@ -3,14 +3,13 @@ Type=Application
 Name=Snip
 GenericName=Screenshot Tool
 Comment=Screenshots with CleanShot's workflow, in Omarchy's colours
-Exec=snip area
+Exec=snip settings
 Icon=snip
 Terminal=false
-Categories=Utility;Graphics;
-Keywords=screenshot;capture;screen;ocr;
-NoDisplay=false
-X-GNOME-UsesNotifications=false
-Actions=Area;Fullscreen;Window;Text;
+Categories=Utility;
+Keywords=screenshot;capture;screen;ocr;scrolling;history;
+StartupNotify=false
+Actions=Area;Fullscreen;Window;Scroll;Text;History;
 
 [Desktop Action Area]
 Name=Capture Area
@@ -24,6 +23,14 @@ Exec=snip fullscreen
 Name=Capture Window
 Exec=snip window
 
+[Desktop Action Scroll]
+Name=Scrolling Capture
+Exec=snip scroll
+
 [Desktop Action Text]
 Name=Capture Text
 Exec=snip text
+
+[Desktop Action History]
+Name=Capture History
+Exec=snip history
