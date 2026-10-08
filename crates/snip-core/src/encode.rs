@@ -219,6 +219,28 @@ pub fn is_opaque_format(f: PixelFormat) -> bool {
     !f.has_alpha()
 }
 
+/// CAP-04 "all monitors": every monitor's upright RGBA image laid out where
+/// it is (logical px), at the largest scale; uncovered space is transparent.
+/// `parts`: (logical rect, RGBA, width, height).
+pub fn composite(parts: &[(Rect, Vec<u8>, u32, u32)]) -> (Vec<u8>, u32, u32) {
+    let s = parts.iter().map(|(r, _, w, _)| *w as f64 / r.w.max(1) as f64).fold(1.0, f64::max);
+    let (x0, y0) = (parts.iter().map(|p| p.0.x).min().unwrap_or(0), parts.iter().map(|p| p.0.y).min().unwrap_or(0));
+    let (x1, y1) = (parts.iter().map(|p| p.0.right()).max().unwrap_or(0), parts.iter().map(|p| p.0.bottom()).max().unwrap_or(0));
+    let (cw, ch) = (((x1 - x0) as f64 * s).round() as usize, ((y1 - y0) as f64 * s).round() as usize);
+    let mut out = vec![0u8; cw * ch * 4];
+    for (r, data, w, h) in parts {
+        let (tw, th) = ((r.w as f64 * s).round() as u32, (r.h as f64 * s).round() as u32);
+        let img = if (tw, th) == (*w, *h) { data.clone() } else { resize(data, *w, *h, 4, tw, th) };
+        let (ox, oy) = (((r.x - x0) as f64 * s).round() as usize, ((r.y - y0) as f64 * s).round() as usize);
+        for y in 0..(th as usize).min(ch.saturating_sub(oy)) {
+            let n = (tw as usize).min(cw.saturating_sub(ox)) * 4;
+            let src = &img[y * tw as usize * 4..y * tw as usize * 4 + n];
+            out[((oy + y) * cw + ox) * 4..((oy + y) * cw + ox) * 4 + n].copy_from_slice(src);
+        }
+    }
+    (out, cw as u32, ch as u32)
+}
+
 #[cfg(test)]
 mod editor_transform_tests {
     use super::*;
@@ -325,5 +347,21 @@ mod tests {
         let e = crop_and_encode(&f, Rect::new(0, 0, 32, 16));
         assert_eq!(&e.png[1..4], b"PNG");
         assert_eq!((e.width, e.height), (32, 16));
+    }
+
+    #[test]
+    fn all_monitors_meet_at_the_largest_scale() {
+        // a 2x monitor (100 x 50 logical, red) and a 1x one to its right (50 x 50, blue)
+        let red: Vec<u8> = [255, 0, 0, 255].repeat(200 * 100);
+        let blue: Vec<u8> = [0, 0, 255, 255].repeat(50 * 50);
+        let (out, w, h) = composite(&[(Rect::new(0, 0, 100, 50), red, 200, 100), (Rect::new(100, 0, 50, 50), blue, 50, 50)]);
+        assert_eq!((w, h), (300, 100), "150 x 50 logical at 2x");
+        let px = |x: usize, y: usize| &out[(y * w as usize + x) * 4..(y * w as usize + x) * 4 + 4];
+        assert_eq!(px(199, 99), &[255, 0, 0, 255], "the 2x one as it is");
+        assert_eq!(px(200, 0), &[0, 0, 255, 255], "the 1x one scaled up, beside it");
+        assert_eq!(px(299, 99), &[0, 0, 255, 255]);
+        let (out, w, h) = composite(&[(Rect::new(0, 0, 10, 10), [9u8; 400].to_vec(), 10, 10), (Rect::new(10, 20, 10, 10), [9u8; 400].to_vec(), 10, 10)]);
+        assert_eq!((w, h), (20, 30));
+        assert_eq!(out[(5 * 20 + 15) * 4 + 3], 0, "where no monitor is: transparent");
     }
 }
