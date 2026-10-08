@@ -13,6 +13,8 @@ pub const ACTIONS: &[(&str, &str)] = &[
     ("previous", "Capture previous area"),
     ("all-in-one", "All-In-One"),
     ("text", "Capture text (OCR)"),
+    ("text-lines", "Capture text with line breaks"),
+    ("text-one-line", "Capture text as one line"),
     ("area-pin", "Capture area and pin it"),
     ("area-copy", "Capture area and copy it"),
     ("area-save", "Capture area and save it"),

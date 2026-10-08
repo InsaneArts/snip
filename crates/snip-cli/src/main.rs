@@ -14,6 +14,7 @@ capture
   area --x X --y Y --w W --h H [--monitor NAME]   that area (logical px), with no overlay
   fullscreen --all every monitor, in one image
   text --file FILE | --clipboard   read the text (or QR code) of a PNG, onto the clipboard
+  text --line-breaks | --one-line   Capture Text keeping or joining its lines, whatever the setting
   scroll           scrolling capture: choose the area, Start, scroll, Done (Enter; Esc cancels)
   area | fullscreen --delay N   self-timer: N seconds of countdown, then the capture
   open FILE        add an image (or a .snip project) as a capture, with a Quick Access card
@@ -80,7 +81,15 @@ fn main() -> ExitCode {
                 (Some(x), Some(y), Some(w), Some(h)) => Some([x, y, w, h]),
                 _ => None,
             };
-            let mode = if cmd == "fullscreen" && args.iter().any(|a| a == "--all") { "fullscreen-all".to_string() } else { cmd.clone() };
+            let mode = if cmd == "fullscreen" && args.iter().any(|a| a == "--all") {
+                "fullscreen-all".to_string()
+            } else if cmd == "text" && args.iter().any(|a| a == "--line-breaks") {
+                "text-lines".to_string()
+            } else if cmd == "text" && args.iter().any(|a| a == "--one-line") {
+                "text-one-line".to_string()
+            } else {
+                cmd.clone()
+            };
             (Request::Capture { mode, monitor, cursor, delay, action, rect }, Duration::from_secs(600))
         }
         "edit" if arg1.as_deref() == Some("--clipboard") => (Request::EditClipboard, Duration::from_secs(10)),

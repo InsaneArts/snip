@@ -520,6 +520,14 @@ Window {
                     Field { key: "ocr.languages"; placeholder: "English and the installed languages" }
                     Note { text: "Tesseract languages, such as eng+deu." }
                     Check { key: "ocr.index_history"; text: "Read the text of every capture, for search" }
+                    Check { key: "ocr.keep_line_breaks"; text: "Keep line breaks" }
+                    Check { key: "ocr.barcodes"; text: "Read barcodes too (EAN, UPC, Code 128…)" }
+                    Check { key: "ocr.detect_links"; text: "Find links in the text" }
+                    Row {
+                        spacing: 10
+                        Note { anchors.verticalCenter: parent.verticalCenter; text: "Open links"; color: Theme.text }
+                        Choice { key: "ocr.open_links"; options: [["ask", "Ask"], ["always", "Always"], ["never", "Never"]] }
+                    }
                 }
                 Section {
                     label: "Speed"

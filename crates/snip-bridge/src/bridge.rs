@@ -236,6 +236,9 @@ pub mod qobject {
         fn set_autostart(self: &Engine, on: bool) -> QString;
         #[qinvokable]
         fn welcome_done(self: &Engine);
+        /// Open a link in the browser (OCR-03)
+        #[qinvokable]
+        fn open_link(self: &Engine, url: QString);
         /// The bar menu's Open… and Pin to the Screen…: a chosen image, in
         /// the editor or pinned (as `snip edit FILE`, `snip pin FILE`)
         #[qinvokable]
@@ -376,6 +379,9 @@ pub mod qobject {
         /// Show the first-run Welcome (OMA-02)
         #[qsignal]
         fn welcome_open(self: Pin<&mut Engine>);
+        /// OCR-03/05: a link in the text read; "Open link?" on `output`
+        #[qsignal]
+        fn link_offer(self: Pin<&mut Engine>, url: &QString, output: &QString);
 
         /// Scrolling capture (SCR-01): the area is chosen ({output, x, y, w, h}
         /// logical), how it's going ({phase, height, step, preview}), it ended
@@ -873,6 +879,12 @@ impl qobject::Engine {
 
     fn set_autostart(&self, on: bool) -> QString {
         QString::from(crate::welcome::set_autostart(on).err().unwrap_or_default().as_str())
+    }
+
+    fn open_link(&self, url: QString) {
+        if let Some(i) = self.inner() {
+            i.open_link(&url.to_string());
+        }
     }
 
     fn welcome_done(&self) {

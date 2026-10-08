@@ -14,7 +14,7 @@ use cxx_qt::CxxQtThread;
 use cxx_qt_lib::QString;
 use serde_json::{json, Value};
 
-use snip_core::config::{AfterCapture, ClipboardMode, Config, Retention};
+use snip_core::config::{AfterCapture, ClipboardMode, Config, OpenLinks, Retention};
 use snip_core::geometry::Rect;
 use snip_core::history::Record;
 use snip_core::store::{CaptureMeta, Store};
@@ -106,6 +106,9 @@ pub struct Inner {
     /// What the capture under way does instead of the After Capture rules
     /// (CAP-02 variants, `--action`)
     capture_action: Mutex<Option<AfterCapture>>,
+    /// OCR-02: the capture under way keeps (Some(true)) or joins line breaks,
+    /// whatever ocr.keep_line_breaks says ("text-lines", "text-one-line")
+    line_breaks: Mutex<Option<bool>>,
     /// A scrolling capture (SCR-01), from the chosen area until Done
     scroll: Mutex<Option<scroll::Scroll>>,
 }
@@ -184,6 +187,7 @@ impl Inner {
             index_wake: Mutex::new(None),
             countdown: Mutex::new(None),
             capture_action: Mutex::new(None),
+            line_breaks: Mutex::new(None),
             scroll: Mutex::new(None),
         }))
     }
@@ -282,7 +286,9 @@ impl Inner {
     /// An action by its shortcut id ("area", "settings"…), as its key runs it.
     pub fn shortcut(self: &Arc<Self>, id: &str) {
         match id {
-            "area" | "fullscreen" | "window" | "previous" | "text" | "all-in-one" | "area-pin" | "scroll" | "fullscreen-all" => self.begin(id, None, None, None, 0, None),
+            "area" | "fullscreen" | "window" | "previous" | "text" | "all-in-one" | "area-pin" | "scroll" | "fullscreen-all" | "text-lines" | "text-one-line" => {
+                self.begin(id, None, None, None, 0, None)
+            }
             // CAP-02: Capture Area & Copy / & Save / & Annotate
             "area-copy" => self.begin("area", None, None, None, 0, Some(AfterCapture::Copy)),
             "area-save" => self.begin("area", None, None, None, 0, Some(AfterCapture::Save)),
@@ -322,6 +328,13 @@ impl Inner {
         let t0 = trace::now_ns();
         self.skip_preset.store(false, Ordering::Relaxed);
         *self.capture_action.lock().unwrap() = action;
+        // OCR-02: Capture Text with or without line breaks
+        *self.line_breaks.lock().unwrap() = match mode {
+            "text-lines" => Some(true),
+            "text-one-line" => Some(false),
+            _ => None,
+        };
+        let mode = if mode.starts_with("text-") { "text" } else { mode };
         // CAP-11: the pointer in screen captures (config, or per capture)
         let cursor = cursor.unwrap_or_else(|| self.cfg().capture.show_cursor);
         let delay = delay.min(60);
@@ -779,17 +792,28 @@ impl Inner {
     /// (OCR-03), else the OCR'd text; copied, with a toast.
     fn read_text(&self, data: &[u8], w: u32, h: u32, alpha: bool, scale: f64) -> Response {
         let t0 = trace::now_ns();
-        let codes = qr::decode(data, w, h, if alpha { 4 } else { 3 });
+        let cfg = self.cfg().ocr;
+        let bpp = if alpha { 4 } else { 3 };
+        let mut codes = qr::decode(data, w, h, bpp);
+        if codes.is_empty() {
+            codes = qr::decode_others(data, w, h, bpp, cfg.barcodes);
+        }
         if !codes.is_empty() {
             let text = codes.join("\n");
             trace::trace("qr", &format!("\"codes\":{},\"ms\":{:.1}", codes.len(), trace::ms_since(t0)));
             let summary = self.copy_qr(&text);
             self.toast(format!("Copied {summary}"));
+            self.offer_link(&text);
             return Response::ok(json!(text));
         }
-        match ocr::recognize(data, w, h, if alpha { 4 } else { 3 }, scale, &self.ocr_languages()) {
+        let one_line = !self.line_breaks.lock().unwrap().take().unwrap_or(cfg.keep_line_breaks);
+        match ocr::recognize(data, w, h, bpp, scale, &self.ocr_languages()) {
             Ok(text) if !text.trim().is_empty() => {
+                let text = if one_line { snip_core::text::one_line(&text) } else { text };
                 trace::trace("ocr", &format!("\"chars\":{},\"ms\":{:.1}", text.chars().count(), trace::ms_since(t0)));
+                if cfg.detect_links {
+                    self.offer_link(&text);
+                }
                 self.set_clipboard_text(&text);
                 let n = text.chars().count();
                 self.toast(format!("Copied {n} character{}", if n == 1 { "" } else { "s" }));
@@ -806,8 +830,31 @@ impl Inner {
         }
     }
 
+    /// OCR-03/05: a link in what was read: opened, offered, or left alone
+    /// (`ocr.open_links`).
+    fn offer_link(&self, text: &str) {
+        let Some(url) = snip_core::text::links(text).into_iter().next() else { return };
+        match self.cfg().ocr.open_links {
+            OpenLinks::Never => {}
+            OpenLinks::Always => self.open_link(&url),
+            OpenLinks::Ask => {
+                let out = self.cursor_output().unwrap_or_default();
+                self.ui(move |e| e.link_offer(&QString::from(url.as_str()), &QString::from(out.as_str())));
+            }
+        }
+    }
+
+    /// Opens a link in the browser. Tests (SNIP_NO_PORTALS) only trace it.
+    pub fn open_link(&self, url: &str) {
+        trace::trace("link_open", &format!("\"url\":{}", js(url)));
+        if std::env::var_os("SNIP_NO_PORTALS").is_none() {
+            spawn_detached("xdg-open", &[url]);
+        }
+    }
+
     /// OCR-06: Capture Text on a PNG file, or on the clipboard's image.
     pub fn text_of(&self, path: Option<&str>) -> Response {
+        *self.line_breaks.lock().unwrap() = None;
         let bytes = match path {
             Some(p) => std::fs::read(p).map_err(|e| format!("{p}: {e}")),
             None => self.clipboard_png().ok_or_else(|| "no image on the clipboard".to_string()),
