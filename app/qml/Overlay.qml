@@ -63,6 +63,11 @@ Window {
     readonly property int fh: frame.hasFrame ? frame.frameSize.height : Math.round(height * s)
     readonly property rect phys: toPhys(raw)
     readonly property rect shown: toShown(phys)
+    // SEL-03: physical px, or logical px with capture.logical_size
+    function sizeText(r) {
+        return c.settings.capture && c.settings.capture.logical_size ? Math.round(r.width / s) + " × " + Math.round(r.height / s)
+                                                                      : r.width + " × " + r.height
+    }
     readonly property bool crosshair: hovered && !c.windowMode && !dragging
                                       && (c.crosshairMode === "always" || (c.crosshairMode === "ctrl" && c.ctrlHeld)
                                           || (!!c.session && c.session.mode === "pick"))     // the eyedropper
@@ -254,7 +259,7 @@ Window {
                 anchors.verticalCenter: parent.verticalCenter
             }
             Text {
-                text: win.hoverWin ? win.targetPhys.width + " × " + win.targetPhys.height : ""
+                text: win.hoverWin ? win.sizeText(win.targetPhys) : ""
                 color: Theme.textSecondary
                 font.family: Theme.fontUi
                 font.pixelSize: 12
@@ -264,7 +269,7 @@ Window {
         }
     }
 
-    // ---------------------------------------------------------------- dimensions pill (SEL-03, physical px)
+    // ---------------------------------------------------------------- dimensions pill (SEL-03)
     Rectangle {
         visible: win.selecting
         readonly property real below: win.hole.y + win.hole.height + 8
@@ -279,7 +284,7 @@ Window {
         Text {
             id: dim
             anchors.centerIn: parent
-            text: win.phys.width + " × " + win.phys.height
+            text: win.sizeText(win.phys)
             color: Theme.text
             font.family: Theme.fontUi
             font.pixelSize: 12

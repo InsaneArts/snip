@@ -412,6 +412,7 @@ Window {
                     label: "Selection"
                     Check { key: "capture.freeze"; text: "Freeze the screen while selecting" }
                     Check { key: "capture.magnifier"; text: "Show magnifier" }
+                    Check { key: "capture.logical_size"; text: "Show the size in logical pixels" }
                 }
                 Section {
                     label: "Crosshair"
