@@ -14,10 +14,12 @@ png.workspace = true
 jpeg-encoder.workspace = true
 image-webp.workspace = true
 rqrr.workspace = true
+rxing.workspace = true
 rustix.workspace = true
 chrono.workspace = true
 ulid.workspace = true
 zip.workspace = true
 
 [dev-dependencies]
+rxing = { workspace = true, features = ["encoders"] }
 qrcode.workspace = true
