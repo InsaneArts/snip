@@ -1452,6 +1452,36 @@ def settings_click(s, env, name):
 
 
 @case
+def history_selection_ring(s, env):
+    """HIS-01: the ring around the selected capture shows on every side (its top was cut
+    off by the list's edge)."""
+    from PIL import Image
+    s.cli("close-all"); time.sleep(0.3)
+    s.json("fullscreen", "--monitor", OUT)
+    s.cli("close-all")
+    s.cli("history")
+    assert wait_for(lambda: history_state(s)["open"], 3)
+    try:
+        n = len(s.traces("history_where"))
+        s.debug("ui", "history", "where", "thumb:0")
+        assert wait_for(lambda: len(s.traces("history_where")) > n, 2)
+        b = s.traces("history_where")[-1]
+        s.move(b["x"], b["y"]); time.sleep(0.1); s.click()
+        assert wait_for(lambda: history_state(s)["current"] == 0, 2), "selected"
+        s.move(b["x"] + 400, b["y"] + 400); time.sleep(0.4)        # the pointer off it
+        shot = s.tmp / "ring.png"
+        sh("grim", "-o", OUT, str(shot))
+        im = Image.open(shot).convert("RGB")
+        sc = env.monitor()["scale"]
+        x = round(b["x"] * sc)
+        top, bottom = round((b["y"] - 84 - 2) * sc), round((b["y"] + 84 + 2) * sc)   # the ring's 2 px edges, 3 px out
+        assert im.getpixel((x, top)) == im.getpixel((x, bottom)), ("the ring's top edge shows as its bottom does", im.getpixel((x, top)), im.getpixel((x, bottom)))
+    finally:
+        s.debug("ui", "history", "keys", "{Escape}")
+        wait_for(lambda: not history_state(s)["open"], 2)
+
+
+@case
 def history_filters(s, env):
     """HIS-01: History's filters: All, Screenshots (plain captures) and Projects (objects
     still editable)."""
