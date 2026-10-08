@@ -2,9 +2,11 @@
 
 #include <KUrlMimeData>
 #include <LayerShellQt/window.h>
+#include <QDBusArgument>
 #include <QDBusConnection>
 #include <QDBusMessage>
 #include <QDBusUnixFileDescriptor>
+#include <QDir>
 #include <QDrag>
 #include <QFile>
 #include <QGuiApplication>
@@ -13,6 +15,9 @@
 #include <QKeyEvent>
 #include <QKeySequence>
 #include <QMimeData>
+#include <QPageLayout>
+#include <QPainter>
+#include <QPdfWriter>
 #include <QPixmap>
 #include <QQmlEngine>
 #include <QQuickItemGrabResult>
@@ -21,6 +26,7 @@
 #include <QUrl>
 #include <atomic>
 #include <cmath>
+#include <functional>
 #include <memory>
 
 #include "snip_bridge/src/bridge.cxxqt.h"
@@ -263,6 +269,91 @@ Platform::saveFileDialog(int token, const QString& title, const QString& name, c
   dir.append('\0');
   opts[QStringLiteral("current_folder")] = dir;
   portalFileRequest(this, token, QStringLiteral("SaveFile"), title, opts);
+}
+
+// The image on one page: as large as fits, but never past 144 dpi (about its
+// size on screen), centred at the top. Sizes in mm, as the portal gives them.
+static bool
+writePrintPdf(const QString& image, const QString& out, const QVariantMap& page)
+{
+  const QImage img(image);
+  if (img.isNull())
+    return false;
+  const auto mm = [&page](const char* key, double fallback) { return page.value(QLatin1String(key), fallback).toDouble(); };
+  const bool landscape = page.value(QStringLiteral("Orientation")).toString().contains(QLatin1String("landscape"));
+  QPdfWriter pdf(out);
+  pdf.setCreator(QStringLiteral("Snip"));
+  pdf.setResolution(300);
+  pdf.setPageLayout(QPageLayout(QPageSize(QSizeF(mm("Width", 210), mm("Height", 297)), QPageSize::Millimeter),
+                                landscape ? QPageLayout::Landscape : QPageLayout::Portrait,
+                                QMarginsF(mm("MarginLeft", 10), mm("MarginTop", 10), mm("MarginRight", 10), mm("MarginBottom", 10)),
+                                QPageLayout::Millimeter));
+  QPainter p(&pdf);
+  const double s = std::min({ pdf.width() / double(img.width()), pdf.height() / double(img.height()), 300.0 / 144.0 });
+  p.setRenderHint(QPainter::SmoothPixmapTransform);
+  p.drawImage(QRectF((pdf.width() - img.width() * s) / 2, 0, img.width() * s, img.height() * s), img);
+  return p.end();
+}
+
+static QVariantMap
+dbusMap(const QVariant& v)
+{
+  return v.canConvert<QDBusArgument>() ? qdbus_cast<QVariantMap>(v.value<QDBusArgument>()) : v.toMap();
+}
+
+// One portal call that answers through a Request object: `done` gets its
+// Response (code 2 when the call itself failed).
+static void
+portalCall(Platform* self, const QString& iface, const QString& method, QVariantList args, QVariantMap opts,
+           std::function<void(uint, const QVariantMap&)> done)
+{
+  static int n = 0;
+  QDBusConnection bus = QDBusConnection::sessionBus();
+  const QString service = QStringLiteral("org.freedesktop.portal.Desktop");
+  const QString handle = QStringLiteral("snipcall%1").arg(++n);
+  QString sender = bus.baseService().mid(1);
+  sender.replace(QLatin1Char('.'), QLatin1Char('_'));
+  auto* req = new PortalRequest(self);
+  req->path = QStringLiteral("/org/freedesktop/portal/desktop/request/%1/%2").arg(sender, handle);
+  bus.connect(service, req->path, QStringLiteral("org.freedesktop.portal.Request"), QStringLiteral("Response"), req,
+              SLOT(response(uint, QVariantMap)));
+  QObject::connect(req, &PortalRequest::done, self, [req, done](uint code, const QVariantMap& results) {
+    req->deleteLater();
+    done(code, results);
+  });
+  opts[QStringLiteral("handle_token")] = handle;
+  opts[QStringLiteral("modal")] = true;
+  QDBusMessage call = QDBusMessage::createMethodCall(service, QStringLiteral("/org/freedesktop/portal/desktop"), iface, method);
+  args << opts;
+  call.setArguments(args);
+  if (bus.call(call, QDBus::Block, 5000).type() == QDBusMessage::ErrorMessage)
+    Q_EMIT req->done(2, {});
+}
+
+QString
+Platform::printImage(const QString& path, const QString& title)
+{
+  static int n = 0;
+  const QString pdf = QStringLiteral("%1/snip-print-%2-%3.pdf").arg(QDir::tempPath()).arg(QCoreApplication::applicationPid()).arg(++n);
+  if (qEnvironmentVariableIsSet("SNIP_NO_PORTALS"))
+    return writePrintPdf(path, pdf, {}) ? pdf : QString();
+  const QString iface = QStringLiteral("org.freedesktop.portal.Print");
+  portalCall(this, iface, QStringLiteral("PreparePrint"), { QString(), title, QVariantMap(), QVariantMap() }, {},
+             [this, iface, path, pdf, title](uint code, const QVariantMap& r) {
+               if (code != 0 || !writePrintPdf(path, pdf, dbusMap(r.value(QStringLiteral("page-setup")))))
+                 return;
+               QFile f(pdf);
+               if (!f.open(QIODevice::ReadOnly))
+                 return;
+               // the message holds its own copy of the descriptor: the file can go
+               const QDBusUnixFileDescriptor fd(f.handle());
+               f.remove();
+               QVariantMap opts;
+               opts[QStringLiteral("token")] = r.value(QStringLiteral("token"));
+               portalCall(this, iface, QStringLiteral("Print"), { QString(), title, QVariant::fromValue(fd) }, opts,
+                          [](uint, const QVariantMap&) {});
+             });
+  return QString();
 }
 
 bool

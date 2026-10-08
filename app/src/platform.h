@@ -83,6 +83,11 @@ public:
   // through the OpenURI portal. Nothing happens with SNIP_NO_PORTALS set
   // (tests: no dialog on the user's screen).
   Q_INVOKABLE void openWith(const QString& path);
+  // Print… (QAO-09, ANN-15): the desktop's print dialog (the Print portal),
+  // then the image as a PDF, fitted to the page chosen there. With
+  // SNIP_NO_PORTALS set (tests) it only writes that PDF, for A4, and returns
+  // its path; otherwise it returns "".
+  Q_INVOKABLE QString printImage(const QString& path, const QString& title);
   // Add image (ANN-12): the desktop's open dialog for images. Answers with
   // fileChosen(token, path) like saveFileDialog.
   Q_INVOKABLE void openImageDialog(int token, const QString& title);

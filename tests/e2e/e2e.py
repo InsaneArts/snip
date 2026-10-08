@@ -816,9 +816,10 @@ def alt_save_asks_where(s, env):
 
 
 @case
-def card_scale_resize(s, env):
+def card_scale_resize_print(s, env):
     """QAO-09: a card's menu scales a HiDPI capture to 1× (then offers it no more) and
-    resizes it, proportions locked."""
+    resizes it, proportions locked; Print… makes a one-page PDF of it, as the editor's
+    Print does (ANN-15). The print dialog itself is checked by hand."""
     s.cli("close-all"); time.sleep(0.6)
     rec = s.json("area", "--x", "100", "--y", "80", "--w", "200", "--h", "120", "--monitor", OUT)["result"]
     assert (rec["width"], rec["height"], rec["scale"]) == (250, 150, 1.25), rec
@@ -854,6 +855,23 @@ def card_scale_resize(s, env):
     assert wait_for(lambda: (record()["width"], record()["height"]) == (100, 60), 3), ("proportions locked", record())
     assert record()["scale"] == 0.5, record()
 
+    def printed(start):
+        n = len(s.traces("print"))
+        start()
+        assert wait_for(lambda: len(s.traces("print")) > n, 5), "Print…"
+        pdf = Path(s.traces("print")[-1]["pdf"])
+        data = pdf.read_bytes()
+        pdf.unlink()
+        assert data.startswith(b"%PDF") and data.count(b"/Type /Page\n") + data.count(b"/Type /Page\r") + data.count(b"/Type /Page ") >= 1, data[:200]
+        assert b"/MediaBox [0 0 595" in data, "an A4 page"
+
+    printed(lambda: (menu(), click("menu:print")))
+    png = s.tmp / "print.png"
+    make_text_png(png, ["print me"])
+    s.json("edit", str(png))
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3), "the editor opens"
+    printed(lambda: s.debug("ui", "editor", "print"))
+    close_editor(s)
     s.cli("close-all")
 
 

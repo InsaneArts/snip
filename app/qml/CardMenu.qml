@@ -28,6 +28,7 @@ Rectangle {
         { label: "Scale to 1×", key: "", action: "scale-1x", icon: "minimize", hidden: !(card && card.data_.scale > 1) },
         { label: "Resize…", key: "", action: "resize", icon: "scaling" },
         { label: "Preview", key: "Space", action: "preview", icon: "eye" },
+        { label: "Print…", key: "", action: "print", icon: "printer" },
         { sep: true },
         { label: "Move to Trash", key: "", action: "trash", icon: "trash", danger: true },
         { sep: true },
