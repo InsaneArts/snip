@@ -74,6 +74,7 @@ qt_add_qml_module(snipd
     app/qml/Settings.qml
     app/qml/ScrollHud.qml
     app/qml/TrayMenu.qml
+    app/qml/Welcome.qml
     app/qml/editor.js
   RESOURCES
     app/fonts/Nunito.ttf
