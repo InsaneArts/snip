@@ -234,6 +234,12 @@ impl Inner {
 
     /// The output under the cursor (CAP-04, QAO-01), else the focused one.
     /// A test instance (SNIP_OUTPUTS) always uses its own output.
+    /// The scale of the monitor in use (1 if unknown)
+    pub fn cursor_scale(&self) -> f64 {
+        let out = self.cursor_output();
+        snip_hypr::monitors().into_iter().find(|m| Some(&m.name) == out.as_ref()).map_or(1.0, |m| m.scale)
+    }
+
     fn cursor_output(&self) -> Option<String> {
         let names = self.output_names();
         if let Some(o) = std::env::var("SNIP_OUTPUTS").ok().filter(|o| names.contains(o)) {
@@ -1233,7 +1239,7 @@ impl Inner {
             counter: 0,
             random: id.chars().rev().take(4).collect(),
         };
-        let name = format!("{}.{}", naming::render(&cfg.general.file_name, when, &ctx), cfg.export_format().ext());
+        let name = format!("{}.{}", cfg.file_stem(when, rec.as_ref().map_or(1.0, |r| r.scale), &ctx), cfg.export_format().ext());
         // the dialog opens a folder only if it exists (Save creates it too)
         let _ = std::fs::create_dir_all(cfg.export_dir());
         json!({ "name": name, "folder": cfg.export_dir() })
@@ -1254,7 +1260,7 @@ impl Inner {
         let cfg = self.cfg();
         let when = chrono::DateTime::from_timestamp(rec.created_at, 0).map(|t| t.with_timezone(&chrono::Local)).unwrap_or_else(chrono::Local::now);
         let ctx = naming::NameContext { window_title: rec.title.clone(), app_name: rec.app.clone(), counter: 0, random: id.chars().rev().take(4).collect() };
-        let stem = naming::render(&cfg.general.file_name, when, &ctx);
+        let stem = cfg.file_stem(when, rec.scale, &ctx);
         let path = dir.join(format!("{stem}.png"));
         if std::fs::hard_link(&rec.source, &path).is_err() {
             std::fs::copy(&rec.source, &path).map_err(|e| e.to_string())?;

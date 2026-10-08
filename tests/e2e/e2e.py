@@ -665,6 +665,28 @@ def text_lines_and_links(s, env):
 
 
 @case
+def file_names(s, env):
+    """SET-04: with the UTC option the time in a saved file's name is UTC, and the @2x
+    option adds the capture's scale (1.25 here), which history keeps."""
+    import datetime
+    cfg = s.tmp / "cfg/snip/config.toml"
+    before = cfg.read_text()
+    cfg.write_text(before.replace("[general]\n", "[general]\nfile_name = \"Shot %H\"\nutc_time = true\nscale_suffix = true\n", 1))
+    try:
+        time.sleep(0.8)
+        rec = s.json("fullscreen", "--monitor", OUT)["result"]
+        assert rec["scale"] == env.monitor()["scale"], rec
+        hours = {datetime.datetime.now(datetime.timezone.utc).hour}
+        saved = Path(s.json("save", rec["id"])["result"])
+        hours.add(datetime.datetime.now(datetime.timezone.utc).hour)
+        assert saved.name in {f"Shot {h:02}@1.25x.png" for h in hours}, (saved.name, hours)
+        saved.unlink()                                                # later cases expect the folder empty
+    finally:
+        cfg.write_text(before)
+        time.sleep(0.8)
+
+
+@case
 def lifecycle(s, env):
     """Capture -> history only; Copy -> clipboard; Save -> folder + clipboard; restore."""
     s.cli("close-all"); time.sleep(0.3)
