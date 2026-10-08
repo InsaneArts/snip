@@ -92,7 +92,7 @@ Built: `snipd` (Rust core + Qt Quick UI in one process), `snip` CLI, `hypr/snip.
 | OMA-01, 02, 06 | ✅ | Live theme (inotify + `configreloaded`), Lua module, `snip open/edit FILE`. |
 | Design gallery | ✅ | `snipd --gallery`; renders in [docs/design/m1-gallery](design/m1-gallery/). |
 | Snip UI never in captures | ✅ | Cards drawn transparent until the frame is presented (~0.4 ms), then the capture runs (decision D18). |
-| QR (OCR-03) | ✅ | Capture Text and Extract Text read QR codes first (pure-Rust `rqrr`); values are copied as sensitive. "Open link?" prompt and barcodes still to add. |
+| QR and barcodes (OCR-03, 05) | ✅ | Capture Text and Extract Text read QR codes first (pure-Rust `rqrr`), then Data Matrix, Aztec and PDF417 (`rxing`); 1D barcodes with `ocr.barcodes`. Values are copied as sensitive. A link in a code or the text asks "Open link?" (Open, Always, Never). |
 | Self-timer (CAP-06) | ✅ | `snip area/fullscreen --delay N`; shortcuts `snip:timer-area`, `snip:timer-fullscreen` (`capture.timer_seconds`). Area: select, count down, capture live. The countdown is never in the capture; the hotkey cancels it. |
 | Cursor on/off (CAP-11) | ✅ / ⏳ | `capture.show_cursor` and `--cursor` / `--no-cursor`; Hyprland paints it per request (checked in its 0.56.2 source). Live check pending on the test output. |
 | Searchable history (HIS-05) | ✅ index / ⏭ UI in M3 | Every capture is read in the background (OCR + QR, `nice 19`, ~120 ms each) into SQLite FTS5; `snip search TEXT` with prefix matching, Georgian included. |
@@ -170,7 +170,10 @@ What the 2026-10-08 audit of the spec found unbuilt, in batches:
   - `snip fullscreen --all` and "Capture all monitors", composited at the largest scale (CAP-04).
   - `snip area --x --y --w --h --action` (API-01).
   - `snip text --file / --clipboard` (OCR-06).
-- **Text recognition:** a line-break setting (OCR-02); "Open link?" with Always/Never, and barcodes besides QR (OCR-03); link detection (OCR-05).
+- **Text recognition:** ✅
+  - Keep line breaks, a setting, plus the actions Capture text with line breaks / as one line (OCR-02).
+  - Barcodes besides QR: Data Matrix, Aztec and PDF417 always, 1D opt-in (OCR-03).
+  - A link in a code or the text asks "Open link?": Open, Always, Never (OCR-03, OCR-05).
 - **Polish:** Alt+Save asks where (QAO-03); Scale to 1×, Resize… and Print… on cards (QAO-09); Print in the editor (ANN-15); resizing a pin from its corners (PIN-04); History filters (HIS-01); UTC and `@2x` in file names (SET-04); the logical-px readout on hover (SEL-03).
 - **Desktop:** Hide desktop clutter, opt-in (CAP-12); a notification when the QAO is off (OMA-05).
 - **Background tool:** Snip's own wallpapers (BG-06 as changed in D41). It waits for the product owner's wallpaper pack.
