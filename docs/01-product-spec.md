@@ -167,7 +167,7 @@ What follows from this:
 |---|---|---|---|
 | SEL-01 | Per-monitor frozen overlay that appears instantly | P0 | p95 under 35 ms from hotkey to first presented frame when warm; under 300 ms cold. No fade animation (a layer rule ships with the app). |
 | SEL-02 | Dim outside, clear inside, 1-physical-pixel accent border | P0 | Uses the theme accent colour. |
-| SEL-03 | Dimensions pill (W × H in **physical** px; logical px on hover or in settings) | P0 | Shows ratio when a ratio is locked. |
+| SEL-03 | Dimensions pill (W × H in **physical** px; logical px on hover or in settings) | P0 | Shows ratio when a ratio is locked. Built as the setting `capture.logical_size` (Settings › Screenshots): the pill shows only while dragging, so there's nothing to hover. |
 | SEL-04 | Crosshair mode: Off / Always / While Ctrl is held | P0 | Coordinate readout next to the cursor. |
 | SEL-05 | Magnifier loupe with pixel grid and hex colour of the centre pixel | P0 | Needs crosshair (CleanShot rule). Pressing **C** copies the hex value (our addition, which covers part of hyprpicker's job). |
 | SEL-06 | Window hover highlight (while Space is held, or in `snip window`) | P0 | Smallest rectangle wins. Tab and Shift+Tab, and arrow keys, pick windows explicitly in any mode; Enter captures the picked window (or the monitor when none is picked). |

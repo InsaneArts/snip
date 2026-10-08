@@ -82,7 +82,7 @@ Built: `snipd` (Rust core + Qt Quick UI in one process), `snip` CLI, `hypr/snip.
 | Daemon, unit, shortcuts, CLI (API-01, API-03) | ✅ | `snip area/fullscreen/window/previous/text/all-in-one/open/copy/save/list/restore/close-all/status/reload/quit`; exit codes 0/1/2/3. The full CleanShot URL-API surface (`--x --y --w --h --action`) is still to add. |
 | CAP-01, 03, 04, 05, 09, 10 | ✅ | Click = window or monitor (smallest wins); Space = clean toplevel capture with Hyprland corners and shadow; OCR copies text. |
 | CAP-02 variants | ⚠️ | Available through After Capture rules; separate "& Copy / & Save" bindable actions still to add. CAP-04 "all monitors" variant missing. |
-| SEL-01…07, 09…11 | ✅ | p95 17.6 ms hotkey → every overlay presented (warm); first overlay after start ≈ 225 ms (budget 300). Exact crops at scales 1/1.25/1.5/2 and on a rotated output. Logical-px readout on hover not done. |
+| SEL-01…07, 09…11 | ✅ | p95 17.6 ms hotkey → every overlay presented (warm); first overlay after start ≈ 225 ms (budget 300). Exact crops at scales 1/1.25/1.5/2 and on a rotated output. The size in logical px is a setting. |
 | QAO-01…07, 10 | ✅ | Hover keys (Ctrl+C/S/W/E, Space) verified with real key events; focus returns to the app. Copy closes the card (Alt keeps it). |
 | QAO-08 gestures | ⚠️ | Touchpad swipes implemented, untested (no touchpad on the dev machine). |
 | QAO-09 menu | ✅ | Copy, Save/Show in Files, Save As… (the desktop's save dialog via xdg-desktop-portal; Ctrl+Shift+S, also in the editor), Annotate, Pin, Open With…, Extract Text, Rotate Left, Flip Horizontal, Scale to 1×, Resize…, Preview, Print… (the Print portal), Trash, Close, Close All, Save All, Hide. |
@@ -180,7 +180,7 @@ What the 2026-10-08 audit of the spec found unbuilt, in batches:
   - ✅ Scale to 1×, Resize… and Print… on cards (QAO-09); Print in the editor (ANN-15).
   - ✅ Resizing a pin from its corners (PIN-04).
   - ✅ History filters (HIS-01): All, Screenshots, Projects.
-  - The logical-px readout on hover (SEL-03).
+  - ✅ The size in logical px, as a setting (SEL-03).
 - **Desktop:** Hide desktop clutter, opt-in (CAP-12); a notification when the QAO is off (OMA-05).
 - **Background tool:** Snip's own wallpapers (BG-06 as changed in D41). It waits for the product owner's wallpaper pack.
 - **To check on real hardware** (the product owner): the touchpad swipe on cards (QAO-08), the pointer in captures (CAP-11), the Georgian layout in the text tool (ANN-05).
