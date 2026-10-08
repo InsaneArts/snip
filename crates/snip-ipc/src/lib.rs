@@ -88,6 +88,8 @@ pub enum Request {
     },
     /// Re-open the most recently closed Quick Access card
     RestoreLast,
+    /// A capture back in Quick Access (OMA-05: a notification's click)
+    RestoreCard { id: String },
     CloseAll,
     Status,
     Reload,

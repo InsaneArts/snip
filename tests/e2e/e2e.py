@@ -583,6 +583,33 @@ def capture_variants(s, env):
 
 
 @case
+def capture_notification(s, env):
+    """OMA-05: with no card (& Copy, & Save) a notification says what happened, with the
+    image; its click runs `snip restore ID`, which brings the card back. (Tests trace the
+    notification instead of sending it.)"""
+    s.cli("close-all"); time.sleep(0.3)
+
+    def capture(action):
+        n = len(s.traces("notified"))
+        rec = s.json("area", "--x", "100", "--y", "80", "--w", "200", "--h", "120", "--monitor", OUT, "--action", action)["result"]
+        assert wait_for(lambda: len(s.traces("notified")) > n, 3), (action, "a notification")
+        return rec, s.traces("notified")[-1]
+
+    rec, note = capture("copy")
+    assert (note["id"], note["title"], note["body"]) == (rec["id"], "Screenshot copied", f"{rec['width']} × {rec['height']}"), note
+    assert rec["id"] not in s.status()["cards"], "no card"
+    s.json("restore", rec["id"])
+    assert wait_for(lambda: rec["id"] in s.status()["cards"], 3), "its click brings the card back"
+    s.cli("close-all")
+    there = set(s.export.iterdir()) if s.export.exists() else set()
+    rec, note = capture("save")
+    saved = set(s.export.iterdir()) - there
+    assert note["title"] == "Screenshot saved" and [f.name for f in saved] == [note["body"]], (note, saved)
+    for f in saved:                                                # later cases expect it as it was
+        f.unlink()
+
+
+@case
 def capture_by_command(s, env):
     """API-01, CAP-04, OCR-06: `snip area --x --y --w --h` captures that area (logical px)
     with no overlay, and it becomes the previous area; `snip fullscreen --all` puts every
