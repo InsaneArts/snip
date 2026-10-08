@@ -225,7 +225,7 @@ A normal floating window (Hyprland rule: float, centred, with optional pin / alw
 | ID | Feature | Pri |
 |---|---|---|
 | BG-01 | Sources: built-in gradients (we design our own set of 20, not CleanShot's), current Omarchy wallpaper, custom images, blurred wallpaper or screenshot, plain colour, transparent | P0 |
-| BG-06 | **Snip's wallpapers** (D41, replacing "Omarchy theme backgrounds"). The Background tool offers Snip's own wallpaper pack (made for Snip, shipped with it), the **current wallpaper** (copied into the capture when used, so an edit never depends on a theme file), and the user's own. It doesn't list installed Omarchy themes. | P0 |
+| BG-06 | **Snip's wallpapers** (D41, replacing "Omarchy theme backgrounds"; the pack is deferred, D42). The Background tool offers Snip's own wallpaper pack (made for Snip, shipped with it), the **current wallpaper** (copied into the capture when used, so an edit never depends on a theme file), and the user's own. It doesn't list installed Omarchy themes. | P0 |
 | BG-02 | Padding, inset (with colour), auto-balance, shadow, corner radius, aspect ratio (Auto, 1:1, 4:3, 3:2, 16:9, 5:4, 9:16, portrait), 9-point alignment | P0 |
 | BG-03 | Named presets; "apply automatically to every screenshot"; Shift held when the selection ends (or a window is clicked) skips the preset (D32) | P0 |
 | BG-04 | Window shots made with "With wallpaper" stay editable (background can be swapped or removed later) | P0 |
