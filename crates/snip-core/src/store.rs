@@ -252,6 +252,11 @@ impl Store {
 
     /// Replace a capture's image (rotate, flip; later the editor). The saved
     /// file, if any, is rewritten too, in its own format.
+    /// The capture was resized: physical px per logical px of what it shows.
+    pub fn set_scale(&self, id: &str, scale: f64) -> Result<(), StoreError> {
+        Ok(self.history.lock().unwrap().set_scale(id, scale)?)
+    }
+
     pub fn replace_image(&self, id: &str, png: Vec<u8>, width: u32, height: u32, cfg: &Config) -> Result<Record, StoreError> {
         let rec = self.get(id)?;
         atomic_write(&rec.source, &png)?;

@@ -138,6 +138,7 @@ pub fn card_json(rec: &Record, output: &str) -> Value {
         "width": rec.width,
         "height": rec.height,
         "kind": rec.kind,
+        "scale": rec.scale,
         "saved": rec.saved,
         "created": rec.created_at,
         "output": output,
@@ -1445,16 +1446,27 @@ impl Inner {
         });
     }
 
-    /// QAO-09 Rotate Left / Flip Horizontal: rewrite the capture (and its
-    /// saved file), then refresh its card.
+    /// QAO-09 Rotate Left, Flip Horizontal, Scale to 1×, Resize ("resize W H"):
+    /// rewrite the capture (and its saved file), then refresh its card.
     pub fn transform(self: &Arc<Self>, id: &str, op: &str) {
         let (me, id, op) = (self.clone(), id.to_string(), op.to_string());
         std::thread::spawn(move || {
+            let Ok(rec) = me.store.get(&id) else { return };
             let Some((data, w, h, alpha)) = me.store.bytes(&id).ok().and_then(|b| encode::decode_png(&b).ok()) else { return };
             let bpp = if alpha { 4 } else { 3 };
-            let (data, w, h) = match op.as_str() {
-                "rotate-left" => encode::rotate_left(&data, w, h, bpp),
-                "flip-horizontal" => (encode::flip_horizontal(&data, w, h, bpp), w, h),
+            let size: Option<(u32, u32)> = match op.split_whitespace().collect::<Vec<_>>()[..] {
+                ["scale-1x"] if rec.scale > 1.0 => Some(((w as f64 / rec.scale).round() as u32, (h as f64 / rec.scale).round() as u32)),
+                ["resize", nw, nh] => nw.parse().ok().zip(nh.parse().ok()).filter(|&(nw, nh): &(u32, u32)| nw > 0 && nh > 0 && nw <= 20000 && nh <= 20000),
+                _ => None,
+            };
+            let (data, w, h) = match (op.as_str(), size) {
+                ("rotate-left", _) => encode::rotate_left(&data, w, h, bpp),
+                ("flip-horizontal", _) => (encode::flip_horizontal(&data, w, h, bpp), w, h),
+                (_, Some((nw, nh))) => {
+                    // what it shows stays the same size: its scale follows the pixels
+                    let _ = me.store.set_scale(&id, rec.scale * nw as f64 / w as f64);
+                    (encode::resize(&data, w, h, bpp, nw, nh), nw, nh)
+                }
                 _ => return,
             };
             let png = encode::encode_png(&data, w, h, alpha);

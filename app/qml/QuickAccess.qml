@@ -93,6 +93,18 @@ Window {
         Qt.callLater(updateMask)
     }
 
+    // tests: where a named item is, in output px (the layer starts at the output's corner)
+    function where(name) {
+        const find = (item) => {
+            if (item.objectName === name && item.visible) return item
+            for (const ch of item.children) { const f = ch.visible ? find(ch) : null; if (f) return f }
+            return null
+        }
+        const it = find(contentItem)
+        const p = it ? it.mapToItem(contentItem, it.width / 2, it.height / 2) : null
+        Engine.log("qa_where", JSON.stringify({ name: name, x: p ? p.x + (qa.right ? Screen.width - qa.width : 0) : -1, y: p ? p.y : -1 }).slice(1, -1))
+    }
+
     // Engine.cardStatus: show a result on that card
     function cardStatus(id, status, detail) {
         const card = cardById(id)
@@ -202,13 +214,14 @@ Window {
         case "pin": Engine.pin(id); dismiss(card, outward); break
         case "open-with": { const path = Engine.dragFile(id); Engine.log("open_with", JSON.stringify({ id: id, path: path }).slice(1, -1)); if (path) Platform.openWith(path); break }
         case "text": card.flash("text", 0); Engine.extractText(id); break   // the result arrives as cardStatus
-        case "rotate-left": case "flip-horizontal": Engine.transformCapture(id, action); break
+        case "rotate-left": case "flip-horizontal": case "scale-1x": Engine.transformCapture(id, action); break
         case "preview": c.preview.open(card.data_); break
         case "trash": Engine.trash(id); remove(id, false); break
         case "close": dismiss(card, outward); break
         case "close-all": closeAll(); break
         case "save-all": saveAll(); break
         case "hide": command("hide"); break
+        default: if (action.startsWith("resize ")) Engine.transformCapture(id, action)
         }
     }
 
@@ -285,7 +298,10 @@ Window {
         Platform.setInputRects(qa, r)
     }
     onHeightChanged: Qt.callLater(updateMask)
-    onMenuCardChanged: Qt.callLater(updateMask)
+    onMenuCardChanged: {
+        Qt.callLater(updateMask)
+        if (!menuCard) cardKeys.forceActiveFocus()       // the Resize form's fields may have had it
+    }
     onFirstVisibleChanged: Qt.callLater(updateMask)
     onHiddenChanged: Qt.callLater(updateMask)
     onVisibleChanged: {
@@ -331,6 +347,7 @@ Window {
             model: cards
             delegate: Card {
                 id: cardItem
+                objectName: "card:" + cardId
                 required property int index
                 required property string cardId
                 required property string json
@@ -522,6 +539,7 @@ Window {
         return null
     }
     Item {
+        id: cardKeys
         focus: true
         Keys.onPressed: (e) => {
             const card = qa.menuCard || qa.hoveredCard
