@@ -954,6 +954,58 @@ def pin_corner_resize(s, env):
 
 
 @case
+def hide_desktop_clutter(s, env):
+    """CAP-12: with Hide desktop clutter, a screenshot shows the wallpaper where a bar
+    reserves space (scaled to cover the output, as omarchy-shell draws it) and leaves
+    pins out. The bar here is space the monitor reserves; the wallpaper is the user's."""
+    from PIL import Image, ImageChops, ImageStat
+    wall = Path.home() / ".local/state/omarchy/current/background"
+    if not wall.exists():
+        raise Skip("no Omarchy wallpaper to cover with")
+    cfg = s.tmp / "cfg/snip/config.toml"
+    before = cfg.read_text()
+    mon = env.monitor()
+    sc = mon["scale"]
+    hypr_eval(f'hl.monitor({{ output = "{OUT}", mode = "1920x1080@60", position = "auto", scale = {sc}, transform = 0, reserved = {{ top = 40 }} }})')
+    png = s.tmp / "magenta.png"
+    Image.new("RGB", (300, 200), (255, 0, 255)).save(png)
+    rec = s.json("open", str(png))["result"]
+    s.cli("close-all")
+    s.json("pin", rec["id"])
+    try:
+        assert wait_for(lambda: env.monitor()["reserved"][1] == 40, 3), env.monitor()["reserved"]
+        assert wait_for(lambda: pin_windows(), 3), "a pin"
+        time.sleep(0.5)
+        w = pin_windows()[0]
+        centre = (round((w["at"][0] - mon["x"] + w["size"][0] / 2) * sc), round((w["at"][1] - mon["y"] + w["size"][1] / 2) * sc))
+
+        def shot():
+            r = s.json("fullscreen", "--monitor", OUT)["result"]
+            s.cli("close-all")
+            return Image.open(r["source"]).convert("RGB")
+
+        assert shot().getpixel(centre) == (255, 0, 255), "a plain screenshot has the pin"
+        cfg.write_text(before.replace("[capture]\n", "[capture]\nhide_desktop = true\n", 1) if "[capture]\n" in before
+                       else before + "\n[capture]\nhide_desktop = true\n")
+        time.sleep(0.8)
+        hidden = shot()
+        assert hidden.getpixel(centre) != (255, 0, 255), "no pin"
+        W, H = hidden.size
+        band = round(40 * sc)
+        im = Image.open(wall).convert("RGB")
+        k = max(W / im.width, H / im.height)
+        cover = im.resize((round(im.width * k), round(im.height * k)), Image.LANCZOS)
+        ox, oy = (cover.width - W) // 2, (cover.height - H) // 2
+        diff = ImageStat.Stat(ImageChops.difference(hidden.crop((0, 0, W, band)), cover.crop((ox, oy, ox + W, oy + band)))).mean
+        assert max(diff) < 8, ("the bar's band is the wallpaper", diff)
+        assert wait_for(lambda: not pin_state(s)["capturing"], 2), "the pin is back after the capture"
+    finally:
+        cfg.write_text(before)
+        s.debug("ui", "close-pins")
+        env.configure(sc)
+
+
+@case
 def cursor_toggle(s, env):
     """--cursor paints the pointer into a capture, --no-cursor leaves it out (CAP-11).
     Hyprland draws no pointer on headless outputs (grim -c shows none either), so this

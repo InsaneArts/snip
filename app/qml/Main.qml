@@ -55,7 +55,7 @@ QtObject {
         overlayShown = false
         stickyWindow = false
         spaceHeld = false
-        quickAccess.capturing = false
+        captureFinished()
         unmapOverlay.restart()
     }
     property Timer unmapOverlay: Timer { interval: 60; onTriggered: root.overlayOpen = false }
@@ -140,8 +140,16 @@ QtObject {
         function onCancelRequested() { root.closeOverlay() }
         function onCountdown(output, x, y, w, h, seconds) { root.countdown.start(output, x, y, w, h, seconds) }
         function onCountdownCancel() { root.countdown.stop() }
-        function onPrepareCapture(req) { root.quickAccess.prepareCapture(req) }
-        function onCaptureDone() { if (!root.overlayOpen) root.quickAccess.capturing = false }
+        // Captures leave Snip's cards out, and with Hide desktop clutter (CAP-12)
+        // its pins too: the capture runs once each has drawn itself transparent.
+        function onPrepareCapture(req) {
+            const pins = root.hideDesktop ? root.pins.filter(p => p.shown) : []
+            let waiting = 1 + pins.length
+            const ready = () => { if (--waiting === 0) Engine.captureReady(req) }
+            root.quickAccess.prepareCapture(ready)
+            for (const p of pins) p.hideForCapture(ready)
+        }
+        function onCaptureDone() { if (!root.overlayOpen) root.captureFinished() }
         function onCardAdd(card) { root.quickAccess.add(JSON.parse(card)) }
         function onCardUpdate(id, card) { root.quickAccess.update(id, JSON.parse(card)) }
         function onCardsCommand(cmd) { root.quickAccess.command(cmd) }
@@ -161,7 +169,7 @@ QtObject {
         // scrolling capture (SCR-01): Quick Access stays out of the way meanwhile
         function onScrollOpen(json) { root.quickAccess.capturing = true; root.scrollHud.open(JSON.parse(json)) }
         function onScrollStatus(json) { root.scrollHud.status(JSON.parse(json)) }
-        function onScrollClose() { root.scrollHud.close(); root.quickAccess.capturing = false }
+        function onScrollClose() { root.scrollHud.close(); root.captureFinished() }
         function onBackgroundAuto(json) {
             const r = root.renderComponent.createObject(null, { capture: JSON.parse(json), token: root.nextToken() })
             r.done.connect(() => r.destroy())
@@ -280,6 +288,11 @@ QtObject {
     }
     // Pins (PIN-01): one window each, created directly like editors
     property var pins: []
+    readonly property bool hideDesktop: !!settings.capture && settings.capture.hide_desktop === true
+    function captureFinished() {
+        quickAccess.capturing = false
+        for (const p of pins) p.capturing = false
+    }
     property Component pinComponent: Component { Pin {} }
     property Component renderComponent: Component { BackgroundRender {} }
     function openPin(capture) {
