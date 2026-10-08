@@ -11,7 +11,7 @@ import "editor.js" as Ed
 // as the same scene rendered offscreen at native size (Platform.grabExact).
 Window {
     id: ed
-    property var capture: ({})          // editor_open: {id, image, width, height, doc, title, output, scale}
+    property var capture: ({})          // editor_open: {id, image, source, width, height, doc, title, output, scale}
     property var controller: null
     signal finished()
 
@@ -460,6 +460,10 @@ Window {
         }
         const what = ran || action
         if (what === "share") { openWith(); return }
+        if (what === "print") {          // ANN-15: the edited image, as written back to the capture
+            Engine.log("print", JSON.stringify({ id: captureId, pdf: Platform.printImage(capture.source, capture.title || "Snip") }).slice(1, -1))
+            return
+        }
         if (what === "copy" && !ran) Engine.copy(captureId)
         if (what === "save" && !ran) Engine.save(captureId)
         if (what === "copy" || what === "save") {
@@ -1528,6 +1532,7 @@ Window {
         Row {
             anchors { right: parent.right; rightMargin: 12; verticalCenter: parent.verticalCenter }
             spacing: 8
+            IconButton { icon: "printer"; tip: "Print…"; tipAbove: true; width: 32; height: 32; radius: 16; onClicked: ed.flush("print") }
             IconButton { icon: "share"; tip: "Open With…"; tipAbove: true; width: 32; height: 32; radius: 16; onClicked: ed.flush("share") }
             IconButton { icon: "pin"; tip: "Pin to Screen (Ctrl+P)"; tipAbove: true; width: 32; height: 32; radius: 16; onClicked: ed.flush("pin") }
             IconButton { icon: "copy"; tip: "Copy (Ctrl+C)"; tipAbove: true; width: 32; height: 32; radius: 16; onClicked: ed.flush("copy") }
@@ -2149,6 +2154,7 @@ Window {
         case "bg-auto": toggleAutoPreset(a.slice(1).join(" ")); break
         case "take-screenshot": takeScreenshot(); break
         case "share": flush("share"); break
+        case "print": flush("print"); break
         case "drop": { const v = toView(n(2), n(3)); dropFiles([a[1]], v.x, v.y); break }   // at image px
         case "add-wallpaper": bgPanel.addWallpaper(a.slice(1).join(" ")); break
         case "remove-wallpaper": bgPanel.removeWallpaper(a.slice(1).join(" ")); break

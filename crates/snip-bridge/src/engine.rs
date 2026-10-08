@@ -1378,7 +1378,7 @@ impl Inner {
         // QScreen rounds fractional scales up; the window's first size needs the real one
         let scale = snip_hypr::monitors().into_iter().find(|m| Some(&m.name) == output.as_ref()).map(|m| m.scale).unwrap_or(1.0);
         let j = json!({
-            "id": id, "image": image, "width": width, "height": height,
+            "id": id, "image": image, "source": rec.source, "width": width, "height": height,
             "doc": doc.and_then(|d| serde_json::from_str::<Value>(&d).ok()),
             "title": rec.title, "output": output, "scale": scale,
         })

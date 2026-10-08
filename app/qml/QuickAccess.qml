@@ -215,6 +215,7 @@ Window {
         case "open-with": { const path = Engine.dragFile(id); Engine.log("open_with", JSON.stringify({ id: id, path: path }).slice(1, -1)); if (path) Platform.openWith(path); break }
         case "text": card.flash("text", 0); Engine.extractText(id); break   // the result arrives as cardStatus
         case "rotate-left": case "flip-horizontal": case "scale-1x": Engine.transformCapture(id, action); break
+        case "print": Engine.log("print", JSON.stringify({ id: id, pdf: Platform.printImage(card.data_.path, "Snip") }).slice(1, -1)); break
         case "preview": c.preview.open(card.data_); break
         case "trash": Engine.trash(id); remove(id, false); break
         case "close": dismiss(card, outward); break
