@@ -14,6 +14,7 @@ png.workspace = true
 jpeg-encoder.workspace = true
 image-webp.workspace = true
 rqrr.workspace = true
+zune-jpeg.workspace = true
 rxing.workspace = true
 rustix.workspace = true
 chrono.workspace = true
