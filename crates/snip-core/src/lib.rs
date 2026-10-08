@@ -15,6 +15,7 @@ pub mod qr;
 pub mod redact;
 pub mod stitch;
 pub mod store;
+pub mod text;
 pub mod theme;
 pub mod trace;
 pub mod window;
