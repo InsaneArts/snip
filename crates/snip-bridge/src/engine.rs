@@ -1688,6 +1688,10 @@ impl Inner {
                 self.open_history();
                 Response::ok(Value::Null)
             }
+            Ctl::Welcome => {
+                self.ui(|e| e.welcome_open());
+                Response::ok(Value::Null)
+            }
             Ctl::Settings { tab } => {
                 self.ui(move |e| e.settings_open(&QString::from(tab.unwrap_or_default().as_str())));
                 Response::ok(Value::Null)

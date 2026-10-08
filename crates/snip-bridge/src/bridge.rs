@@ -223,6 +223,19 @@ pub mod qobject {
         fn tray_anchor(self: &Engine) -> QString;
         #[qinvokable]
         fn run_action(self: &Engine, id: QString);
+        /// First-run setup (OMA-02): whether it's still to be seen; its state
+        /// ({keysInConfig, module, autostart}); Use these keys; start at
+        /// login; seen. The setters answer "" when done, else why not.
+        #[qinvokable]
+        fn welcome_wanted(self: &Engine) -> bool;
+        #[qinvokable]
+        fn welcome_state(self: &Engine) -> QString;
+        #[qinvokable]
+        fn use_keys(self: &Engine) -> QString;
+        #[qinvokable]
+        fn set_autostart(self: &Engine, on: bool) -> QString;
+        #[qinvokable]
+        fn welcome_done(self: &Engine);
         /// The bar menu's Open… and Pin to the Screen…: a chosen image, in
         /// the editor or pinned (as `snip edit FILE`, `snip pin FILE`)
         #[qinvokable]
@@ -360,6 +373,9 @@ pub mod qobject {
         /// Show the settings window (SET-02) on a tab ("" keeps the last)
         #[qsignal]
         fn settings_open(self: Pin<&mut Engine>, tab: &QString);
+        /// Show the first-run Welcome (OMA-02)
+        #[qsignal]
+        fn welcome_open(self: Pin<&mut Engine>);
 
         /// Scrolling capture (SCR-01): the area is chosen ({output, x, y, w, h}
         /// logical), how it's going ({phase, height, step, preview}), it ended
@@ -841,6 +857,27 @@ impl qobject::Engine {
                 i.toast(e);
             }
         }
+    }
+
+    fn welcome_wanted(&self) -> bool {
+        !crate::welcome::marker().exists()
+    }
+
+    fn welcome_state(&self) -> QString {
+        QString::from(crate::welcome::state().to_string().as_str())
+    }
+
+    fn use_keys(&self) -> QString {
+        QString::from(crate::welcome::use_keys().err().unwrap_or_default().as_str())
+    }
+
+    fn set_autostart(&self, on: bool) -> QString {
+        QString::from(crate::welcome::set_autostart(on).err().unwrap_or_default().as_str())
+    }
+
+    fn welcome_done(&self) {
+        let m = crate::welcome::marker();
+        let _ = std::fs::create_dir_all(m.parent().unwrap_or(&m)).and_then(|_| std::fs::write(&m, ""));
     }
 
     fn run_action(&self, id: QString) {
