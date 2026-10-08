@@ -274,6 +274,11 @@ impl Store {
         self.get(id)
     }
 
+    /// HIS-01: a project is a capture with objects still editable.
+    pub fn is_project(&self, rec: &Record) -> bool {
+        rec.source.parent().is_some_and(|d| d.join(EDIT).exists())
+    }
+
     /// What the editor opens (ANN-16): the image to draw on (the original
     /// when the capture was edited before) and its objects, if any.
     pub fn edit_state(&self, id: &str) -> Result<(PathBuf, Option<String>), StoreError> {

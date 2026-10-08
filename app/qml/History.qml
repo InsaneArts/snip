@@ -15,7 +15,9 @@ Window {
     id: hist
     property var controller: null
     property string output: ""
-    property var items: []
+    property var all: []                     // the most recent captures (or what the search found)
+    property var items: []                   // ...those the filter shows
+    property string filter: "all"            // HIS-01: all | screenshots | projects (objects still editable)
     property int current: 0
     property string query: ""
     property var restored: ({})              // ids restored this time, marked on their thumbnails
@@ -34,6 +36,7 @@ Window {
     function open(out) {
         output = out
         query = ""
+        filter = "all"
         restored = {}
         asking = ""
         current = -1
@@ -46,11 +49,13 @@ Window {
         visible = false
     }
     function reload() {
-        items = JSON.parse(Engine.history(query, 200))
+        all = JSON.parse(Engine.history(query, 200))
+        items = all.filter(i => filter === "all" || (filter === "projects") === !!i.project)
         current = current < 0 ? -1 : Math.min(current, items.length - 1)
         list.positionViewAtIndex(current, ListView.Contain)
     }
     onQueryChanged: if (visible) { current = query === "" ? -1 : 0; searchTimer.restart() }
+    onFilterChanged: if (visible) { current = -1; reload() }
     Timer { id: searchTimer; interval: 120; onTriggered: hist.reload() }
 
     readonly property var item: current >= 0 && current < items.length ? items[current] : null
@@ -81,7 +86,7 @@ Window {
     function confirm() {
         if (dontAsk) Engine.setEditorPrefs(JSON.stringify(Object.assign(JSON.parse(Engine.editorPrefs() || "{}"), { historyAskDelete: false })))
         if (asking === "all") {
-            for (const it of items) controller.quickAccess.remove(it.id, false)
+            for (const it of all) controller.quickAccess.remove(it.id, false)
             const n = Engine.clearHistory()
             controller.toast.show("Cleared " + n + (n === 1 ? " capture" : " captures"), output)
             reload()
@@ -146,6 +151,34 @@ Window {
             spacing: 14
             Text { text: "Capture History"; color: Theme.text; font.family: Theme.fontUi; font.pixelSize: 15; font.weight: Font.DemiBold
                    anchors.verticalCenter: parent.verticalCenter }
+            // HIS-01 (Videos and GIFs come with recording)
+            Row {
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 2
+                Repeater {
+                    model: [["all", "All"], ["screenshots", "Screenshots"], ["projects", "Projects"]]
+                    Rectangle {
+                        required property var modelData
+                        readonly property bool on: hist.filter === modelData[0]
+                        objectName: "filter-" + modelData[0]
+                        width: filterLabel.implicitWidth + 20
+                        height: 26
+                        radius: 13
+                        color: on ? Theme.accent : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, filterHover.hovered ? 0.12 : 0.06)
+                        Text {
+                            id: filterLabel
+                            anchors.centerIn: parent
+                            text: parent.modelData[1]
+                            color: parent.on ? Theme.onAccent : Theme.text
+                            font.family: Theme.fontUi
+                            font.pixelSize: 12
+                            font.weight: parent.on ? Font.DemiBold : Font.Normal
+                        }
+                        HoverHandler { id: filterHover; cursorShape: Qt.PointingHandCursor }
+                        TapHandler { onTapped: hist.filter = parent.modelData[0] }
+                    }
+                }
+            }
             Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 width: Math.max(180, searchText.implicitWidth + 44); height: 28; radius: 14
@@ -162,7 +195,7 @@ Window {
             }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                text: hist.items.length === 0 ? (hist.query !== "" ? "Nothing matches" : "No captures yet")
+                text: hist.items.length === 0 ? (hist.query !== "" || hist.filter !== "all" ? "Nothing matches" : "No captures yet")
                       : hist.items.length + (hist.items.length === 1 ? " capture" : " captures")
                 color: Theme.textSecondary; font.family: Theme.fontUi; font.pixelSize: 12
             }
@@ -174,7 +207,7 @@ Window {
             Text { anchors.verticalCenter: parent.verticalCenter
                    text: "←→ Move   ⏎ Restore   Space Preview   ⌫ Delete   Esc Close"
                    color: Theme.textSecondary; font.family: Theme.fontUi; font.pixelSize: 11 }
-            ToolButton { label: "Clear History…"; enabled: hist.items.length > 0
+            ToolButton { label: "Clear History…"; enabled: hist.all.length > 0
                          onClicked: { hist.asking = "all"; hist.dontAsk = false } }
         }
         // the question before deleting
@@ -183,7 +216,7 @@ Window {
             anchors { right: parent.right; rightMargin: 24; verticalCenter: header.verticalCenter }
             spacing: 12
             Text { anchors.verticalCenter: parent.verticalCenter
-                   text: hist.asking === "all" ? "Delete all " + hist.items.length + " captures from history?"
+                   text: hist.asking === "all" ? "Delete all " + hist.all.length + " captures from history?"
                                                : "Delete this capture from history?"
                    color: Theme.text; font.family: Theme.fontUi; font.pixelSize: 13; font.weight: Font.DemiBold }
             Text { anchors.verticalCenter: parent.verticalCenter
@@ -397,7 +430,7 @@ Window {
             break
         }
         case "state":
-            Engine.log("history_state", JSON.stringify({ open: visible, items: items.map(i => i.id), current: current, query: query,
+            Engine.log("history_state", JSON.stringify({ open: visible, items: items.map(i => i.id), current: current, query: query, filter: filter,
                                                         restored: Object.keys(restored), asking: asking, menu: menu.visible }).slice(1, -1))
             break
         }
