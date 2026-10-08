@@ -132,7 +132,7 @@ class Snip:
 
     def start(self):
         self.proc = subprocess.Popen(
-            [str(self.build / "snipd")], env=self.env, stdout=subprocess.DEVNULL, stderr=open(self.log, "w")
+            [str(self.build / "snipd")], env=self.env, stdout=subprocess.DEVNULL, stderr=open(self.log, "a")
         )
         for _ in range(50):
             if self.cli("ping", check=False).returncode == 0:
