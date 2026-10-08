@@ -165,7 +165,11 @@ Built: `snipd` (Rust core + Qt Quick UI in one process), `snip` CLI, `hypr/snip.
 
 What the 2026-10-08 audit of the spec found unbuilt, in batches:
 
-- **Capture variants and the CLI:** Capture Area & Copy / & Save / & Annotate as bindable actions, ignoring After Capture (CAP-02); all monitors (CAP-04); CleanShot's URL-API flags `--x --y --w --h --action` (API-01); text from a file or the clipboard (OCR-06).
+- **Capture variants and the CLI:** ✅
+  - Capture Area & Copy / & Save / & Annotate as bindable actions, which skip the After Capture rules by default (CAP-02). The After Capture "Pin to the screen" rule now pins.
+  - `snip fullscreen --all` and "Capture all monitors", composited at the largest scale (CAP-04).
+  - `snip area --x --y --w --h --action` (API-01).
+  - `snip text --file / --clipboard` (OCR-06).
 - **Text recognition:** a line-break setting (OCR-02); "Open link?" with Always/Never, and barcodes besides QR (OCR-03); link detection (OCR-05).
 - **Polish:** Alt+Save asks where (QAO-03); Scale to 1×, Resize… and Print… on cards (QAO-09); Print in the editor (ANN-15); resizing a pin from its corners (PIN-04); History filters (HIS-01); UTC and `@2x` in file names (SET-04); the logical-px readout on hover (SEL-03).
 - **Desktop:** Hide desktop clutter, opt-in (CAP-12); a notification when the QAO is off (OMA-05).
