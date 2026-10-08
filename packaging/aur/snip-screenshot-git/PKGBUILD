@@ -13,8 +13,7 @@ depends=(hyprland qt6-base qt6-declarative qt6-wayland layer-shell-qt kcoreaddon
 makedepends=(cargo cmake ninja corrosion git)
 optdepends=('tesseract-data-eng: Capture Text (OCR)'
             'pipewire: capture sounds (pw-play)'
-            'glib2: Move to Trash for saved files'
-            'tensaku: Annotate until Snip'"'"'s own editor ships')
+            'glib2: Move to Trash for saved files')
 provides=(snip-screenshot)
 conflicts=(snip-screenshot)
 options=(!lto)
