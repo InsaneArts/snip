@@ -165,6 +165,19 @@ QtObject {
         function onHistoryOpen(output) { root.history.open(output) }
         function onSettingsOpen(tab) { root.openSettings(tab) }
         function onWelcomeOpen() { root.openWelcome() }
+        // CAP-12, the live toggle: the covers, and pins and cards off screen
+        function onDesktopCover(json) {
+            const d = JSON.parse(json)
+            root.desktopCover.desk = d
+            if (d.hidden && !root.quickAccess.clutterHidden) {
+                root.pinsHiddenForDesktop = root.pins.filter(p => p.shown)
+                for (const p of root.pinsHiddenForDesktop) p.hide()
+            } else if (!d.hidden && root.quickAccess.clutterHidden) {
+                for (const p of root.pinsHiddenForDesktop) if (root.pins.includes(p)) p.show()
+                root.pinsHiddenForDesktop = []
+            }
+            root.quickAccess.clutterHidden = d.hidden
+        }
         function onLinkOffer(url, output) { root.linkPrompt.offer(url, output || root.lastOutput || Qt.application.screens[0].name) }
         // scrolling capture (SCR-01): Quick Access stays out of the way meanwhile
         function onScrollOpen(json) { root.quickAccess.capturing = true; root.scrollHud.open(JSON.parse(json)) }
@@ -199,6 +212,11 @@ QtObject {
         if (a[0] === "scroll") { scrollHud.debug(a.slice(1)); return }
         if (a[0] === "tray") { trayMenu.debug(a.slice(1)); return }
         if (a[0] === "link") { linkPrompt.debug(a.slice(1)); return }
+        if (a[0] === "desktop") {
+            Engine.log("desktop_state", JSON.stringify({ hidden: quickAccess.clutterHidden, covers: desktopCover.count,
+                                                         pinsHidden: pinsHiddenForDesktop.length }).slice(1, -1))
+            return
+        }
         if (a[0] === "pin") {
             const p = pins[pins.length - 1]
             if (p) p.debug(a.slice(1))
@@ -265,6 +283,13 @@ QtObject {
     property QuickAccess quickAccess: QuickAccess { controller: root }
     property Toast toast: Toast {}
     property LinkPrompt linkPrompt: LinkPrompt {}
+    property DesktopCover desktopCover: DesktopCover {}
+    property var pinsHiddenForDesktop: []
+    // leaving with clutter hidden: notifications come back as they were
+    property Connections quitting: Connections {
+        target: Qt.application
+        function onAboutToQuit() { if (root.quickAccess.clutterHidden) Engine.desktop("show") }
+    }
     property Countdown countdown: Countdown {}
     property Preview preview: Preview {}
     property History history: History { controller: root }

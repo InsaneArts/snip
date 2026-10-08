@@ -4,8 +4,9 @@ import org.kde.layershell as LayerShell
 import Snip.Core
 
 // Snip's menu in the bar (OMA-08, D35): CleanShot's, in its order (from its
-// MainMenu.nib), less what Snip hasn't got yet (Record Screen, Hide Desktop
-// Icons, Check for Updates). A click on the bar icon opens it under the icon.
+// MainMenu.nib), less what Snip hasn't got yet (Record Screen, Check for
+// Updates); Hide Desktop Icons is Hide Desktop Clutter (CAP-12). A click on
+// the bar icon opens it under the icon.
 // A full-output layer, so a click anywhere else (the icon too) closes it, as
 // Esc does. An entry runs once the menu is off screen, so it's never in a
 // capture.
@@ -36,6 +37,7 @@ Window {
         ["scroll", "Scrolling Capture"], ["text", "Capture Text"], null,
         ["open", "Open…"], ["edit-clipboard", "Open from Clipboard"], ["pin", "Pin to the Screen…"],
         ["history", "Capture History…"], ["restore", "Restore Recently Closed"], null,
+        ["desktop-toggle", tray.controller && tray.controller.quickAccess.clutterHidden ? "Show Desktop Clutter" : "Hide Desktop Clutter"], null,
         ["settings", "Settings…"], ["about", "About Snip"], ["quit", "Quit Snip"]
     ]
     // Open… and Pin to the Screen… ask for an image first

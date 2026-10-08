@@ -57,6 +57,8 @@ pub enum Request {
     /// Every pin at once (PIN-05, 07): "toggle" hides or shows them, "close",
     /// "unlock" (a locked pin takes no input)
     Pins { action: String },
+    /// Hide desktop clutter (CAP-12): "hide", "show" or "toggle"
+    Desktop { action: String },
     /// Add an image file as a capture with a Quick Access card
     Open { path: String },
     /// Add an image file as a capture and open it in Snip's editor (ANN-19;
