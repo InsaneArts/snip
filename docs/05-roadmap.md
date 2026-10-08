@@ -182,7 +182,7 @@ What the 2026-10-08 audit of the spec found unbuilt, in batches:
   - ✅ History filters (HIS-01): All, Screenshots, Projects.
   - ✅ The size in logical px, as a setting (SEL-03).
 - **Desktop:** Hide desktop clutter, opt-in (CAP-12); a notification when the QAO is off (OMA-05).
-- **Background tool:** Snip's own wallpapers (BG-06 as changed in D41). It waits for the product owner's wallpaper pack.
+- **Background tool:** ⏭ Snip's own wallpaper pack (BG-06 as changed in D41) is deferred (D42); the tool keeps the wallpaper in use, the theme's and the user's own.
 - **To check on real hardware** (the product owner): the touchpad swipe on cards (QAO-08), the pointer in captures (CAP-11), the Georgian layout in the text tool (ANN-05).
 
 ## M3.5: Snip as a product (M; D36, planned, not built yet)
