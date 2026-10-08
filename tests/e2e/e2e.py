@@ -219,6 +219,10 @@ def png_size(path):
     return int.from_bytes(b[16:20], "big"), int.from_bytes(b[20:24], "big")
 
 
+def png_size_bytes(b):
+    return int.from_bytes(b[16:20], "big"), int.from_bytes(b[20:24], "big")
+
+
 def make_text_png(path, lines):
     """A white image with dark text: OCR fixtures."""
     from PIL import Image, ImageDraw, ImageFont
@@ -1479,6 +1483,46 @@ def history_selection_ring(s, env):
     finally:
         s.debug("ui", "history", "keys", "{Escape}")
         wait_for(lambda: not history_state(s)["open"], 2)
+
+
+@case
+def history_restore_then_copy(s, env):
+    """D39 / QAO-01: a capture restored from History and copied from its card pastes as
+    an image, as any card's Copy does."""
+    s.cli("close-all"); time.sleep(0.3)
+    rec = s.json("fullscreen", "--monitor", OUT)["result"]
+    s.cli("close-all"); time.sleep(0.4)
+    sh("wl-copy", "--clear", check=False)
+    s.cli("history")
+    assert wait_for(lambda: history_state(s)["open"], 3)
+
+    def hist_click(name):
+        n = len(s.traces("history_where"))
+        s.debug("ui", "history", "where", name)
+        assert wait_for(lambda: len(s.traces("history_where")) > n, 2)
+        b = s.traces("history_where")[-1]
+        assert b["x"] >= 0, (name, "isn't shown")
+        s.move(b["x"], b["y"]); time.sleep(0.15); s.click()
+
+    hist_click("thumb:0")
+    assert wait_for(lambda: history_state(s)["current"] == 0, 2)
+    hist_click("restore:0")
+    assert wait_for(lambda: rec["id"] in s.status()["cards"], 3), "restored to Quick Access"
+    s.debug("ui", "history", "keys", "{Escape}")
+    assert wait_for(lambda: not history_state(s)["open"], 2)
+    time.sleep(0.6)                                                # the card slides in
+    n = len(s.traces("qa_where"))
+    s.debug("ui", "qa-where", "card:" + rec["id"])
+    assert wait_for(lambda: len(s.traces("qa_where")) > n, 2)
+    c = s.traces("qa_where")[-1]
+    s.move(c["x"] + 1, c["y"]); s.move(c["x"], c["y"]); time.sleep(0.4)
+    copied = len(s.traces("copied"))
+    s.move(c["x"], c["y"] - 20); time.sleep(0.2); s.click()        # the card's Copy
+    assert wait_for(lambda: len(s.traces("copied")) > copied, 3), "Copy"
+    types = sh("wl-paste", "-l", check=False).stdout.split()
+    assert types == ["image/png"], ("the image is on the clipboard", types)
+    data = subprocess.run(["wl-paste", "-t", "image/png"], capture_output=True, timeout=5).stdout
+    assert data[:8] == b"\x89PNG\r\n\x1a\n" and png_size_bytes(data) == (rec["width"], rec["height"]), (len(data), data[:16])
 
 
 @case
