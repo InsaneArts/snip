@@ -107,6 +107,7 @@ Window {
     // Save As (QAO-09): the desktop's save dialog; the card says Saved once written.
     property var saveAsIds: ({})
     function saveAs(card) {
+        Engine.log("save_as_dialog", JSON.stringify({ id: card.cardId }).slice(1, -1))
         const sug = JSON.parse(Engine.saveAsSuggestion(card.cardId) || "{}")
         const token = c.nextToken()
         saveAsIds[token] = card.cardId
@@ -175,7 +176,7 @@ Window {
         const result = Platform.startDrag(card, path, card.data_.thumb || "")
         card.dragging = false
         dragging = false
-        if (result === "copy" && st.closeAfterDrag !== false && !c.altHeld) dismiss(card, outward)
+        if (result === "copy" && st.closeAfterDrag !== false && !Platform.altHeld()) dismiss(card, outward)
     }
 
     // Card actions (buttons, menu, keys).
@@ -187,11 +188,14 @@ Window {
         case "copy":
             if (Engine.copy(id)) {
                 // CleanShot: Copy closes the card (Alt+Copy keeps it).
-                if (c.altHeld) card.flash("copied", 900)
+                if (Platform.altHeld()) card.flash("copied", 900)
                 else { card.flash("copied", 0); card.leaveAfter(420) }
             }
             break
-        case "save": Engine.save(id); card.flash("saved", 900); break
+        case "save":
+            if (Platform.altHeld()) saveAs(card)            // QAO-03: Alt+Save asks where
+            else { Engine.save(id); card.flash("saved", 900) }
+            break
         case "save-as": saveAs(card); break
         case "show": Engine.showInFiles(id); break
         case "annotate": Engine.annotate(id); break
@@ -525,7 +529,7 @@ Window {
             if (!card) return
             const ctrl = e.modifiers & Qt.ControlModifier
             if (ctrl && e.key === Qt.Key_C) qa.act("copy", card)
-            else if (ctrl && e.key === Qt.Key_S) qa.act((e.modifiers & Qt.ShiftModifier) ? "save-as" : "save", card)
+            else if (ctrl && e.key === Qt.Key_S) qa.act((e.modifiers & (Qt.ShiftModifier | Qt.AltModifier)) ? "save-as" : "save", card)
             else if (ctrl && e.key === Qt.Key_W) qa.act("close", card)
             else if (ctrl && e.key === Qt.Key_E) qa.act("annotate", card)
             else if (ctrl && e.key === Qt.Key_P) qa.act("pin", card)
