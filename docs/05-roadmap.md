@@ -184,7 +184,7 @@ What the 2026-10-08 audit of the spec found unbuilt, in batches:
 - **Desktop:**
   - ✅ Hide desktop clutter while capturing, opt-in (CAP-12): the bar's band becomes the wallpaper, and pins stay out.
   - ✅ The live toggle (`snip desktop hide|show|toggle`, the `desktop-toggle` key, the bar menu): the cover on screen, DND, and pins and cards hidden (CAP-12).
-  - A notification when the QAO is off (OMA-05).
+  - ✅ A notification when no card shows a capture (OMA-05): copied or saved, with the image; a click brings the card back (`snip restore ID`).
 - **Background tool:** ⏭ Snip's own wallpaper pack (BG-06 as changed in D41) is deferred (D42); the tool keeps the wallpaper in use, the theme's and the user's own.
 - **To check on real hardware** (the product owner): the touchpad swipe on cards (QAO-08), the pointer in captures (CAP-11), the Georgian layout in the text tool (ANN-05).
 
