@@ -12,6 +12,8 @@ pub struct Record {
     pub kind: String,
     pub width: u32,
     pub height: u32,
+    /// physical px per logical px when it was captured (1 for imports)
+    pub scale: f64,
     pub output: String,
     pub source: PathBuf,
     pub saved: Option<PathBuf>,
@@ -54,6 +56,11 @@ impl History {
                 "ALTER TABLE captures ADD COLUMN ocr_text TEXT;
                  ALTER TABLE captures ADD COLUMN indexed INTEGER NOT NULL DEFAULT 0;",
             )?;
+        }
+        // SET-04, QAO-09 (added 2026-10-08): each capture's scale
+        let has_scale: bool = db.prepare("SELECT 1 FROM pragma_table_info('captures') WHERE name = 'scale'")?.exists([])?;
+        if !has_scale {
+            db.execute_batch("ALTER TABLE captures ADD COLUMN scale REAL NOT NULL DEFAULT 1;")?;
         }
         db.execute_batch(
             "CREATE VIRTUAL TABLE IF NOT EXISTS captures_fts
@@ -114,7 +121,7 @@ impl History {
              WHERE captures_fts MATCH ?1 ORDER BY rank LIMIT ?2"
         );
         let mut st = self.db.prepare(&sql)?;
-        let rows = st.query_map(params![terms.join(" "), limit], |r| Ok((Self::row(r)?, r.get::<_, String>(10)?)))?;
+        let rows = st.query_map(params![terms.join(" "), limit], |r| Ok((Self::row(r)?, r.get::<_, String>(11)?)))?;
         rows.collect()
     }
 
@@ -128,8 +135,8 @@ impl History {
 
     pub fn insert(&self, r: &Record) -> rusqlite::Result<()> {
         self.db.execute(
-            "INSERT INTO captures (id, created_at, kind, width, height, output, source, saved, app, title)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            "INSERT INTO captures (id, created_at, kind, width, height, output, source, saved, app, title, scale)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
                 r.id,
                 r.created_at,
@@ -140,7 +147,8 @@ impl History {
                 r.source.to_string_lossy(),
                 r.saved.as_ref().map(|p| p.to_string_lossy().into_owned()),
                 r.app,
-                r.title
+                r.title,
+                r.scale
             ],
         )?;
         Ok(())
@@ -158,10 +166,11 @@ impl History {
             saved: r.get::<_, Option<String>>(7)?.map(PathBuf::from),
             app: r.get(8)?,
             title: r.get(9)?,
+            scale: r.get(10)?,
         })
     }
 
-    const COLS: &'static str = "id, created_at, kind, width, height, output, source, saved, app, title";
+    const COLS: &'static str = "id, created_at, kind, width, height, output, source, saved, app, title, scale";
 
     pub fn get(&self, id: &str) -> rusqlite::Result<Option<Record>> {
         self.db
@@ -250,6 +259,7 @@ mod tests {
             kind: "area".into(),
             width: 10,
             height: 5,
+            scale: 1.25,
             output: "DP-2".into(),
             source: dir.join("source.png"),
             saved: None,
@@ -267,6 +277,23 @@ mod tests {
         assert_eq!(h.recent(10).unwrap().iter().map(|r| r.id.as_str()).collect::<Vec<_>>(), ["b", "a"]);
         h.set_saved("a", Path::new("/x/y.png")).unwrap();
         assert_eq!(h.get("a").unwrap().unwrap().saved, Some(PathBuf::from("/x/y.png")));
+        assert_eq!(h.get("a").unwrap().unwrap().scale, 1.25);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_history_from_before_scales_opens_at_scale_one() {
+        let root = tmp();
+        let db = Connection::open(root.join("history.db")).unwrap();
+        db.execute_batch(
+            "CREATE TABLE captures (id TEXT PRIMARY KEY, created_at INTEGER NOT NULL, kind TEXT NOT NULL, width INTEGER NOT NULL,
+               height INTEGER NOT NULL, output TEXT NOT NULL, source TEXT NOT NULL, saved TEXT, app TEXT, title TEXT);
+             INSERT INTO captures VALUES ('old', 1, 'area', 10, 5, 'DP-2', '/x/source.png', NULL, NULL, NULL);",
+        )
+        .unwrap();
+        drop(db);
+        let h = History::open(&root).unwrap();
+        assert_eq!(h.get("old").unwrap().unwrap().scale, 1.0);
         std::fs::remove_dir_all(root).unwrap();
     }
 
