@@ -533,7 +533,7 @@ impl qobject::Engine {
 
     fn capture(self: Pin<&mut Self>, mode: QString) {
         if let Some(i) = self.inner() {
-            i.begin(&mode.to_string(), None, None, None, 0);
+            i.begin(&mode.to_string(), None, None, None, 0, None);
         }
     }
 

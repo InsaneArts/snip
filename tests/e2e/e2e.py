@@ -516,6 +516,42 @@ def window_with_desktop(s, env):
 
 
 @case
+def capture_variants(s, env):
+    """CAP-02, API-01: Capture Area & Copy / & Save / & Annotate (`snip area --action …`, and
+    bindable actions) skip the After Capture rules: & Copy is the clipboard only, no card.
+    The After Capture rule "Pin to the screen" pins."""
+    def capture(*extra):
+        p = s.bg("area", *extra); time.sleep(0.5)
+        s.drag(200, 200, 400, 320)
+        r, code = finish(p)
+        assert code == 0, r
+        return r["result"]
+
+    s.cli("close-all"); time.sleep(0.3)
+    sh("wl-copy", "--clear", check=False)
+    rec = capture("--action", "copy")
+    assert wait_for(lambda: "image/png" in sh("wl-paste", "-l", check=False).stdout.split(), 3), "& Copy: on the clipboard"
+    time.sleep(0.4)
+    assert rec["id"] not in s.status()["cards"], "and no card"
+    rec = capture("--action", "save")
+    assert wait_for(lambda: any(s.export.glob("*.png")), 3), "& Save: in the export folder"
+    rec = capture("--action", "annotate")
+    assert wait_for(lambda: editor_window(), 5), "& Annotate: the editor"
+    close_editor(s)
+    cfg = s.tmp / "cfg/snip/config.toml"
+    before = cfg.read_text()
+    cfg.write_text(before + "\n[after_capture]\nscreenshot = [\"pin\"]\n")
+    try:
+        time.sleep(0.8)
+        capture()
+        assert wait_for(lambda: pin_windows(), 3), "After Capture: Pin to the screen"
+    finally:
+        s.debug("ui", "close-pins")
+        cfg.write_text(before)
+        time.sleep(0.8)
+
+
+@case
 def ocr_text(s, env):
     """Capture Text over known text (CAP-09)."""
     w = env.win

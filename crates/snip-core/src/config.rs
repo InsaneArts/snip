@@ -46,6 +46,9 @@ pub enum AfterCapture {
 pub struct AfterCaptureRules {
     /// Capture lifecycle §5.0: by default only the Quick Access card appears.
     pub screenshot: Vec<AfterCapture>,
+    /// CAP-02: Capture Area & Copy / & Save / & Annotate do just that, without
+    /// these rules (CleanShot's setting); off, they add theirs to the rules.
+    pub variants_ignore_rules: bool,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -257,7 +260,7 @@ impl Default for General {
 
 impl Default for AfterCaptureRules {
     fn default() -> Self {
-        Self { screenshot: vec![AfterCapture::ShowQao] }
+        Self { screenshot: vec![AfterCapture::ShowQao], variants_ignore_rules: true }
     }
 }
 

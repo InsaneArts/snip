@@ -255,6 +255,7 @@ Window {
                         }
                     }
                     Note { text: "Every capture also goes to history." }
+                    Check { key: "after_capture.variants_ignore_rules"; text: "Capture Area & Copy, & Save and & Annotate skip these" }
                 }
                 Section {
                     label: "Save"
