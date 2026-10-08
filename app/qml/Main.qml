@@ -156,6 +156,7 @@ QtObject {
         function onPinOpen(json) { root.openPin(JSON.parse(json)) }
         function onHistoryOpen(output) { root.history.open(output) }
         function onSettingsOpen(tab) { root.openSettings(tab) }
+        function onWelcomeOpen() { root.openWelcome() }
         // scrolling capture (SCR-01): Quick Access stays out of the way meanwhile
         function onScrollOpen(json) { root.quickAccess.capturing = true; root.scrollHud.open(JSON.parse(json)) }
         function onScrollStatus(json) { root.scrollHud.status(JSON.parse(json)) }
@@ -183,6 +184,7 @@ QtObject {
         if (a[0] === "close-pins") { closePins(); return }
         if (a[0] === "history") { history.debug(a.slice(1)); return }
         if (a[0] === "settings") { if (settingsWindow) settingsWindow.debug(a.slice(1)); return }
+        if (a[0] === "welcome") { if (welcomeWindow) welcomeWindow.debug(a.slice(1)); return }
         if (a[0] === "scroll") { scrollHud.debug(a.slice(1)); return }
         if (a[0] === "tray") { trayMenu.debug(a.slice(1)); return }
         if (a[0] === "pin") {
@@ -233,7 +235,12 @@ QtObject {
     Component.onCompleted: {
         Engine.start(mode === "interactive" ? "interactive" : "test")
         if (mode === "gallery") gallery = galleryComponent.createObject(null)
-        else { warming = true; warmTimeout.start(); Platform.showTray(Engine.trayIconDir()) }
+        else {
+            warming = true
+            warmTimeout.start()
+            Platform.showTray(Engine.trayIconDir())
+            if (mode === "interactive" && Engine.welcomeWanted()) Qt.callLater(openWelcome)   // OMA-02: the first start
+        }
     }
 
     // ---------------------------------------------------------------- surfaces
@@ -283,6 +290,13 @@ QtObject {
     function nextToken() { return ++lastToken }
 
     // Settings (SET-02): one window, hidden when closed, shown again on open
+    // First-run setup (OMA-02): one window, like Settings
+    property Component welcomeComponent: Component { Welcome {} }
+    property var welcomeWindow: null
+    function openWelcome() {
+        if (!welcomeWindow) welcomeWindow = welcomeComponent.createObject(null, { controller: root })
+        welcomeWindow.open()
+    }
     property Component settingsComponent: Component { Settings {} }
     property var settingsWindow: null
     function openSettings(tab) {
