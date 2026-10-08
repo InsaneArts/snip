@@ -159,7 +159,18 @@ Built: `snipd` (Rust core + Qt Quick UI in one process), `snip` CLI, `hypr/snip.
 **Exit:**
 - **Every P0 item in the product spec is done.**
 - A feature-by-feature walk-through against the CleanShot inventory (screenshot areas) passes.
-- **First public release: Snip 0.x, "the screenshot experience".**
+- No public release yet (D40): it waits for recording.
+
+### M3 P0 sweep (from the 2026-10-08 audit, D40)
+
+What the 2026-10-08 audit of the spec found unbuilt, in batches:
+
+- **Capture variants and the CLI:** Capture Area & Copy / & Save / & Annotate as bindable actions, ignoring After Capture (CAP-02); all monitors (CAP-04); CleanShot's URL-API flags `--x --y --w --h --action` (API-01); text from a file or the clipboard (OCR-06).
+- **Text recognition:** a line-break setting (OCR-02); "Open link?" with Always/Never, and barcodes besides QR (OCR-03); link detection (OCR-05).
+- **Polish:** Alt+Save asks where (QAO-03); Scale to 1×, Resize… and Print… on cards (QAO-09); Print in the editor (ANN-15); resizing a pin from its corners (PIN-04); History filters (HIS-01); UTC and `@2x` in file names (SET-04); the logical-px readout on hover (SEL-03).
+- **Desktop:** Hide desktop clutter, opt-in (CAP-12); a notification when the QAO is off (OMA-05).
+- **Background tool:** Snip's own wallpapers (BG-06 as changed in D41). It waits for the product owner's wallpaper pack.
+- **To check on real hardware** (the product owner): the touchpad swipe on cards (QAO-08), the pointer in captures (CAP-11), the Georgian layout in the text tool (ANN-05).
 
 ## M3.5: Snip as a product (M; D36, planned, not built yet)
 
@@ -169,18 +180,22 @@ Snip should feel like an app, not a set of commands. The CLI stays complete for 
 - **Logo and icon set:** ✅ the app icon (`app/icons/snip.png`, from the product owner's design) and a one-colour bar icon the bar tints to its colour (`app/icons/snip-tray-symbolic.svg`). Still to do: the icon at every size, for the launcher.
 - **Bar icon and menu** (OMA-08, D35): ✅ a tray icon (StatusNotifierItem). A click opens CleanShot's menu under the bar: the captures with their keys, History, Restore Recently Closed, Settings…, Quit Snip.
 - **Launcher** (OMA-09): "Snip" is searchable. It opens Settings and has capture actions. `app/snip.desktop` exists but isn't installed by the dev setup.
-- **Easy install while the repository is private:** one command. It builds Snip, installs it under `~/.local`, enables the user unit (so it starts at login), adds the launcher entry, and offers the Hyprland keys (OMA-02 onboarding).
-- **When the repository goes public** (D33): the AUR package and a landing page.
-
-**Open questions (the product owner's):**
-- What should the landing page show: a feature tour with captures, or a one-page install guide? And where should it live (GitHub Pages)?
-- Should first run show onboarding (keys, Hyprland module, "start at login"), or should installing do it all?
+- **Easy install while the repository is private:** one command. It builds Snip, installs it under `~/.local`, enables the user unit (so it starts at login), and adds the launcher entry.
+- **First-run setup** (OMA-02): Snip's keys, start at login, the bar icon.
+- The public release, the AUR package and the landing page come last, when the whole product is ready (D40).
 
 **Exit:**
 - On a fresh Omarchy, one command installs Snip.
 - Snip appears in the launcher and in the bar.
 - Its menu opens Settings and starts every capture.
 - Snip starts at login, and its keys work.
+
+## M3.9: Clean-up (D40)
+
+Before recording:
+- refactoring, and cleaning the codebase;
+- performance issues;
+- a cleanliness audit.
 
 ## M4: Recording suite and remaining parity (XL)
 

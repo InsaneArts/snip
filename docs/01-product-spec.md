@@ -225,7 +225,7 @@ A normal floating window (Hyprland rule: float, centred, with optional pin / alw
 | ID | Feature | Pri |
 |---|---|---|
 | BG-01 | Sources: built-in gradients (we design our own set of 20, not CleanShot's), current Omarchy wallpaper, custom images, blurred wallpaper or screenshot, plain colour, transparent | P0 |
-| BG-06 | **Omarchy theme backgrounds**, our signature addition. A "Themes" section builds backgrounds from every installed Omarchy theme (system `/usr/share/omarchy/themes/*` and user `~/.config/omarchy/themes/*`). For each theme: (a) its **signature gradient** from `hyprland_active_border` (for example `e20342 → c8e967` in Aetheria); (b) gradients from palette pairs (accent with background, accent with color4/5/6…); (c) solid `background` and `accent`; (d) its wallpapers (`backgrounds/`). A "**Follow current theme**" choice (also in presets) re-resolves the colours when the theme changes, so an auto-applied preset always matches the desktop. Theme previews (`preview.png`) label each group. | P0 |
+| BG-06 | **Snip's wallpapers** (D41, replacing "Omarchy theme backgrounds"). The Background tool offers Snip's own wallpaper pack (made for Snip, shipped with it), the **current wallpaper** (copied into the capture when used, so an edit never depends on a theme file), and the user's own. It doesn't list installed Omarchy themes. | P0 |
 | BG-02 | Padding, inset (with colour), auto-balance, shadow, corner radius, aspect ratio (Auto, 1:1, 4:3, 3:2, 16:9, 5:4, 9:16, portrait), 9-point alignment | P0 |
 | BG-03 | Named presets; "apply automatically to every screenshot"; Shift held when the selection ends (or a window is clicked) skips the preset (D32) | P0 |
 | BG-04 | Window shots made with "With wallpaper" stay editable (background can be swapped or removed later) | P0 |
@@ -314,7 +314,7 @@ A normal floating window (Hyprland rule: float, centred, with optional pin / alw
 | SET-03 | After Capture rules (Screenshot column, Recording column): show QAO, copy, save, annotate, pin, open video editor. **Defaults follow §5.0: only "Show QAO" is on.** At least one rule must stay on. A setting "Save also copies to clipboard" (default **on**) controls the decided Save behaviour. | P0 |
 | SET-04 | File name template with tokens (`%y %m %n %d %w %H %M %S %p %t %a %r %i`), illegal-character stripping, UTC option, `@2x` suffix option | P0 | `%t` is the window title and `%a` the app class, both from Hyprland. |
 | SET-05 | Export folder (default `$XDG_PICTURES_DIR/Screenshots`, `$XDG_VIDEOS_DIR/Screencasts`) | P0 | |
-| SET-06 | Formats: PNG (default), JPG, WebP; optional lossless JPEG XL | P0 | |
+| SET-06 | Formats: PNG (default), JPG, WebP (JPEG XL waived, D41) | P0 | |
 | SET-07 | Clipboard mode: Image (default) / File / Image + File; plus **the file path as text** (default off since D38; it was on, D24) | P0 | Copy offers `image/png` and the file's path as `text/plain`: image-aware apps paste the image, text-only targets (terminals, plain fields) paste the path instead of nothing (D24). |
 | SET-07b | "Keep captures out of clipboard history" | P1 | Mostly not needed, because nothing is copied automatically (§5.0). Kept as an opt-in for users who turn on auto-copy: copies are then offered with `x-kde-passwordManagerHint`, which Omarchy's clipboard history skips. Default **off**. |
 | SET-08 | Shortcuts: a recorder that writes Hyprland Lua binds, detects conflicts with Omarchy's binds, and restores defaults | P1 | Wayland apps cannot grab keys, so shortcuts are written to Hyprland config (architecture doc). |
