@@ -591,6 +591,80 @@ def ocr_text(s, env):
 
 
 @case
+def text_lines_and_links(s, env):
+    """OCR-02: Capture Text keeps line breaks, or joins them (ocr.keep_line_breaks = false);
+    the line-breaks hotkey keeps them whatever the setting says.
+    OCR-03/05: a link in the text asks "Open link?"; Open opens it, Never is remembered,
+    and with Always it opens with no prompt."""
+    cfg = s.tmp / "cfg/snip/config.toml"
+    before = cfg.read_text()
+    lines, link = s.tmp / "lines.png", s.tmp / "link.png"
+    make_text_png(lines, ["walrus reading", "test today"])
+    make_text_png(link, ["docs at https://example.com/walrus"])
+
+    def prompt():
+        n = len(s.traces("link_prompt"))
+        s.debug("ui", "link", "state")
+        assert wait_for(lambda: len(s.traces("link_prompt")) > n, 2)
+        return s.traces("link_prompt")[-1]
+
+    def click(name):
+        n = len(s.traces("link_where"))
+        s.debug("ui", "link", "where", name)
+        assert wait_for(lambda: len(s.traces("link_where")) > n, 2)
+        b = s.traces("link_where")[-1]
+        assert b["x"] >= 0, (name, "isn't shown")
+        s.move(b["x"], b["y"]); s.click()
+
+    def opened():
+        return [t["url"] for t in s.traces("link_open")]
+
+    try:
+        assert "walrus reading\ntest today" in s.json("text", "--file", str(lines))["result"], "line breaks kept"
+        assert not prompt()["open"], "no link, no prompt"
+        cfg.write_text(before + "\n[ocr]\nkeep_line_breaks = false\n")
+        time.sleep(0.8)
+        assert "walrus reading test today" in s.json("text", "--file", str(lines))["result"], "one line"
+        rec = s.json("open", str(lines))["result"]                 # on screen, as a pin
+        s.json("pin", rec["id"])
+        assert wait_for(lambda: pin_windows(), 3)
+        w, mon = pin_windows()[0], env.monitor()
+        x, y = w["at"][0] - mon["x"], w["at"][1] - mon["y"]
+        p = s.bg("text", "--line-breaks"); time.sleep(0.5)
+        s.drag(x + 20, y + 20, x + w["size"][0] - 20, y + w["size"][1] - 20)
+        r, code = finish(p, timeout=15)
+        assert code == 0 and "walrus reading\ntest today" in r["result"], ("the line-breaks hotkey keeps them", r)
+        s.debug("ui", "close-pins")
+
+        s.move(400, 300)
+        s.cli("text", "--file", str(link))
+        assert wait_for(lambda: prompt()["open"], 3), "Open link?"
+        assert prompt()["url"] == "https://example.com/walrus", prompt()
+        click("link-open")
+        assert wait_for(lambda: "https://example.com/walrus" in opened(), 3), "Open opens it"
+        assert wait_for(lambda: not prompt()["open"], 2)
+        s.cli("text", "--file", str(link))
+        assert wait_for(lambda: prompt()["open"], 3)
+        click("link-never")
+        assert wait_for(lambda: 'open_links = "never"' in cfg.read_text(), 3), "Never is remembered"
+        assert len(opened()) == 1, "and opens nothing"
+        time.sleep(0.8)
+        s.cli("text", "--file", str(link))
+        time.sleep(0.8)
+        assert not prompt()["open"], "Never: no prompt"
+        cfg.write_text(before + "\n[ocr]\nopen_links = \"always\"\n")
+        time.sleep(0.8)
+        s.cli("text", "--file", str(link))
+        assert wait_for(lambda: len(opened()) == 2, 3), "Always opens it"
+        assert not prompt()["open"], "with no prompt"
+    finally:
+        s.debug("ui", "close-pins")
+        s.cli("close-all")
+        cfg.write_text(before)
+        time.sleep(0.8)
+
+
+@case
 def lifecycle(s, env):
     """Capture -> history only; Copy -> clipboard; Save -> folder + clipboard; restore."""
     s.cli("close-all"); time.sleep(0.3)

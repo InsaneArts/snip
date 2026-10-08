@@ -157,6 +157,7 @@ QtObject {
         function onHistoryOpen(output) { root.history.open(output) }
         function onSettingsOpen(tab) { root.openSettings(tab) }
         function onWelcomeOpen() { root.openWelcome() }
+        function onLinkOffer(url, output) { root.linkPrompt.offer(url, output || root.lastOutput || Qt.application.screens[0].name) }
         // scrolling capture (SCR-01): Quick Access stays out of the way meanwhile
         function onScrollOpen(json) { root.quickAccess.capturing = true; root.scrollHud.open(JSON.parse(json)) }
         function onScrollStatus(json) { root.scrollHud.status(JSON.parse(json)) }
@@ -187,6 +188,7 @@ QtObject {
         if (a[0] === "welcome") { if (welcomeWindow) welcomeWindow.debug(a.slice(1)); return }
         if (a[0] === "scroll") { scrollHud.debug(a.slice(1)); return }
         if (a[0] === "tray") { trayMenu.debug(a.slice(1)); return }
+        if (a[0] === "link") { linkPrompt.debug(a.slice(1)); return }
         if (a[0] === "pin") {
             const p = pins[pins.length - 1]
             if (p) p.debug(a.slice(1))
@@ -251,6 +253,7 @@ QtObject {
 
     property QuickAccess quickAccess: QuickAccess { controller: root }
     property Toast toast: Toast {}
+    property LinkPrompt linkPrompt: LinkPrompt {}
     property Countdown countdown: Countdown {}
     property Preview preview: Preview {}
     property History history: History { controller: root }

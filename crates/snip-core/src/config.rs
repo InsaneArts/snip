@@ -145,6 +145,24 @@ pub struct Ocr {
     /// HIS-05: read the text of every capture in the background so history
     /// can be searched by it (`snip search`). Local only.
     pub index_history: bool,
+    /// OCR-02: Capture Text keeps the text's line breaks (off: one line per
+    /// paragraph). "Capture text as one line" ignores it.
+    pub keep_line_breaks: bool,
+    /// OCR-05: offer to open a link found in the text
+    pub detect_links: bool,
+    /// OCR-03: what a link (in a code or the text) does: ask, always, never
+    pub open_links: OpenLinks,
+    /// OCR-03: read 1D barcodes too (EAN, UPC, Code 128…); off by default,
+    /// since they misread busy UI. QR, Data Matrix, Aztec and PDF417 always.
+    pub barcodes: bool,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum OpenLinks {
+    Ask,
+    Always,
+    Never,
 }
 
 /// The editor's settings (CleanShot: Settings › Annotate).
@@ -292,7 +310,7 @@ impl Default for Clipboard {
 
 impl Default for Ocr {
     fn default() -> Self {
-        Self { languages: String::new(), index_history: true }
+        Self { languages: String::new(), index_history: true, keep_line_breaks: true, detect_links: true, open_links: OpenLinks::Ask, barcodes: false }
     }
 }
 
