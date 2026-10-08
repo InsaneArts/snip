@@ -850,6 +850,8 @@ Window {
                 if (top < flick.contentY || top + it.height > flick.contentY + flick.height)
                     flick.contentY = Math.max(0, Math.min(flick.contentHeight - flick.height, top - flick.height / 2))
             }
+            // laid out first: just after a change, rows and columns still hold old places
+            for (let q = it; q; q = q.parent) if (q.forceLayout) q.forceLayout()
             const p = it ? it.mapToItem(contentItem, it.width / 2, it.height / 2) : null
             Engine.log("settings_where", JSON.stringify({ name: a[1], x: p ? p.x : -1, y: p ? p.y : -1 }).slice(1, -1))
             break

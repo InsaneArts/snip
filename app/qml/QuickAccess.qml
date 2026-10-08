@@ -103,6 +103,8 @@ Window {
             return null
         }
         const it = find(contentItem)
+        // laid out first: just after a change, rows and columns still hold old places
+        for (let q = it; q; q = q.parent) if (q.forceLayout) q.forceLayout()
         const p = it ? it.mapToItem(contentItem, it.width / 2, it.height / 2) : null
         Engine.log("qa_where", JSON.stringify({ name: name, x: p ? p.x + (qa.right ? Screen.width - qa.width : 0) : -1, y: p ? p.y : -1 }).slice(1, -1))
     }

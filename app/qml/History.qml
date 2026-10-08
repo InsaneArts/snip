@@ -426,6 +426,8 @@ Window {
         case "where": {
             // a control's centre on the output (logical px), for a click
             const it = find(contentItem, a[1])
+            // laid out first: just after a change, rows and columns still hold old places
+            for (let q = it; q; q = q.parent) if (q.forceLayout) q.forceLayout()
             const p = it ? it.mapToItem(contentItem, it.width / 2, it.height / 2) : null
             Engine.log("history_where", JSON.stringify({ name: a[1], x: p ? p.x : -1, y: p ? p.y : -1 }).slice(1, -1))
             break
