@@ -88,7 +88,7 @@ Built: `snipd` (Rust core + Qt Quick UI in one process), `snip` CLI, `hypr/snip.
 | QAO-09 menu | ⚠️ | Copy, Save/Show in Files, Save As… (the desktop's save dialog via xdg-desktop-portal; Ctrl+Shift+S, also in the editor), Annotate, Extract Text, Rotate Left, Flip Horizontal, Preview, Trash, Close, Close All, Save All, Hide. Missing: Scale, Resize, Open With, Print. |
 | QAO-11 | ✅ | Edits in Snip's editor update the card (M2). |
 | Lifecycle, history retention | ✅ | Capture → history only; Copy → clipboard; Save → folder + clipboard; hourly sweep; "Never" deletes on card close. |
-| SET-03…07, 09 | ✅ / ⚠️ | Rules, template naming, export folder, PNG/JPG/WebP, clipboard modes, shutter sound. SET-04 UTC and `@2x` options missing. |
+| SET-03…07, 09 | ✅ | Rules, template naming (with the UTC and `@2x` options), export folder, PNG/JPG/WebP, clipboard modes, shutter sound. |
 | OMA-01, 02, 06 | ✅ | Live theme (inotify + `configreloaded`), Lua module, `snip open/edit FILE`. |
 | Design gallery | ✅ | `snipd --gallery`; renders in [docs/design/m1-gallery](design/m1-gallery/). |
 | Snip UI never in captures | ✅ | Cards drawn transparent until the frame is presented (~0.4 ms), then the capture runs (decision D18). |
@@ -174,7 +174,13 @@ What the 2026-10-08 audit of the spec found unbuilt, in batches:
   - Keep line breaks, a setting, plus the actions Capture text with line breaks / as one line (OCR-02).
   - Barcodes besides QR: Data Matrix, Aztec and PDF417 always, 1D opt-in (OCR-03).
   - A link in a code or the text asks "Open link?": Open, Always, Never (OCR-03, OCR-05).
-- **Polish:** Alt+Save asks where (QAO-03); Scale to 1×, Resize… and Print… on cards (QAO-09); Print in the editor (ANN-15); resizing a pin from its corners (PIN-04); History filters (HIS-01); UTC and `@2x` in file names (SET-04); the logical-px readout on hover (SEL-03).
+- **Polish:**
+  - ✅ UTC and `@2x` in file names (SET-04); history keeps each capture's scale.
+  - Alt+Save asks where (QAO-03).
+  - Scale to 1×, Resize… and Print… on cards (QAO-09); Print in the editor (ANN-15).
+  - Resizing a pin from its corners (PIN-04).
+  - History filters (HIS-01).
+  - The logical-px readout on hover (SEL-03).
 - **Desktop:** Hide desktop clutter, opt-in (CAP-12); a notification when the QAO is off (OMA-05).
 - **Background tool:** Snip's own wallpapers (BG-06 as changed in D41). It waits for the product owner's wallpaper pack.
 - **To check on real hardware** (the product owner): the touchpad swipe on cards (QAO-08), the pointer in captures (CAP-11), the Georgian layout in the text tool (ANN-05).
