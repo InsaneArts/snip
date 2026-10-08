@@ -181,7 +181,7 @@ Snip should feel like an app, not a set of commands. The CLI stays complete for 
 - **Bar icon and menu** (OMA-08, D35): ✅ a tray icon (StatusNotifierItem). A click opens CleanShot's menu under the bar: the captures with their keys, History, Restore Recently Closed, Settings…, Quit Snip.
 - **Launcher** (OMA-09): ✅ "Snip" is searchable. It opens Settings (`snip settings`), and its actions start Capture Area, Fullscreen, Window, Scrolling Capture, Text and History. `snip` starts Snip first if it isn't running (quit from its menu, say). `scripts/dev.sh` installs the entry for this checkout.
 - **Easy install while the repository is private:** ✅ `scripts/install.sh` builds a pacman package from `packaging/aur/snip-screenshot-git` and installs it (`remove` uninstalls). It switches off a from-source Snip (`scripts/dev.sh` does the reverse, so one Snip runs at a time), and enables `snipd.service`, so Snip starts now and at every login. The launcher entry and icon come with the package.
-- **First-run setup** (OMA-02): Snip's keys, start at login, the bar icon.
+- **First-run setup** (OMA-02): ✅ on Snip's first start a Welcome window opens (and with `snip welcome`). It shows Snip's keys; **Use these keys** adds one `dofile(…/snip.lua)` line to hyprland.lua and the keys work at once, or it says the config already loads them. It also has a start-at-login switch (for the systemd unit running Snip) and points to the bar icon. Get Started closes it for good.
 - The public release, the AUR package and the landing page come last, when the whole product is ready (D40).
 
 **Exit:**
