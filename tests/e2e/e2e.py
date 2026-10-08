@@ -1006,6 +1006,66 @@ def hide_desktop_clutter(s, env):
 
 
 @case
+def desktop_toggle(s, env):
+    """CAP-12, the live toggle: `snip desktop hide` covers the bar with the wallpaper on
+    screen (so a plain screenshot has no bar), takes pins and cards off screen, and
+    `show` brings them back; a fullscreen window takes the cover away. (DND is the
+    user's: tests never touch it.)"""
+    from PIL import Image, ImageChops, ImageStat
+    wall = Path.home() / ".local/state/omarchy/current/background"
+    if not wall.exists():
+        raise Skip("no Omarchy wallpaper to cover with")
+    mon = env.monitor()
+    sc = mon["scale"]
+    hypr_eval(f'hl.monitor({{ output = "{OUT}", mode = "1920x1080@60", position = "auto", scale = {sc}, transform = 0, reserved = {{ top = 40 }} }})')
+    png = s.tmp / "deskpin.png"
+    Image.new("RGB", (300, 200), (0, 200, 0)).save(png)
+    rec = s.json("open", str(png))["result"]
+    s.json("pin", rec["id"])
+
+    def state():
+        n = len(s.traces("desktop_state"))
+        s.debug("ui", "desktop")
+        assert wait_for(lambda: len(s.traces("desktop_state")) > n, 2)
+        return s.traces("desktop_state")[-1]
+
+    try:
+        assert wait_for(lambda: env.monitor()["reserved"][1] == 40, 3) and wait_for(lambda: pin_windows(), 3)
+        assert s.json("desktop", "hide")["result"] == {"hidden": True}
+        assert wait_for(lambda: layer_mapped("snip-cover"), 3), "the cover is on screen"
+        assert wait_for(lambda: not pin_windows(), 3), "pins are off screen"
+        st = state()
+        assert st["hidden"] and st["pinsHidden"] == 1, st
+        time.sleep(0.5)                                            # the cover's fade-in
+        shot = Image.open(s.json("fullscreen", "--monitor", OUT)["result"]["source"]).convert("RGB")
+        W, H = shot.size
+        band = round(40 * sc)
+        im = Image.open(wall).convert("RGB")
+        k = max(W / im.width, H / im.height)
+        cover = im.resize((round(im.width * k), round(im.height * k)), Image.LANCZOS)
+        ox, oy = (cover.width - W) // 2, (cover.height - H) // 2
+        diff = ImageStat.Stat(ImageChops.difference(shot.crop((0, 0, W, band)), cover.crop((ox, oy, ox + W, oy + band)))).mean
+        assert max(diff) < 10, ("a plain screenshot shows the wallpaper over the bar", diff)
+
+        win = next(c for c in hypr_json("clients") if c["class"] == "snip-e2e-target")
+        hypr_eval(f'hl.dispatch(hl.dsp.window.fullscreen({{ window = "address:{win["address"]}" }}))')
+        assert wait_for(lambda: next(c for c in hypr_json("clients") if c["address"] == win["address"])["fullscreen"], 3), "fullscreen"
+        assert wait_for(lambda: not layer_mapped("snip-cover"), 3), "no cover over a fullscreen window"
+        hypr_eval(f'hl.dispatch(hl.dsp.window.fullscreen({{ window = "address:{win["address"]}" }}))')
+        assert wait_for(lambda: layer_mapped("snip-cover"), 3), "the cover is back"
+
+        assert s.json("desktop")["result"] == {"hidden": False}, "toggle"
+        assert wait_for(lambda: not layer_mapped("snip-cover"), 3), "the cover goes"
+        assert wait_for(lambda: pin_windows(), 3), "the pin is back"
+        assert not state()["hidden"]
+    finally:
+        s.cli("desktop", "show")
+        s.debug("ui", "close-pins")
+        s.cli("close-all")
+        env.configure(sc)
+
+
+@case
 def cursor_toggle(s, env):
     """--cursor paints the pointer into a capture, --no-cursor leaves it out (CAP-11).
     Hyprland draws no pointer on headless outputs (grim -c shows none either), so this
@@ -1820,7 +1880,7 @@ def tray_menu(s, env):
         st = tray_state(s)
         items = dict(st["items"])
         assert list(items) == ["all-in-one", "area", "previous", "fullscreen", "window", "timer-area", "scroll", "text",
-                               "open", "edit-clipboard", "pin", "history", "restore", "settings", "about", "quit"], st["items"]
+                               "open", "edit-clipboard", "pin", "history", "restore", "desktop-toggle", "settings", "about", "quit"], st["items"]
         assert items["area"] == "Super+Shift+4" and items["fullscreen"] == "", items
         x, y, w, h = st["menu"]
         assert abs(x - (300 - 18)) <= 1 and y >= mon["reserved"][1], ("under the click, below the bar", st["menu"])

@@ -108,6 +108,9 @@ pub struct Inner {
     capture_action: Mutex<Option<AfterCapture>>,
     /// CAP-12: the wallpaper and the bands cut from it, until it changes
     cover: Mutex<Option<Cover>>,
+    /// CAP-12, the live toggle: clutter is hidden; DND was on before it
+    desktop_hidden: AtomicBool,
+    dnd_before: Mutex<Option<bool>>,
     /// OCR-02: the capture under way keeps (Some(true)) or joins line breaks,
     /// whatever ocr.keep_line_breaks says ("text-lines", "text-one-line")
     line_breaks: Mutex<Option<bool>>,
@@ -199,6 +202,8 @@ impl Inner {
             countdown: Mutex::new(None),
             capture_action: Mutex::new(None),
             cover: Mutex::new(None),
+            desktop_hidden: AtomicBool::new(false),
+            dnd_before: Mutex::new(None),
             line_breaks: Mutex::new(None),
             scroll: Mutex::new(None),
         }))
@@ -323,6 +328,9 @@ impl Inner {
             "settings" => self.ui(|e| e.settings_open(&QString::from(""))),
             "pins-toggle" => self.ui(|e| e.pins_command(&QString::from("toggle"))),
             "pins-close" => self.ui(|e| e.pins_command(&QString::from("close"))),
+            "desktop-toggle" => {
+                self.desktop("toggle");
+            }
             "pins-unlock" => self.ui(|e| e.pins_command(&QString::from("unlock"))),
             "edit-clipboard" => {
                 let me = self.clone();
@@ -492,6 +500,65 @@ impl Inner {
             }
         }
         trace::trace("desktop_covered", &format!("\"bands\":{n},\"ms\":{:.1}", trace::ms_since(t0)));
+    }
+
+    /// CAP-12, the live toggle ("hide", "show", "toggle"): the wallpaper over
+    /// the bars on screen, notifications held (DND), pins and cards hidden.
+    pub fn desktop(&self, action: &str) -> Response {
+        let hide = match action {
+            "hide" => true,
+            "show" => false,
+            "toggle" => !self.desktop_hidden.load(Ordering::Relaxed),
+            _ => return Response::err("desktop: hide, show or toggle"),
+        };
+        if self.desktop_hidden.swap(hide, Ordering::Relaxed) != hide {
+            self.dnd(hide);
+        }
+        self.push_desktop();
+        Response::ok(json!({ "hidden": hide }))
+    }
+
+    /// What the covers show: per output, the bands bars reserve (logical px
+    /// from its corner). None under a fullscreen window, which is above the bar.
+    pub fn push_desktop(&self) {
+        let hidden = self.desktop_hidden.load(Ordering::Relaxed);
+        let mut outputs = vec![];
+        if hidden {
+            let fullscreen: Vec<i64> = snip_hypr::clients().into_iter().filter(|c| c.fullscreen).map(|c| c.workspace).collect();
+            let outs = self.outputs.lock().unwrap().clone();
+            for m in snip_hypr::monitors().into_iter().filter(|m| !fullscreen.contains(&m.active_workspace)) {
+                let Some(o) = outs.iter().find(|o| o.name == m.name) else { continue };
+                let bands: Vec<[i32; 4]> = desktop::bands(m.reserved, o.logical.w, o.logical.h, 1.0).iter().map(|b| [b.x, b.y, b.w, b.h]).collect();
+                outputs.push(json!({ "output": m.name, "bands": bands }));
+            }
+        }
+        // the file itself, so a new theme's wallpaper is a new image
+        let wallpaper = std::fs::canonicalize(theme::current_dir().join("background")).ok();
+        let j = json!({ "hidden": hidden, "wallpaper": wallpaper, "outputs": outputs }).to_string();
+        trace::trace("desktop", &j[1..j.len() - 1]);
+        self.ui(move |e| e.desktop_cover(&QString::from(j.as_str())));
+    }
+
+    pub fn desktop_is_hidden(&self) -> bool {
+        self.desktop_hidden.load(Ordering::Relaxed)
+    }
+
+    /// Omarchy's do-not-disturb while clutter is hidden, as it was after.
+    /// Tests (SNIP_NO_PORTALS) never touch the user's notifications.
+    fn dnd(&self, on: bool) {
+        if std::env::var_os("SNIP_NO_PORTALS").is_some() {
+            return;
+        }
+        let shell = |args: &[&str]| std::process::Command::new("omarchy-shell").args(args).output().ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+        if on {
+            let was = shell(&["notifications", "isDnd"]).is_some_and(|s| s == "on");
+            *self.dnd_before.lock().unwrap() = Some(was);
+            if !was {
+                shell(&["-q", "notifications", "setDnd", "on"]);
+            }
+        } else if self.dnd_before.lock().unwrap().take() == Some(false) {
+            shell(&["-q", "notifications", "setDnd", "off"]);
+        }
     }
 
     /// Screen captures never contain Snip's own cards (CleanShot hides its
@@ -1900,6 +1967,7 @@ impl Inner {
                 self.ui(move |e| e.settings_open(&QString::from(tab.unwrap_or_default().as_str())));
                 Response::ok(Value::Null)
             }
+            Ctl::Desktop { action } => self.desktop(&action),
             Ctl::Pins { action } => match action.as_str() {
                 "toggle" | "close" | "unlock" => {
                     self.ui(move |e| e.pins_command(&QString::from(action.as_str())));

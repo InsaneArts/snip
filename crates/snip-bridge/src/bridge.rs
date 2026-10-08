@@ -239,6 +239,9 @@ pub mod qobject {
         /// Open a link in the browser (OCR-03)
         #[qinvokable]
         fn open_link(self: &Engine, url: QString);
+        /// Hide desktop clutter: "hide", "show" or "toggle" (CAP-12)
+        #[qinvokable]
+        fn desktop(self: &Engine, action: QString);
         /// The bar menu's Open… and Pin to the Screen…: a chosen image, in
         /// the editor or pinned (as `snip edit FILE`, `snip pin FILE`)
         #[qinvokable]
@@ -382,6 +385,9 @@ pub mod qobject {
         /// OCR-03/05: a link in the text read; "Open link?" on `output`
         #[qsignal]
         fn link_offer(self: Pin<&mut Engine>, url: &QString, output: &QString);
+        /// CAP-12: {hidden, wallpaper, outputs: [{output, bands}]} for the covers
+        #[qsignal]
+        fn desktop_cover(self: Pin<&mut Engine>, json: &QString);
 
         /// Scrolling capture (SCR-01): the area is chosen ({output, x, y, w, h}
         /// logical), how it's going ({phase, height, step, preview}), it ended
@@ -508,7 +514,10 @@ impl qobject::Engine {
         let w = inner.clone();
         crate::watch::spawn(move |c| match c {
             crate::watch::Change::Config => w.reload_config(),
-            crate::watch::Change::Theme => w.push_theme(),
+            crate::watch::Change::Theme => {
+                w.push_theme();
+                w.push_desktop();
+            }
         });
         // Omarchy's theme switch and `hyprctl reload` drop runtime rules and
         // may change rounding: re-apply and re-resolve.
@@ -520,6 +529,10 @@ impl qobject::Engine {
                 let _ = snip_hypr::install_runtime_rules();
                 h.apply_shortcuts(&Default::default());
                 h.push_theme();
+            }
+            // CAP-12: the covers follow fullscreen windows and workspaces
+            if h.desktop_is_hidden() && matches!(name, "fullscreen" | "workspacev2" | "monitoraddedv2" | "monitorremoved") {
+                h.push_desktop();
             }
             true
         });
@@ -883,6 +896,12 @@ impl qobject::Engine {
 
     fn set_autostart(&self, on: bool) -> QString {
         QString::from(crate::welcome::set_autostart(on).err().unwrap_or_default().as_str())
+    }
+
+    fn desktop(&self, action: QString) {
+        if let Some(i) = self.inner() {
+            i.desktop(&action.to_string());
+        }
     }
 
     fn open_link(&self, url: QString) {

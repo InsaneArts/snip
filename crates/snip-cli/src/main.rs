@@ -25,6 +25,7 @@ captures (default: the most recent)
   save [ID]        save to the export folder (and copy)
   pin [ID|FILE]    float it above every window (drag to move, scroll: opacity, Ctrl+scroll: size)
   pins toggle|close|unlock  hide or show every pin, close them all, or unlock locked ones
+  desktop hide|show|toggle  hide desktop clutter: the wallpaper over the bar, notifications held, no pins or cards
   list [-n N]      recent captures from history
   search TEXT [-n N]  find captures by the text in them (and window title/app)
   history          browse and search past captures (Enter restores one)
@@ -110,6 +111,7 @@ fn main() -> ExitCode {
             (if file.is_some() { Request::Pin { id: None, path: file } } else { Request::Pin { id: arg1, path: None } }, Duration::from_secs(5))
         }
         "pins" => (Request::Pins { action: arg1.unwrap_or_else(|| "toggle".into()) }, Duration::from_secs(5)),
+        "desktop" => (Request::Desktop { action: arg1.unwrap_or_else(|| "toggle".into()) }, Duration::from_secs(5)),
         "search" => {
             let n = flag(&mut args, "-n").and_then(|v| v.parse().ok()).unwrap_or(10);
             let query = args.iter().skip(1).cloned().collect::<Vec<_>>().join(" ");

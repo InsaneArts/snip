@@ -28,6 +28,7 @@ pub const ACTIONS: &[(&str, &str)] = &[
     ("edit-clipboard", "Edit the image on the clipboard"),
     ("pins-toggle", "Hide or show all pins"),
     ("pins-close", "Close all pins"),
+    ("desktop-toggle", "Hide or show desktop clutter"),
     ("pins-unlock", "Unlock all pins"),
     ("settings", "Open Snip's settings"),
 ];

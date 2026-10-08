@@ -33,6 +33,8 @@ Window {
     property bool hidden: false
     property bool remap: false
     property bool capturing: false     // off screen while Snip captures the screen
+    property bool clutterHidden: false // CAP-12: off screen, and takes no clicks, while desktop clutter is hidden
+    onClutterHiddenChanged: { menuCard = null; Qt.callLater(updateMask) }
     property bool dragging: false
     property bool expanded: false
     property var menuCard: null
@@ -285,6 +287,7 @@ Window {
     readonly property real hideShift: hidden ? height - topY + 40 : 0
 
     function updateMask() {
+        if (clutterHidden) { Platform.setInputRects(qa, []); return }
         const r = []
         if (menuCard) {
             r.push(Qt.rect(0, 0, width, height))      // a click anywhere in the column closes the menu
@@ -315,8 +318,8 @@ Window {
     Item {
         id: stack
         anchors.fill: parent
-        opacity: qa.capturing ? 0 : 1
-        enabled: !qa.capturing
+        opacity: qa.capturing || qa.clutterHidden ? 0 : 1
+        enabled: !qa.capturing && !qa.clutterHidden
         transform: Translate {
             y: qa.hideShift
             Behavior on y { NumberAnimation { duration: 340; easing.type: Easing.InOutCubic } }
@@ -501,7 +504,7 @@ Window {
         y: qa.hidden ? qa.height - (lifted ? height - 2 : 14) : qa.height + 8
         Behavior on y { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
         // parked below the window, its shadow would still reach into it
-        visible: y < qa.height
+        visible: y < qa.height && !qa.clutterHidden
         color: Qt.rgba(0.93, 0.93, 0.94, 0.95)
         RectangularShadow { z: -1; anchors.fill: parent; radius: parent.radius; blur: 16; offset.y: 2; color: Theme.shadow }
         Row {
