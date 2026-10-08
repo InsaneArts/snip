@@ -2,7 +2,8 @@
 //! 2 error, 3 daemon unavailable (docs/02-architecture.md §6.9).
 
 use snip_ipc::{call, Request};
-use std::process::ExitCode;
+use std::io::ErrorKind;
+use std::process::{ExitCode, Stdio};
 use std::time::Duration;
 
 const USAGE: &str = "usage: snip [--json] <command>
@@ -114,7 +115,14 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    match call(&req, timeout) {
+    let mut answer = call(&req, timeout);
+    // Snip isn't running (quit from its menu, say): start it and ask again,
+    // so the launcher's "Snip" and every key work either way (OMA-09)
+    let down = matches!(&answer, Err(e) if matches!(e.kind(), ErrorKind::NotFound | ErrorKind::ConnectionRefused));
+    if down && !matches!(req, Request::Quit | Request::Ping | Request::Status | Request::Debug { .. }) && start_snipd() {
+        answer = call(&req, timeout);
+    }
+    match answer {
         Err(e) => {
             eprintln!("snip: daemon unavailable ({e}). Start it with: systemctl --user start snipd");
             ExitCode::from(3)
@@ -141,4 +149,18 @@ fn main() -> ExitCode {
             }
         }
     }
+}
+
+/// Start snipd (beside this binary, detached) and wait until it answers.
+fn start_snipd() -> bool {
+    use std::os::unix::process::CommandExt;
+    let Some(snipd) = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("snipd"))).filter(|p| p.exists()) else {
+        return false;
+    };
+    let started = std::process::Command::new(snipd).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).process_group(0).spawn();
+    started.is_ok()
+        && (0..50).any(|_| {
+            std::thread::sleep(Duration::from_millis(100));
+            call(&Request::Ping, Duration::from_secs(1)).is_ok()
+        })
 }

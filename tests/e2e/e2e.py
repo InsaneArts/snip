@@ -986,6 +986,22 @@ def settings_click(s, env, name):
 
 
 @case
+def launcher_starts_snip(s, env):
+    """OMA-09: Snip in the launcher runs `snip settings`, which works even when Snip isn't
+    running (quit from its menu, say): the CLI starts it, then Settings opens."""
+    s.cli("quit")
+    assert wait_for(lambda: s.cli("ping", check=False).returncode != 0, 5), "Snip has quit"
+    try:
+        r = s.cli("settings", check=False, timeout=15)
+        assert r.returncode == 0, r.stderr
+        assert wait_for(lambda: settings_client(), 8), "Snip started and Settings opened"
+    finally:
+        s.cli("quit", check=False)                                 # the CLI's own Snip goes; the suite's comes back
+        wait_for(lambda: s.cli("ping", check=False).returncode != 0, 5)
+        s.start()
+
+
+@case
 def settings_window(s, env):
     """SET-02: `snip settings TAB` opens Settings on that tab, floating (its rule tags it).
     A click writes config.toml, keeping the file's comments, and the window follows the
