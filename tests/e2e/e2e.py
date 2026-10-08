@@ -816,6 +816,48 @@ def alt_save_asks_where(s, env):
 
 
 @case
+def card_scale_resize(s, env):
+    """QAO-09: a card's menu scales a HiDPI capture to 1× (then offers it no more) and
+    resizes it, proportions locked."""
+    s.cli("close-all"); time.sleep(0.6)
+    rec = s.json("area", "--x", "100", "--y", "80", "--w", "200", "--h", "120", "--monitor", OUT)["result"]
+    assert (rec["width"], rec["height"], rec["scale"]) == (250, 150, 1.25), rec
+    time.sleep(0.6)                                                # the card slides in
+
+    def where(name):
+        n = len(s.traces("qa_where"))
+        s.debug("ui", "qa-where", name)
+        assert wait_for(lambda: len(s.traces("qa_where")) > n, 2)
+        return s.traces("qa_where")[-1]
+
+    def click(name):
+        b = where(name)
+        assert b["x"] >= 0, (name, "isn't shown")
+        s.move(b["x"], b["y"]); time.sleep(0.15); s.click()
+
+    def menu():
+        card = where("card:" + rec["id"])
+        s.move(card["x"] + 1, card["y"]); s.move(card["x"], card["y"]); time.sleep(0.3); s.click(right=True)
+        assert wait_for(lambda: layer_mapped("snip-dismiss"), 2), "the menu opens"
+
+    def record():
+        return next(r for r in s.json("list", "-n", "5")["result"] if r["id"] == rec["id"])
+
+    menu(); click("menu:scale-1x")
+    assert wait_for(lambda: (record()["width"], record()["height"], record()["scale"]) == (200, 120, 1.0), 3), record()
+    menu()
+    assert where("menu:scale-1x")["x"] < 0, "at 1× there's nothing to scale"
+    click("menu:resize")
+    click("resize-w")
+    s.debug("ui", "qa-keys", "{ctrl+a}100")
+    click("resize-apply")
+    assert wait_for(lambda: (record()["width"], record()["height"]) == (100, 60), 3), ("proportions locked", record())
+    assert record()["scale"] == 0.5, record()
+
+    s.cli("close-all")
+
+
+@case
 def cursor_toggle(s, env):
     """--cursor paints the pointer into a capture, --no-cursor leaves it out (CAP-11).
     Hyprland draws no pointer on headless outputs (grim -c shows none either), so this
