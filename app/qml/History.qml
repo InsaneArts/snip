@@ -263,6 +263,7 @@ Window {
                 Item {
                     id: thumb
                     objectName: "thumb:" + entry.index
+                    y: 4                                  // room for the ring: the list clips at its edge
                     width: parent.width; height: entry.th
                     layer.enabled: true
                     layer.effect: MultiEffect { shadowEnabled: true; shadowBlur: 0.5; shadowOpacity: 0.3; shadowVerticalOffset: 3 }
@@ -286,18 +287,18 @@ Window {
                 }
                 Rectangle {
                     visible: entry.focused
-                    x: -3; y: -3; width: thumb.width + 6; height: thumb.height + 6
+                    x: -3; y: thumb.y - 3; width: thumb.width + 6; height: thumb.height + 6
                     radius: 13; color: "transparent"
                     border.width: 2; border.color: Theme.accent
                 }
                 // restored this time
                 Rectangle {
                     visible: !!hist.restored[entry.modelData.id]
-                    x: 8; y: 8; width: 22; height: 22; radius: 11; color: Theme.accent
+                    x: 8; y: thumb.y + 8; width: 22; height: 22; radius: 11; color: Theme.accent
                     Icon { anchors.centerIn: parent; name: "check"; size: 13; stroke: 2.6; color: "white" }
                 }
                 Column {
-                    y: entry.th + 8; width: parent.width
+                    y: thumb.y + entry.th + 8; width: parent.width
                     spacing: 2
                     Text {
                         width: parent.width; elide: Text.ElideRight
