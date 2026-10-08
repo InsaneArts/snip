@@ -552,6 +552,32 @@ def capture_variants(s, env):
 
 
 @case
+def capture_by_command(s, env):
+    """API-01, CAP-04, OCR-06: `snip area --x --y --w --h` captures that area (logical px)
+    with no overlay, and it becomes the previous area; `snip fullscreen --all` puts every
+    monitor in one image; `snip text --file / --clipboard` reads a PNG's text."""
+    sc = env.monitor()["scale"]
+    shown = len(s.traces("overlay_presented"))
+    rec = s.json("area", "--x", "100", "--y", "80", "--w", "200", "--h", "120", "--monitor", OUT)["result"]
+    assert (rec["kind"], rec["width"], rec["height"]) == ("area", round(200 * sc), round(120 * sc)), rec
+    assert len(s.traces("overlay_presented")) == shown, "no overlay"
+    again = s.json("previous", "--monitor", OUT)["result"]
+    assert (again["width"], again["height"]) == (rec["width"], rec["height"]), "it's the previous area now"
+    allmon = s.json("fullscreen", "--all")["result"]
+    mon = env.monitor()
+    assert (allmon["width"], allmon["height"]) == (mon["width"], mon["height"]), ("every monitor (one here)", allmon)
+    png = s.tmp / "words.png"
+    make_text_png(png, ["walrus reading test"])
+    text = s.json("text", "--file", str(png))["result"]
+    assert "walrus" in text, text
+    assert wait_for(lambda: "walrus" in sh("wl-paste", "-n", check=False).stdout, 3), "onto the clipboard"
+    with open(png, "rb") as f:                                     # wl-copy stays to serve it: no pipes to wait on
+        subprocess.run(["wl-copy", "--type", "image/png"], stdin=f, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(0.3)
+    assert "walrus" in s.json("text", "--clipboard")["result"], "from the clipboard's image"
+
+
+@case
 def ocr_text(s, env):
     """Capture Text over known text (CAP-09)."""
     w = env.win

@@ -51,6 +51,8 @@ enum Pending {
     Overlay { mode: String, waiter: Option<Waiter>, snap: JoinHandle<Snapshot>, cursor: bool, delay: u32 },
     /// A rectangle (or the whole output when `rect` is None) of one output
     Region { waiter: Option<Waiter>, output: String, rect: Option<Rect>, kind: String },
+    /// Every monitor, for one image (CAP-04)
+    AllOutputs { waiter: Option<Waiter> },
     /// A clean window buffer (CAP-05)
     Window { waiter: Option<Waiter>, client: Client, output: String, shadow: bool, fallback: Option<Frame>, rect: Rect },
     /// A frame of a scrolling capture (SCR-01)
@@ -280,7 +282,7 @@ impl Inner {
     /// An action by its shortcut id ("area", "settings"…), as its key runs it.
     pub fn shortcut(self: &Arc<Self>, id: &str) {
         match id {
-            "area" | "fullscreen" | "window" | "previous" | "text" | "all-in-one" | "area-pin" | "scroll" => self.begin(id, None, None, None, 0, None),
+            "area" | "fullscreen" | "window" | "previous" | "text" | "all-in-one" | "area-pin" | "scroll" | "fullscreen-all" => self.begin(id, None, None, None, 0, None),
             // CAP-02: Capture Area & Copy / & Save / & Annotate
             "area-copy" => self.begin("area", None, None, None, 0, Some(AfterCapture::Copy)),
             "area-save" => self.begin("area", None, None, None, 0, Some(AfterCapture::Save)),
@@ -363,6 +365,12 @@ impl Inner {
                 }
                 trace::trace("capture_begin", &format!("\"req\":{req},\"ms\":{:.2}", trace::ms_since(t0)));
             }
+            "fullscreen-all" => {
+                self.play("shutter");
+                let req = self.next();
+                self.pending.lock().unwrap().insert(req, Pending::AllOutputs { waiter });
+                self.capture_clean(req, Source::Outputs(None), cursor);
+            }
             "fullscreen" => {
                 let Some(output) = monitor.filter(|m| self.output_names().contains(m)).or_else(|| self.cursor_output()) else {
                     reply(waiter, Response::err("no output"));
@@ -399,6 +407,23 @@ impl Inner {
             }
             other => reply(waiter, Response::err(format!("unknown capture mode '{other}'"))),
         }
+    }
+
+    /// API-01 capture-area: `rect` (logical px on the monitor) with no
+    /// overlay; it becomes the previous area too (CAP-03).
+    fn capture_rect(self: &Arc<Self>, monitor: Option<String>, rect: Rect, cursor: Option<bool>, waiter: Option<Waiter>, action: Option<AfterCapture>) {
+        let Some(output) = monitor.filter(|m| self.output_names().contains(m)).or_else(|| self.cursor_output()) else {
+            return reply(waiter, Response::err("no output"));
+        };
+        let s = snip_hypr::monitors().into_iter().find(|m| m.name == output).map_or(1.0, |m| m.scale);
+        let phys = |v: i32| (v as f64 * s).round() as i32;
+        let rect = Rect::new(phys(rect.x), phys(rect.y), phys(rect.w), phys(rect.h));
+        *self.capture_action.lock().unwrap() = action;
+        *self.last_area.lock().unwrap() = Some((output.clone(), rect));
+        self.play("shutter");
+        let req = self.next();
+        self.pending.lock().unwrap().insert(req, Pending::Region { waiter, output: output.clone(), rect: Some(rect), kind: "area".into() });
+        self.capture_clean(req, Source::Outputs(Some(vec![output])), cursor.unwrap_or_else(|| self.cfg().capture.show_cursor));
     }
 
     /// Screen captures never contain Snip's own cards (CleanShot hides its
@@ -479,6 +504,23 @@ impl Inner {
                 self.finish_from_frame(&frame, rect, &kind, &output, waiter);
             }
             Pending::Scroll { .. } => {}
+            Pending::AllOutputs { waiter } => {
+                let parts: Vec<_> = r.frames.iter().map(|f| {
+                    let (uw, uh) = f.upright_size();
+                    let (data, w, h, alpha) = encode::crop_upright(f, Rect::new(0, 0, uw, uh));
+                    let rgba = if alpha { data } else { data.chunks_exact(3).flat_map(|p| [p[0], p[1], p[2], 255]).collect() };
+                    (f.logical, rgba, w, h)
+                }).collect();
+                if parts.is_empty() {
+                    self.toast("Screen capture failed");
+                    return reply(waiter, Response::err("capture failed"));
+                }
+                let (rgba, w, h) = encode::composite(&parts);
+                let png = encode::encode_png(&rgba, w, h, true);
+                let output = self.cursor_output().unwrap_or_default();
+                let meta = CaptureMeta { kind: "fullscreen".into(), output: output.clone(), app: None, title: None };
+                self.ingest(png, w, h, meta, &output, waiter);
+            }
             Pending::Window { waiter, client, output, shadow, fallback, rect } => {
                 match r.frames.into_iter().next() {
                     Some(f) => self.finish_window_frame(&f, &client, &output, shadow, waiter),
@@ -709,36 +751,7 @@ impl Inner {
         }
         if kind == "text" {
             let (data, w, h, alpha) = encode::crop_upright(frame, rect);
-            let t0 = trace::now_ns();
-            // OCR-03: a QR code's value is exact; read it before any OCR
-            let codes = qr::decode(&data, w, h, if alpha { 4 } else { 3 });
-            if !codes.is_empty() {
-                let text = codes.join("\n");
-                trace::trace("qr", &format!("\"codes\":{},\"ms\":{:.1}", codes.len(), trace::ms_since(t0)));
-                let summary = self.copy_qr(&text);
-                self.toast(format!("Copied {summary}"));
-                reply(waiter, Response::ok(json!(text)));
-                return;
-            }
-            let langs = self.ocr_languages();
-            match ocr::recognize(&data, w, h, if alpha { 4 } else { 3 }, frame.scale, &langs) {
-                Ok(text) if !text.trim().is_empty() => {
-                    trace::trace("ocr", &format!("\"chars\":{},\"ms\":{:.1}", text.chars().count(), trace::ms_since(t0)));
-                    self.set_clipboard_text(&text);
-                    let n = text.chars().count();
-                    self.toast(format!("Copied {n} character{}", if n == 1 { "" } else { "s" }));
-                    reply(waiter, Response::ok(json!(text)));
-                }
-                Ok(_) => {
-                    self.toast("No text found");
-                    reply(waiter, Response::err("no text found"));
-                }
-                Err(e) => {
-                    self.toast(format!("Text recognition failed: {e}"));
-                    reply(waiter, Response::err(e.to_string()));
-                }
-            }
-            return;
+            return reply(waiter, self.read_text(&data, w, h, alpha, frame.scale));
         }
         let (uw, uh) = frame.upright_size();
         if rect.intersect(&Rect::new(0, 0, uw, uh)).area() <= 0 {
@@ -760,6 +773,49 @@ impl Inner {
             return self.ingest_and_pin(e.png, e.width, e.height, meta, at, waiter);
         }
         self.ingest(e.png, e.width, e.height, meta, output, waiter);
+    }
+
+    /// Capture Text's reading (CAP-09): a QR code's exact value if there is one
+    /// (OCR-03), else the OCR'd text; copied, with a toast.
+    fn read_text(&self, data: &[u8], w: u32, h: u32, alpha: bool, scale: f64) -> Response {
+        let t0 = trace::now_ns();
+        let codes = qr::decode(data, w, h, if alpha { 4 } else { 3 });
+        if !codes.is_empty() {
+            let text = codes.join("\n");
+            trace::trace("qr", &format!("\"codes\":{},\"ms\":{:.1}", codes.len(), trace::ms_since(t0)));
+            let summary = self.copy_qr(&text);
+            self.toast(format!("Copied {summary}"));
+            return Response::ok(json!(text));
+        }
+        match ocr::recognize(data, w, h, if alpha { 4 } else { 3 }, scale, &self.ocr_languages()) {
+            Ok(text) if !text.trim().is_empty() => {
+                trace::trace("ocr", &format!("\"chars\":{},\"ms\":{:.1}", text.chars().count(), trace::ms_since(t0)));
+                self.set_clipboard_text(&text);
+                let n = text.chars().count();
+                self.toast(format!("Copied {n} character{}", if n == 1 { "" } else { "s" }));
+                Response::ok(json!(text))
+            }
+            Ok(_) => {
+                self.toast("No text found");
+                Response::err("no text found")
+            }
+            Err(e) => {
+                self.toast(format!("Text recognition failed: {e}"));
+                Response::err(e.to_string())
+            }
+        }
+    }
+
+    /// OCR-06: Capture Text on a PNG file, or on the clipboard's image.
+    pub fn text_of(&self, path: Option<&str>) -> Response {
+        let bytes = match path {
+            Some(p) => std::fs::read(p).map_err(|e| format!("{p}: {e}")),
+            None => self.clipboard_png().ok_or_else(|| "no image on the clipboard".to_string()),
+        };
+        match bytes.and_then(|b| encode::decode_png(&b).map_err(|_| "only PNG images can be read for now".to_string())) {
+            Ok((data, w, h, alpha)) => self.read_text(&data, w, h, alpha, 1.0),
+            Err(e) => Response::err(e),
+        }
     }
 
     /// Capture Area & Pin: the capture goes to history and straight into a
@@ -1692,13 +1748,17 @@ impl Inner {
         };
         match req {
             Ctl::Ping => Response::ok(json!("pong")),
-            Ctl::Capture { mode, monitor, cursor, delay, action } => {
+            Ctl::ReadText { path } => self.text_of(path.as_deref()),
+            Ctl::Capture { mode, monitor, cursor, delay, action, rect } => {
                 let action = match action.map(|a| serde_json::from_value::<AfterCapture>(json!(a))) {
                     Some(Err(_)) => return Response::err("--action is copy, save, annotate or pin"),
                     a => a.and_then(Result::ok),
                 };
                 let (tx, rx) = mpsc::channel();
-                self.begin(&mode, monitor, cursor, Some(tx), delay.unwrap_or(0), action);
+                match rect {
+                    Some([x, y, w, h]) => self.capture_rect(monitor, Rect::new(x, y, w, h), cursor, Some(tx), action),
+                    None => self.begin(&mode, monitor, cursor, Some(tx), delay.unwrap_or(0), action),
+                }
                 rx.recv_timeout(Duration::from_secs(590)).unwrap_or_else(|_| Response::err("timed out"))
             }
             Ctl::Open { path } => ok_or(self.open_file(&path)),

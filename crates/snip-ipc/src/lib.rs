@@ -26,6 +26,15 @@ pub enum Request {
         /// After Capture rules, unless `after_capture.variants_ignore_rules` is off)
         #[serde(default, skip_serializing_if = "Option::is_none")]
         action: Option<String>,
+        /// API-01 capture-area: this area (logical px x, y, w, h on the
+        /// monitor), with no overlay
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        rect: Option<[i32; 4]>,
+    },
+    /// OCR-06: Capture Text on a PNG file, or (no path) the clipboard's image
+    ReadText {
+        #[serde(default)]
+        path: Option<String>,
     },
     /// Copy a capture (default: the most recent) to the clipboard
     Copy {
@@ -171,7 +180,7 @@ mod tests {
 
     #[test]
     fn wire_format_is_stable() {
-        let r = Request::Capture { mode: "area".into(), monitor: None, cursor: None, delay: None, action: None };
+        let r = Request::Capture { mode: "area".into(), monitor: None, cursor: None, delay: None, action: None, rect: None };
         assert_eq!(serde_json::to_string(&r).unwrap(), r#"{"cmd":"capture","mode":"area","monitor":null}"#);
         let parsed: Request = serde_json::from_str(r#"{"cmd":"copy"}"#).unwrap();
         assert_eq!(parsed, Request::Copy { id: None });

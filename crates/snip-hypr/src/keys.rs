@@ -8,6 +8,7 @@
 pub const ACTIONS: &[(&str, &str)] = &[
     ("area", "Capture area"),
     ("fullscreen", "Capture fullscreen"),
+    ("fullscreen-all", "Capture all monitors"),
     ("window", "Capture window"),
     ("previous", "Capture previous area"),
     ("all-in-one", "All-In-One"),

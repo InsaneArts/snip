@@ -11,6 +11,9 @@ const USAGE: &str = "usage: snip [--json] <command>
 capture
   area | fullscreen | window | previous | text | all-in-one | area-pin [--monitor NAME] [--cursor | --no-cursor]
                    [--action copy|save|annotate|pin]   then that, instead of the After Capture rules
+  area --x X --y Y --w W --h H [--monitor NAME]   that area (logical px), with no overlay
+  fullscreen --all every monitor, in one image
+  text --file FILE | --clipboard   read the text (or QR code) of a PNG, onto the clipboard
   scroll           scrolling capture: choose the area, Start, scroll, Done (Enter; Esc cancels)
   area | fullscreen --delay N   self-timer: N seconds of countdown, then the capture
   open FILE        add an image (or a .snip project) as a capture, with a Quick Access card
@@ -52,6 +55,15 @@ fn main() -> ExitCode {
     };
     let arg1 = args.get(1).cloned();
     let (req, timeout) = match cmd.as_str() {
+        "text" if args.iter().any(|a| a == "--clipboard") => (Request::ReadText { path: None }, Duration::from_secs(30)),
+        "text" if args.iter().any(|a| a == "--file") => {
+            let Some(p) = flag(&mut args, "--file") else {
+                eprintln!("snip: text --file needs a file");
+                return ExitCode::from(2);
+            };
+            let path = std::fs::canonicalize(&p).unwrap_or_else(|_| p.into()).to_string_lossy().into_owned();
+            (Request::ReadText { path: Some(path) }, Duration::from_secs(30))
+        }
         "area" | "fullscreen" | "window" | "previous" | "text" | "all-in-one" | "area-pin" | "scroll" => {
             let monitor = flag(&mut args, "--monitor");
             let cursor = if args.iter().any(|a| a == "--cursor") {
@@ -63,7 +75,13 @@ fn main() -> ExitCode {
             };
             let delay = flag(&mut args, "--delay").and_then(|v| v.parse::<u32>().ok());
             let action = flag(&mut args, "--action");
-            (Request::Capture { mode: cmd.clone(), monitor, cursor, delay, action }, Duration::from_secs(600))
+            let n = |args: &mut Vec<String>, name: &str| flag(args, name).and_then(|v| v.parse::<i32>().ok());
+            let rect = match (n(&mut args, "--x"), n(&mut args, "--y"), n(&mut args, "--w"), n(&mut args, "--h")) {
+                (Some(x), Some(y), Some(w), Some(h)) => Some([x, y, w, h]),
+                _ => None,
+            };
+            let mode = if cmd == "fullscreen" && args.iter().any(|a| a == "--all") { "fullscreen-all".to_string() } else { cmd.clone() };
+            (Request::Capture { mode, monitor, cursor, delay, action, rect }, Duration::from_secs(600))
         }
         "edit" if arg1.as_deref() == Some("--clipboard") => (Request::EditClipboard, Duration::from_secs(10)),
         "open" | "edit" => {
