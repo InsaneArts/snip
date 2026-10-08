@@ -180,7 +180,7 @@ Snip should feel like an app, not a set of commands. The CLI stays complete for 
 - **Logo and icon set:** ✅ the app icon (`app/icons/snip.png`, from the product owner's design) and a one-colour bar icon the bar tints to its colour (`app/icons/snip-tray-symbolic.svg`). Still to do: the icon at every size, for the launcher.
 - **Bar icon and menu** (OMA-08, D35): ✅ a tray icon (StatusNotifierItem). A click opens CleanShot's menu under the bar: the captures with their keys, History, Restore Recently Closed, Settings…, Quit Snip.
 - **Launcher** (OMA-09): ✅ "Snip" is searchable. It opens Settings (`snip settings`), and its actions start Capture Area, Fullscreen, Window, Scrolling Capture, Text and History. `snip` starts Snip first if it isn't running (quit from its menu, say). `scripts/dev.sh` installs the entry for this checkout.
-- **Easy install while the repository is private:** one command. It builds Snip, installs it under `~/.local`, enables the user unit (so it starts at login), and adds the launcher entry.
+- **Easy install while the repository is private:** ✅ `scripts/install.sh` builds a pacman package from `packaging/aur/snip-screenshot-git` and installs it (`remove` uninstalls). It switches off a from-source Snip (`scripts/dev.sh` does the reverse, so one Snip runs at a time), and enables `snipd.service`, so Snip starts now and at every login. The launcher entry and icon come with the package.
 - **First-run setup** (OMA-02): Snip's keys, start at login, the bar icon.
 - The public release, the AUR package and the landing page come last, when the whole product is ready (D40).
 

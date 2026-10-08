@@ -28,6 +28,17 @@ CleanShot X's screenshot workflow for [Omarchy](https://omarchy.org) and Hyprlan
 - **Settings:** `snip settings` (or bind `snip:settings`) opens CleanShot's settings tabs. They write `~/.config/snip/config.toml` and keep your comments; editing the file by hand works too, live. Shortcuts records keys for every action and binds them in Hyprland.
 - **Formats:** PNG, JPG and WebP.
 
+## Install
+
+On Omarchy (Arch), from this checkout:
+
+```sh
+scripts/install.sh          # build a pacman package, install it, start Snip now and at every login
+scripts/install.sh remove   # uninstall
+```
+
+pacman asks for your password and installs what Snip needs. Snip then appears in the launcher and in the bar. Its keys come with Snip's Hyprland module (`/usr/share/snip/hypr/snip.lua`).
+
 ## Run it from source
 
 Dependencies (Arch/Omarchy):

@@ -77,6 +77,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 ## Build, run, test
 
 - `scripts/dev.sh` builds and (re)starts `snipd` from `build/` as the user unit `snip-dev`, with the user's real data, and loads `hypr/snip.lua` at runtime. The unit is enabled, so Snip starts with every login. `stop` stops it, at login too, and restores Hyprland's own bindings; `log` follows the trace.
+- `scripts/install.sh` installs Snip as a pacman package (`remove` uninstalls). It and `scripts/dev.sh` each switch the other's Snip off, so one Snip runs at a time.
 - Unit tests: `cargo test -p snip-core -p snip-ipc -p snip-hypr -p snip_bridge`.
 - End to end: `tests/e2e/e2e.py` runs in a **nested Hyprland** (a hidden window on a special workspace), so it never changes the user's monitors, pointer, keyboard focus or clipboard and can run while they work. `--only CASE` runs one case. `--live` is the old way (a headless output in the user's session): avoid it, since output hot-plug crashes GTK4 apps like Ghostty.
 - UI review: `snipd --gallery --output NAME --out DIR` renders every surface for chosen themes.
