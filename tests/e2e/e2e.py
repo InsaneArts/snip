@@ -278,7 +278,8 @@ class Env:
                   f'no_initial_focus = true, opacity = "1 1" }})')
 
     def configure(self, scale, transform=0):
-        hypr_eval(f'hl.monitor({{ output = "{OUT}", mode = "1920x1080@60", position = "auto", scale = {scale}, transform = {transform} }})')
+        # reserved: none (a case may have reserved space, as a bar does)
+        hypr_eval(f'hl.monitor({{ output = "{OUT}", mode = "1920x1080@60", position = "auto", scale = {scale}, transform = {transform}, reserved = 0 }})')
         time.sleep(0.8)
 
     def monitor(self):
@@ -3607,6 +3608,13 @@ def main():
             except Exception as e:
                 failed.append(fn.__name__)
                 print(f"  FAIL {fn.__name__}: {e}")
+            # the test output as every case expects it (a case, or the session around
+            # the nested Hyprland, may have changed it: say so, and put it back)
+            m = env.monitor()
+            if (m["scale"], m["transform"], m["width"], m["height"], m["reserved"]) != (1.25, 0, 1920, 1080, [0, 0, 0, 0]):
+                print(f"      the test output changed after {fn.__name__}: scale {m['scale']}, transform {m['transform']}, "
+                      f"{m['width']}x{m['height']}, reserved {m['reserved']}; restored")
+                env.configure(1.25)
             s.cli("close-all", check=False)
             s.cli("debug", "ui", "close-editors", check=False)   # a failed case must not leave its editor to the next
             s.cli("debug", "ui", "close-pins", check=False)
