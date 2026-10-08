@@ -220,6 +220,10 @@ Platform::sendKeys(QWindow* w, const QString& keys)
 static void
 portalFileRequest(Platform* self, int token, const QString& method, const QString& title, const QVariantMap& extra)
 {
+  if (qEnvironmentVariableIsSet("SNIP_NO_PORTALS")) {
+    QMetaObject::invokeMethod(self, [self, token] { Q_EMIT self->fileChosen(token, QString()); }, Qt::QueuedConnection);
+    return;
+  }
   QDBusConnection bus = QDBusConnection::sessionBus();
   const QString service = QStringLiteral("org.freedesktop.portal.Desktop");
   const QString handle = QStringLiteral("snip%1").arg(token);
@@ -259,6 +263,12 @@ Platform::saveFileDialog(int token, const QString& title, const QString& name, c
   dir.append('\0');
   opts[QStringLiteral("current_folder")] = dir;
   portalFileRequest(this, token, QStringLiteral("SaveFile"), title, opts);
+}
+
+bool
+Platform::altHeld() const
+{
+  return QGuiApplication::queryKeyboardModifiers() & Qt::AltModifier;
 }
 
 void
