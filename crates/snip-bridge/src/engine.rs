@@ -341,6 +341,7 @@ impl Inner {
                 self.record_pause(!paused);
             }
             "record-go" => self.record_start(None),
+            "record-gif-go" => self.record_start(Some(true)),
             "record-cancel" => self.record_cancel(),
             "timer-area" | "timer-fullscreen" => {
                 let delay = self.cfg().capture.timer_seconds;

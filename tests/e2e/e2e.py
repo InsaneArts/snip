@@ -1749,6 +1749,50 @@ def record_with_the_hud(s, env):
 
 
 @case
+def record_gif_by_alt_enter(s, env):
+    """REC-02: in the toolbar, Alt+Enter records a GIF whatever is chosen (CleanShot's ⌥↩):
+    the session binds it while the toolbar is up, and it's gone after."""
+    import re
+    s.cli("close-all"); time.sleep(0.3)
+    p = s.bg("record")
+    time.sleep(0.6)
+    s.drag(300, 200, 700, 500)
+    assert wait_for(lambda: record_hud(s)["phase"] == "ready", 3), record_hud(s)
+    assert not record_hud(s)["gif"], "Video is chosen"
+    alt_enter = lambda: re.search(r"modmask: 8\n\tsubmap: [^\n]*\n\tkey: Return\n", sh("hyprctl", "binds").stdout)
+    assert alt_enter(), "Alt+Enter is bound while the toolbar is up"
+    hypr_eval('hl.dispatch(hl.dsp.global("snip-e2e:record-gif-go"))')   # what the bind runs
+    assert wait_for(lambda: (record_state(s) or {}).get("gif") is True, 3), record_state(s)
+    assert wait_for(lambda: record_hud(s)["phase"] == "recording", 5), record_hud(s)
+    time.sleep(0.8)
+    s.json("record", "stop")
+    r, code = finish(p, timeout=30)
+    assert code == 0 and r["result"]["media"] == "gif", r
+    assert not alt_enter(), "and not after"
+
+
+@case
+def record_controls_ask_first(s, env):
+    """REC-05: Restart and Delete on the controls ask first, as CleanShot's do, and the
+    recording goes on meanwhile; Cancel keeps it, Delete throws it away (no card)."""
+    s.cli("close-all"); time.sleep(0.3)
+    p = s.bg("record", "area", "--x", "100", "--y", "80", "--w", "400", "--h", "300", "--monitor", OUT)
+    assert wait_for(lambda: (record_hud(s) or {}).get("phase") == "recording", 5), record_hud(s)
+    record_click(s, "record-restart")
+    assert wait_for(lambda: record_hud(s)["asking"] == "restart", 2), record_hud(s)
+    time.sleep(0.3)                                  # the pill grew: its new part takes input a frame later
+    record_click(s, "record-confirm-cancel")
+    assert wait_for(lambda: record_hud(s)["asking"] == "", 2) and record_state(s)["state"] == "recording", "kept, still recording"
+    record_click(s, "record-discard")
+    assert wait_for(lambda: record_hud(s)["asking"] == "discard", 2), record_hud(s)
+    assert record_state(s)["state"] == "recording", "it goes on while asking"
+    time.sleep(0.3)
+    record_click(s, "record-confirm")
+    r, code = finish(p, timeout=10)
+    assert record_state(s) is None and not s.status()["cards"], ("thrown away", r)
+
+
+@case
 def record_camera(s, env):
     """REC-08: the camera, as CleanShot shows it: chosen in the toolbar, a bubble inside the
     area (so it is recorded) at the bottom right; Small to Huge and four shapes from its menu;

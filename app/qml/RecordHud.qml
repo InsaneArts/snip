@@ -55,6 +55,7 @@ Window {
     property real comboAt: 0
     property bool comboShown: false
     property int ringsShown: 0                      // tests: rings drawn so far
+    property string asking: ""                      // "restart" | "discard": the controls ask first
 
     flags: Qt.FramelessWindowHint
     color: "transparent"
@@ -89,6 +90,7 @@ Window {
         heldMods = []
         combo = ""
         comboShown = false
+        asking = ""
         // `snip record area|fullscreen`: recording at once, no toolbar
         phase = s.now ? "starting" : "ready"
         micsOpen = false
@@ -104,6 +106,7 @@ Window {
             return
         }
         phase = s.state
+        if (phase !== "recording" && phase !== "paused") asking = ""
         elapsedBase = s.elapsed || 0
         since = Date.now()
         elapsed = elapsedBase
@@ -540,7 +543,7 @@ Window {
                 anchors.verticalCenter: parent.verticalCenter
                 primary: true
                 text: hud.gif ? "Record GIF" : "Record"
-                tip: "Enter"
+                tip: "Enter (a GIF: Alt+Enter)"
                 onClicked: hud.record()
             }
         }
@@ -767,9 +770,41 @@ Window {
                 HoverHandler { id: stopHover; cursorShape: Qt.PointingHandCursor }
                 TapHandler { onTapped: Engine.recordStop() }
             }
-            IconButton { objectName: "record-pause"; anchors.verticalCenter: parent.verticalCenter; icon: hud.phase === "paused" ? "play" : "pause"; tip: hud.phase === "paused" ? "Resume" : "Pause"; onClicked: Engine.recordPause(hud.phase !== "paused") }
-            IconButton { objectName: "record-restart"; anchors.verticalCenter: parent.verticalCenter; icon: "rotate-ccw"; tip: "Restart"; onClicked: Engine.recordRestart() }
-            IconButton { objectName: "record-discard"; anchors.verticalCenter: parent.verticalCenter; icon: "trash"; tip: "Discard"; onClicked: Engine.recordDiscard() }
+            Row {
+                visible: hud.asking === ""
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 4
+                IconButton { objectName: "record-pause"; anchors.verticalCenter: parent.verticalCenter; icon: hud.phase === "paused" ? "play" : "pause"; tip: hud.phase === "paused" ? "Resume" : "Pause"; onClicked: Engine.recordPause(hud.phase !== "paused") }
+                IconButton { objectName: "record-restart"; anchors.verticalCenter: parent.verticalCenter; icon: "rotate-ccw"; tip: "Restart"; onClicked: hud.asking = "restart" }
+                IconButton { objectName: "record-discard"; anchors.verticalCenter: parent.verticalCenter; icon: "trash"; tip: "Delete"; onClicked: hud.asking = "discard" }
+            }
+            // Restart and Delete ask first, as CleanShot's do (it goes on recording)
+            Row {
+                visible: hud.asking !== ""
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 6
+                leftPadding: 6
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: hud.asking === "restart" ? "Start over? This take is lost." : "Delete this recording? You can't undo this."
+                    color: Theme.text
+                    font.family: Theme.fontUi
+                    font.pixelSize: 13
+                }
+                TextButton {
+                    objectName: "record-confirm"
+                    anchors.verticalCenter: parent.verticalCenter
+                    primary: true
+                    text: hud.asking === "restart" ? "Restart" : "Delete"
+                    onClicked: {
+                        const what = hud.asking
+                        hud.asking = ""
+                        if (what === "restart") Engine.recordRestart()
+                        else Engine.recordDiscard()
+                    }
+                }
+                TextButton { objectName: "record-confirm-cancel"; anchors.verticalCenter: parent.verticalCenter; text: "Cancel"; onClicked: hud.asking = "" }
+            }
         }
     }
 
@@ -802,7 +837,7 @@ Window {
                                                     cameraName: camera, cameraShape: cameraShape, cameraSize: cameraSize, cameraMirror: cameraMirror,
                                                     cameraFull: cameraFull, cameraReady: bubble.ready, cameras: cameras.map(c => c.name),
                                                     camerasOpen: cameraList.visible, clicks: clicks, keys: keys, rings: ringsShown,
-                                                    keystrokes: keyPill.visible ? keyText : "" }).slice(1, -1))
+                                                    keystrokes: keyPill.visible ? keyText : "", asking: asking }).slice(1, -1))
             break
         }
     }
