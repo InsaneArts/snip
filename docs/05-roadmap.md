@@ -231,7 +231,7 @@ Recording came first after all (D43). Then:
 | Video editor (VED-01…03) | ✅ | Edit Video… on a card, a double-click or `snip edit FILE`: the frames along a timeline, Split (B) and Cut (Delete), trim handles, frame steps, each track's volume, mono, MP4 or GIF, quality and size, Replace or Save as New. Cuts are exact to the frame |
 | Safety (REC-14 part) | ✅ | Recovery of takes cut short, at the next start; stops and keeps below 1 GB free or when the display is unplugged |
 | Camera bubble (REC-08) | ✅ | The toolbar's Camera menu: the cameras, Small to Huge, Circle, Square, Rectangle, Vertical, Mirror. A bubble inside the area (so it's recorded), dragged anywhere, before and while recording; a click fills the area. A real camera is untested: none here |
-| Click highlights, keystrokes (REC-09/10) | ⏳ | Planned: the Hyprland Lua hooks |
+| Click highlights, keystrokes (REC-09/10) | ✅ | Two toolbar toggles; Hyprland's own hooks (a key event and a non-consuming click bind) send them while recording, with a heartbeat. Command keys only (never plain typing), silent in password managers and the polkit prompt. Real typing is untested in e2e |
 | Controls and bar (REC-05, REC-06) | ⏳ | Restart and Delete ask first; a level meter; Alt+Return for a GIF; the time in Snip's menu icon |
 | Mic warnings, staying awake, lock (REC-14) | ⏳ | |
 | Privacy-safe mode (REC-15) | ⏭ | Later |

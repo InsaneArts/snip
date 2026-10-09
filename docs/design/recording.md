@@ -16,7 +16,7 @@ Sources: the six research reports in [research/recording-2026-10/](../research/r
 | **After** | Quick Access card (length, size, sound); double-click opens the editor; a GIF is made after Stop | The same card (first frame, length); double-click or Edit Video… opens the editor; a GIF is made after Stop |
 | **Editor** | Trim (in and out only), dimensions, quality (7 steps), audio: as is / mono / mute / volume 0–200 %, Trim Only or Trim & Convert, **Replace** or **Save as New**, an estimated size | Trim, **cuts in the middle** (Split at the playhead, Cut a part), each track's volume (0 mutes it; several are mixed into one), mono, MP4 or **GIF**, quality (4 steps) and size, Replace or Save as New, an estimated size |
 | **Camera** | Devices; Small/Medium/Large/Huge (scaled to the area); Circle/Square/Rectangle/Vertical; mirrored by default; drag anywhere, any time; a click fills the area | The same, from the toolbar's Camera menu (below) |
-| **Clicks, keys** | Highlight clicks (size, colour, outline or filled, animated); keystrokes (size, 6 positions, dark or light, command keys only by default) | Planned (below) |
+| **Clicks, keys** | Highlight clicks (size, colour, outline or filled, animated); keystrokes (size, 6 positions, dark or light, command keys only by default) | Two toolbar toggles: a ring in the theme's accent (right click: warning) where the pointer clicks; the command keys at the bottom centre of the area, held modifiers kept, repeats counted (×2). Command keys only, no options yet |
 | **Safety** | Crash recovery; a low-disk warning (no auto-stop); mic muted or unplugged: Continue Without Audio or Stop | Recovery at start; **stops and keeps** below 1 GB free or when its display goes away. Mic warnings planned |
 
 Snip goes beyond CleanShot 4.x in two places, both asked for: cuts in the middle and GIF export in the editor ("cut things up"), and mixing the tracks with their own volumes in the editor ("merge audio, mute audio"; CleanShot asked for each track's volume in a dialog after recording).
@@ -34,6 +34,10 @@ Recording: the frame turns red; the controls sit outside the area.
 The camera (a test card stands in for one): its menu; Large and Vertical; a click fills the area; while recording.
 
 ![The camera bubble](recording-camera.png)
+
+Highlight Clicks and Show Keystrokes: the two toggles; while recording, a ring where it clicked and the keys pressed.
+
+![Clicks and keys](recording-clicks-keys.png)
 
 The video editor: two splits, the middle part cut (dimmed, "1.5 s"), a trim (the orange handles).
 
@@ -85,7 +89,7 @@ history card ─ Edit Video… ─▶ VideoEditor window ─▶ media::export (f
 | Video editor: split, cut, trim, track volumes, mono, MP4 or GIF, Replace or Save as New | VED-01…03 | ✅ built |
 | Safety: recovery, low disk, display unplugged | REC-14 (part) | ✅ built |
 | Camera bubble | REC-08 | ✅ built; a real camera is untested (none here) |
-| Click highlights and keystrokes | REC-09/10 | planned (below) |
+| Click highlights and keystrokes | REC-09/10 | ✅ built; real typing into the hook is untested (the nested Hyprland has no keyboard of ours) |
 | Controls: Restart and Delete ask first, a level meter, Alt+Return records a GIF, Snip's menu icon shows the time | REC-05, REC-06 | planned |
 | Mic muted or unplugged warnings; keep the screen awake; pause while locked | REC-14 | planned |
 | Editor: a scrubbing proxy, keyframe thumbnails at once, a smooth playhead | VED-01 | planned |
@@ -99,12 +103,13 @@ history card ─ Edit Video… ─▶ VideoEditor window ─▶ media::export (f
 - **Settings:** the camera (by its name), shape, size and mirror are kept in `[recording]`; where it was dragged is kept for that recording only.
 - **Tests:** there is no camera on the reference machine. `SNIP_CAMERA=fake` puts a test card in the list (e2e: the menu, sizes, shapes, the circle's mask on screen, the drag, the fill, recording). The device path (V4L2 formats, unplugging, "in use") needs a real camera.
 
-## Clicks and keystrokes (REC-09/10), planned
+## Clicks and keystrokes (REC-09/10)
 
 - **Source:** Hyprland's Lua hook `hl.on("input.keyboard.key")` for keys and a non-consuming `mouse:272/273` bind with a modmask nobody uses for clicks. They are installed at record start, removed at stop, and removed by a Lua timer if Snip's heartbeat stops. The full module is in [hyprland-clicks-keys-windows.md](../research/recording-2026-10/hyprland-clicks-keys-windows.md) §5.
 - **Transport:** socket2 `custom>>snip:<session>:…` events, which Snip already reads.
 - **Privacy:** the hook sees every key, password fields and the lock screen included. By default only command keys are shown (modifiers, and keys pressed with Ctrl, Alt or Super). Nothing is shown while a private window (1Password, Bitwarden) or the polkit prompt has focus, or while the screen is locked.
-- **Drawing:** in the HUD layer, inside the area, so they are recorded.
+- **Drawing:** in the HUD layer, inside the area, so they are recorded. A click outside the area draws nothing (it isn't recorded); paused, nothing is sent.
+- **Tests:** the Lua module passes the research's mock of Hyprland 0.56.2's Lua (32 checks: install twice, the command-key filter, clicks, mute, the watchdog, a config reload, the user's own SUPER+drag bind left alone). In the nested e2e, real clicks go through the hook; keys come as the hook sends them, since no real keyboard types there.
 
 ## Open questions for the product owner
 

@@ -428,6 +428,10 @@ pub mod qobject {
         fn record_status(self: Pin<&mut Engine>, json: &QString);
         #[qsignal]
         fn record_close(self: Pin<&mut Engine>);
+        /// A click or key while recording (REC-09/10): {kind: "click", button,
+        /// x, y} in the output's logical px, or {kind: "key", code, down, label}
+        #[qsignal]
+        fn record_input(self: Pin<&mut Engine>, json: &QString);
         /// The video editor (VED): a recording to edit ({id, path, duration,
         /// fps, width, height, tracks, thumbs, bytes, title, output}), and an
         /// export's {progress} or {done, ok, error, id}
@@ -567,9 +571,14 @@ impl qobject::Engine {
                 let _ = snip_hypr::install_runtime_rules();
                 h.apply_shortcuts(&Default::default());
                 h.push_theme();
+                h.record_rehook();
             }
             if name == "monitorremoved" {
                 h.record_output_removed(data);
+            }
+            // REC-09/10: a click or a key from the recording's hooks
+            if name == "custom" {
+                h.record_input(data);
             }
             // CAP-12: the covers follow fullscreen windows and workspaces
             if h.desktop_is_hidden() && matches!(name, "fullscreen" | "workspacev2" | "monitoraddedv2" | "monitorremoved") {

@@ -187,6 +187,7 @@ QtObject {
         function onRecordOpen(json) { root.recordHud.open(JSON.parse(json)) }
         function onRecordStatus(json) { root.recordHud.status(JSON.parse(json)) }
         function onRecordClose() { root.recordHud.close() }
+        function onRecordInput(json) { root.recordHud.input(JSON.parse(json)) }
         // the video editor (VED)
         function onVideoEditorOpen(json) { root.openVideoEditor(JSON.parse(json)) }
         function onVideoExportStatus(id, json) { const v = root.videoEditors[id]; if (v) v.exportStatus(JSON.parse(json)) }

@@ -65,6 +65,53 @@ end"#
     )
 }
 
+/// Modifier keys (xkb keycodes): Ctrl, Shift, Alt, Super, left and right.
+const MOD_KEYS: &[u32] = &[37, 105, 50, 62, 64, 108, 133, 134];
+/// The ones that make a key a command (Shift and a letter is typing).
+const CMD_KEYS: &[u32] = &[37, 105, 64, 108, 133, 134];
+/// Keys shown on their own: Esc, Tab, Enter, the arrows, Home, End, Page
+/// Up/Down, Insert, Delete, Print, F1–F12. Not Space or Backspace: alone,
+/// they would tell how someone types.
+const SPECIAL_KEYS: &[u32] = &[9, 23, 36, 111, 113, 114, 116, 110, 115, 112, 117, 118, 119, 107, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 95, 96];
+
+/// Snip's recording hooks (REC-09/10, `recording.lua`), on for the
+/// recording `sid`: the command keys when `keys`, clicks when `clicks`.
+/// Silent while a password manager or the polkit prompt has the focus.
+pub fn recording_lua(sid: &str, keys: bool, clicks: bool) -> String {
+    let set = |codes: &[u32]| format!("{{ {} }}", codes.iter().map(|c| format!("[{c}] = true")).collect::<Vec<_>>().join(", "));
+    let keys = if keys { format!("{{ mods = {}, cmd = {}, special = {} }}", set(MOD_KEYS), set(CMD_KEYS), set(SPECIAL_KEYS)) } else { "nil".into() };
+    let buttons = if clicks { "{ 272, 273 }" } else { "{}" };
+    format!(
+        r#"{}
+return SNIP_REC.on({{ sid = "{sid}", keys = {keys}, buttons = {buttons},
+  private = {{ ["1password"] = true, ["1Password"] = true, ["Bitwarden"] = true }}, private_layers = {{ ["omarchy-polkit"] = true }} }})"#,
+        include_str!("recording.lua")
+    )
+}
+
+pub const RECORDING_OFF_LUA: &str = "if SNIP_REC then SNIP_REC.off() end";
+
+/// Snip still records `sid`: without this every second, the hooks remove themselves.
+pub fn recording_beat_lua(sid: &str) -> String {
+    format!(r#"if SNIP_REC then SNIP_REC.beat("{sid}") end"#)
+}
+
+/// Paused: nothing is sent.
+pub fn recording_mute_lua(on: bool) -> String {
+    format!("if SNIP_REC then SNIP_REC.mute({on}) end")
+}
+
+/// A key's label by xkb keycode (US positions), modifiers included.
+pub fn key_label(code: u32) -> Option<&'static str> {
+    match code {
+        37 | 105 => Some("Ctrl"),
+        50 | 62 => Some("Shift"),
+        64 | 108 => Some("Alt"),
+        133 | 134 => Some("Super"),
+        _ => KEYS.iter().find(|(c, _, _)| *c == code).map(|(_, _, l)| *l),
+    }
+}
+
 /// The description Snip's binds for `action` carry.
 pub fn description(action: &str) -> Option<String> {
     ACTIONS.iter().find(|(id, _)| *id == action).map(|(_, name)| format!("Snip: {name}"))
@@ -321,6 +368,17 @@ bind\n\tmodmask: 0\n\tsubmap: snip-record\n\tkey: Escape\n\tkeycode: 0\n\tcatcha
         assert_eq!(c("history", "SUPER + SHIFT + code:13").as_deref(), Some("Snip: Capture area"));
         assert_eq!(c("history", "Escape"), None, "a submap's binds don't count");
         assert_eq!(c("history", "SUPER + ALT + code:13"), None);
+    }
+
+    #[test]
+    fn recording_hooks_send_command_keys_and_clicks() {
+        let on = recording_lua("ab12", true, true);
+        assert!(on.contains("function S.on(cfg)") && on.contains(r#"return SNIP_REC.on({ sid = "ab12""#), "{on}");
+        assert!(on.contains("cmd = { [37] = true, [105] = true, [64] = true") && on.contains("buttons = { 272, 273 }"), "{on}");
+        assert!(!on.contains("[65] = true") && !on.contains("[22] = true"), "Space and Backspace alone stay private");
+        let clicks = recording_lua("ab12", false, true);
+        assert!(clicks.contains("keys = nil, buttons = { 272, 273 }"), "{clicks}");
+        assert_eq!((key_label(37), key_label(54), key_label(36), key_label(999)), (Some("Ctrl"), Some("C"), Some("Enter"), None));
     }
 
     #[test]
