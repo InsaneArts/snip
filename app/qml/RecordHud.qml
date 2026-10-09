@@ -581,6 +581,7 @@ Window {
 
     // ---------------------------------------------------------------- the countdown (REC-03)
     Rectangle {
+        id: countdownDisc
         visible: hud.phase === "countdown"
         width: 120
         height: 120
@@ -594,6 +595,28 @@ Window {
             color: "white"
             font.family: Theme.fontUi
             font.pixelSize: 64
+            font.weight: Font.DemiBold
+        }
+    }
+
+    // a whole-screen take has no controls (D52): how to stop it, while it counts down
+    Rectangle {
+        id: stopHint
+        objectName: "record-stop-hint"
+        visible: hud.phase === "countdown" && hud.whole
+        anchors.horizontalCenter: countdownDisc.horizontalCenter
+        y: countdownDisc.y + countdownDisc.height + 16
+        width: stopHintText.implicitWidth + 28
+        height: 32
+        radius: 16
+        color: Qt.rgba(0, 0, 0, 0.55)
+        Text {
+            id: stopHintText
+            anchors.centerIn: parent
+            text: "To stop, click Snip in the bar"
+            color: "white"
+            font.family: Theme.fontUi
+            font.pixelSize: 14
             font.weight: Font.DemiBold
         }
     }
@@ -1114,7 +1137,7 @@ Window {
                                                     cameraName: camera, cameraShape: cameraShape, cameraSize: cameraSize, cameraMirror: cameraMirror,
                                                     cameraFull: cameraFull, cameraReady: bubble.ready, cameras: cameras.map(c => c.name),
                                                     camerasOpen: cameraList.visible, micsOpen: micList.visible, clicks: clicks, keys: keys, rings: ringsShown,
-                                                    keystrokes: keyPill.visible ? keyText : "", asking: asking,
+                                                    keystrokes: keyPill.visible ? keyText : "", asking: asking, stopHint: stopHint.visible,
                                                     cardsAway: !!(controller && controller.quickAccess.capturing) }).slice(1, -1))
             break
         }

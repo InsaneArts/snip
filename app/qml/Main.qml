@@ -232,6 +232,7 @@ QtObject {
             return
         }
         if (a[0] === "tray") { trayMenu.debug(a.slice(1)); return }
+        if (a[0] === "tray-click") { trayClick(a[1] === "right"); return }
         if (a[0] === "link") { linkPrompt.debug(a.slice(1)); return }
         if (a[0] === "desktop") {
             Engine.log("desktop_state", JSON.stringify({ hidden: quickAccess.clutterHidden, covers: desktopCover.count,
@@ -325,10 +326,16 @@ QtObject {
     property ScrollHud scrollHud: ScrollHud { controller: root }
     property RecordHud recordHud: RecordHud { controller: root }
     property TrayMenu trayMenu: TrayMenu { controller: root }
-    // Snip in the bar (OMA-08): a click on its icon opens the menu
+    // Snip in the bar (OMA-08): a click on its icon stops a recording (D52),
+    // else opens the menu; a right-click always opens the menu
     property Connections trayClicks: Connections {
         target: Platform
-        function onTrayActivated(x, y) { root.trayMenu.toggle() }
+        function onTrayActivated(x, y) { root.trayClick(false) }
+        function onTrayMenuRequested(x, y) { root.trayClick(true) }
+    }
+    function trayClick(menu) {
+        if (!menu && trayMenu.recording) Engine.recordStop()
+        else trayMenu.toggle()
     }
 
     // Editors, one per capture: opening one again brings it forward.

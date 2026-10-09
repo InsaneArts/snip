@@ -19,8 +19,10 @@ Window {
     property int barBottom: 0
     property var keys: ({})                     // action → its key, as Settings shows it
     property string pending: ""
-    // REC-06: Snip's menu stops a recording that runs
-    readonly property bool recording: !!controller && ["recording", "paused", "starting", "countdown"].includes(controller.recordHud.phase)
+    // REC-06: Snip's menu stops a recording that runs, and pauses it (D52)
+    readonly property string recordPhase: controller ? controller.recordHud.phase : "closed"
+    readonly property bool recording: ["countdown", "starting", "launching", "recording", "paused"].includes(recordPhase)
+    readonly property bool pausable: recordPhase === "recording" || recordPhase === "paused"
 
     flags: Qt.FramelessWindowHint
     color: "transparent"
@@ -37,12 +39,13 @@ Window {
         ["all-in-one", "All-In-One"], ["area", "Capture Area"], ["previous", "Capture Previous Area"],
         ["fullscreen", "Capture Fullscreen"], ["window", "Capture Window"], ["timer-area", "Self-Timer"],
         ["scroll", "Scrolling Capture"], ["text", "Capture Text"],
-        ["record", tray.recording ? "Stop Recording" : "Record Screen"], null,
+        ["record", tray.recording ? "Stop Recording" : "Record Screen"]
+    ].concat(tray.pausable ? [["record-pause", tray.recordPhase === "paused" ? "Resume Recording" : "Pause Recording"]] : [], [null,
         ["open", "Open…"], ["edit-clipboard", "Open from Clipboard"], ["pin", "Pin to the Screen…"],
         ["history", "Capture History…"], ["restore", "Restore Recently Closed"], null,
         ["desktop-toggle", tray.controller && tray.controller.quickAccess.clutterHidden ? "Show Desktop Clutter" : "Hide Desktop Clutter"], null,
         ["settings", "Settings…"], ["about", "About Snip"], ["quit", "Quit Snip"]
-    ]
+    ])
     // Open… and Pin to the Screen… ask for an image first
     property string picking: ""
     property int pickToken: 0
@@ -128,7 +131,8 @@ Window {
         case "state":
             Engine.log("tray_state", JSON.stringify({ open: visible, output: output,
                                                      menu: [menu.x, menu.y, menu.width, menu.height],
-                                                     items: menu.items.filter(i => !i.sep).map(i => [i.action, i.key]) }).slice(1, -1))
+                                                     items: menu.items.filter(i => !i.sep).map(i => [i.action, i.key]),
+                                                     labels: menu.items.filter(i => !i.sep).map(i => i.label) }).slice(1, -1))
             break
         }
     }

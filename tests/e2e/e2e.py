@@ -1982,6 +1982,61 @@ def recording_keeps_out_cards_and_clutter(s, env):
 
 
 @case
+def record_stops_from_the_bar(s, env):
+    """D52: a whole-screen take has no controls on screen, so its countdown says to stop it
+    from the bar, and a click on Snip in the bar stops it (during the countdown: before it
+    starts, and nothing counts on after). A right-click opens the menu, which also pauses
+    and resumes it."""
+    s.cli("close-all"); time.sleep(0.3)
+    cfg = s.tmp / "cfg/snip/config.toml"
+    before = cfg.read_text()
+    cfg.write_text(before.replace("countdown = 1", "countdown = 3"))   # time to click during it
+    time.sleep(0.8)
+
+    def menu_click(name):
+        n = len(s.traces("tray_where"))
+        s.debug("ui", "tray", "where", name)
+        assert wait_for(lambda: len(s.traces("tray_where")) > n, 2)
+        b = s.traces("tray_where")[-1]
+        assert b["x"] >= 0, (name, "isn't in the menu")
+        s.move(b["x"], b["y"]); time.sleep(0.1); s.click()
+
+    try:
+        p = record_panel(s)
+        s.debug("ui", "record", "keys", "{Return}")                  # the whole screen
+        assert wait_for(lambda: record_hud(s)["phase"] == "countdown", 2), record_hud(s)
+        assert record_hud(s)["stopHint"], "the countdown says how to stop it"
+        s.debug("ui", "tray-click", "left")
+        r, code = finish(p, timeout=5)
+        assert code != 0 or not r.get("ok"), ("stopped before it started: nothing kept", r)
+        time.sleep(3.2)                                              # past where the countdown would end
+        assert record_hud(s)["phase"] == "closed" and record_state(s) is None, (record_hud(s)["phase"], record_state(s))
+
+        p = s.bg("record", "fullscreen", "--monitor", OUT)
+        assert wait_for(lambda: (record_state(s) or {}).get("state") == "recording", 5), record_state(s)
+        assert record_hud(s)["controls"] is None, "no controls on screen"
+        s.move(300, 5)                                               # on the bar, as the icon's click
+        s.debug("ui", "tray-click", "right")
+        assert wait_for(lambda: tray_state(s)["open"], 2), "a right-click opens the menu"
+        labels = tray_state(s)["labels"]
+        assert "Stop Recording" in labels and "Pause Recording" in labels, labels
+        menu_click("menu:record-pause")
+        assert wait_for(lambda: record_state(s)["state"] == "paused", 3), record_state(s)
+        s.debug("ui", "tray-click", "right")
+        assert wait_for(lambda: tray_state(s)["open"] and "Resume Recording" in tray_state(s)["labels"], 2), tray_state(s)
+        menu_click("menu:record-pause")
+        assert wait_for(lambda: record_state(s)["state"] == "recording", 3), record_state(s)
+        time.sleep(0.5)
+        s.debug("ui", "tray-click", "left")                           # a click stops it
+        r, code = finish(p, timeout=20)
+        assert code == 0 and r["result"]["media"] == "video", r
+        assert not tray_state(s)["open"], "and no menu"
+    finally:
+        cfg.write_text(before)
+        s.debug("ui", "tray", "keys", "{Escape}")
+
+
+@case
 def record_controls_ask_first(s, env):
     """REC-05: Restart and Delete on the controls ask first, as CleanShot's do, and the
     recording goes on meanwhile; Cancel keeps it, Delete throws it away (no card)."""

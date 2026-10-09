@@ -427,6 +427,7 @@ Platform::showTray(const QString& iconDir)
     return;
   auto* tray = new Tray(iconDir, this);
   connect(tray, &Tray::activated, this, &Platform::trayActivated);
+  connect(tray, &Tray::menuRequested, this, &Platform::trayMenuRequested);
 }
 
 void
