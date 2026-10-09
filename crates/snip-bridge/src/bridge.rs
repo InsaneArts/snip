@@ -1016,8 +1016,9 @@ impl qobject::Engine {
     }
 
     fn record_pause(self: Pin<&mut Self>, pause: bool) {
+        // gsr is asked off the UI thread: a camera's frames come on it
         if let Some(i) = self.inner() {
-            i.record_pause(pause);
+            std::thread::spawn(move || i.record_pause(pause));
         }
     }
 
