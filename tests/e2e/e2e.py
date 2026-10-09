@@ -2037,6 +2037,28 @@ def record_stops_from_the_bar(s, env):
 
 
 @case
+def record_puts_dnd_back(s, env):
+    """REC-11: a take puts Do Not Disturb back as it found it, even when the setting
+    changes while it records."""
+    s.cli("close-all"); time.sleep(0.3)
+    holds = lambda: (s.traces("dnd") or [{"holds": 0}])[-1]["holds"]
+    cfg = s.tmp / "cfg/snip/config.toml"
+    before = cfg.read_text()
+    p = s.bg("record", "area", "--x", "100", "--y", "80", "--w", "400", "--h", "300", "--monitor", OUT)
+    try:
+        assert wait_for(lambda: (record_state(s) or {}).get("state") == "recording", 5), record_state(s)
+        assert holds() == 1, "DND on while it records"
+        cfg.write_text(before.replace("[recording]\n", "[recording]\ndnd = false\n"))
+        time.sleep(0.8)                                              # the watcher reloads it
+        s.json("record", "stop")
+        r, code = finish(p, timeout=20)
+        assert code == 0, r
+        assert wait_for(lambda: holds() == 0, 3), ("DND put back", holds())
+    finally:
+        cfg.write_text(before)
+
+
+@case
 def record_controls_ask_first(s, env):
     """REC-05: Restart and Delete on the controls ask first, as CleanShot's do, and the
     recording goes on meanwhile; Cancel keeps it, Delete throws it away (no card)."""

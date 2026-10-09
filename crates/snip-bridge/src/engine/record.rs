@@ -83,6 +83,9 @@ struct Run {
     hooks: Option<(bool, bool)>,
     /// this take put the desktop cover up (CAP-12): it takes it down
     covered: bool,
+    /// this take turned Do Not Disturb on (REC-11): it turns it off, whatever
+    /// the setting says by then
+    dnd: bool,
 }
 
 impl Run {
@@ -347,7 +350,7 @@ impl Inner {
         // CAP-12: with Hide desktop clutter on, the bars show the wallpaper and
         // pins step aside while it records (unless they're hidden already)
         let covered = self.cfg().capture.hide_desktop && !self.desktop_is_hidden();
-        rec.run = Some(Run { child, file: file.clone(), ipc, started: Instant::now(), paused_at: None, paused: Duration::ZERO, audio: has_audio, size, rolling, sid: sid.clone(), hooks, covered });
+        rec.run = Some(Run { child, file: file.clone(), ipc, started: Instant::now(), paused_at: None, paused: Duration::ZERO, audio: has_audio, size, rolling, sid: sid.clone(), hooks, covered, dnd: cfg.dnd });
         drop(r);
         if covered {
             self.desktop("hide");
@@ -469,10 +472,11 @@ impl Inner {
                 rec.run.take()
             };
             if let Some(run) = run {
+                let dnd = run.dnd;
                 me.record_end_run(run, false);
-            }
-            if me.cfg().recording.dnd {
-                me.dnd(false);
+                if dnd {
+                    me.dnd(false);
+                }
             }
             me.record_go();
         });
@@ -664,11 +668,11 @@ impl Inner {
             }
         };
         let Some(mut rec) = rec else { return };
-        let recording = rec.run.is_some();
+        let dnd = rec.run.as_ref().is_some_and(|run| run.dnd);
         // gsr first: the HUD (the camera, the keys) stays until the file is finished
         let file = rec.run.take().and_then(|run| self.record_end_run(run, keep));
         self.ui(|e| e.record_close());
-        if recording && self.cfg().recording.dnd {
+        if dnd {
             self.dnd(false);
         }
         let Some(file) = file else {
