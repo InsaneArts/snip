@@ -485,6 +485,8 @@ impl Inner {
         let s = snip_hypr::monitors().into_iter().find(|m| m.name == output).map_or(1.0, |m| m.scale);
         let phys = |v: i32| (v as f64 * s).round() as i32;
         let rect = Rect::new(phys(rect.x), phys(rect.y), phys(rect.w), phys(rect.h));
+        // no session here: a Shift held on the last one is over (D32)
+        self.skip_preset.store(false, Ordering::Relaxed);
         *self.capture_action.lock().unwrap() = action;
         *self.last_area.lock().unwrap() = Some((output.clone(), rect));
         self.play("shutter");
@@ -1172,7 +1174,9 @@ impl Inner {
     /// QML renders it and commits it like an edit (action "auto-bg"), then
     /// the After Capture rules run. False when there is none to apply.
     fn apply_auto_background(&self, rec: &Record, output: &str) -> bool {
-        if !matches!(rec.kind.as_str(), "area" | "fullscreen" | "window") || self.skip_preset.swap(false, Ordering::Relaxed) {
+        // Shift skips it for this capture only, whatever its kind
+        let skip = self.skip_preset.swap(false, Ordering::Relaxed);
+        if skip || !matches!(rec.kind.as_str(), "area" | "fullscreen" | "window") {
             return false;
         }
         let Some(bg) = self.auto_background() else { return false };
