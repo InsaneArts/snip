@@ -465,6 +465,16 @@ Window {
                     Check { key: "recording.dim"; text: "Dim the screen outside the area" }
                     Check { key: "recording.dnd"; text: "Turn on Do Not Disturb" }
                     NumberBox { key: "recording.countdown"; from: 0; to: 10; prefix: "Count down"; suffix: "seconds first (0: none)" }
+                    Check { key: "recording.highlight_clicks"; text: "Highlight clicks" }
+                    Check { key: "recording.show_keystrokes"; text: "Show keystrokes" }
+                    Note { text: "Only command keys show (Ctrl+C, Esc, arrows…), never typing." }
+                }
+                Section {
+                    label: "Camera"
+                    Choice { key: "recording.camera_shape"; options: [["circle", "Circle"], ["square", "Square"], ["rectangle", "Rectangle"], ["vertical", "Vertical"]] }
+                    Choice { key: "recording.camera_size"; options: [["small", "Small"], ["medium", "Medium"], ["large", "Large"], ["huge", "Huge"]] }
+                    Check { key: "recording.camera_mirror"; text: "Mirror the camera" }
+                    Note { text: "Choose the camera in the recording toolbar." }
                 }
                 Section {
                     label: "Audio"
