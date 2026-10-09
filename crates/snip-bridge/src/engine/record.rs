@@ -233,7 +233,7 @@ impl Inner {
         let whole = local == Rect::new(0, 0, o.w, o.h);
         let j = json!({
             // a GIF if asked, else what was chosen last (REC-02)
-            "output": output, "x": local.x, "y": local.y, "w": local.w, "h": local.h, "whole": whole, "gif": gif || cfg.kind == "gif",
+            "output": output, "x": local.x, "y": local.y, "w": local.w, "h": local.h, "scale": s, "whole": whole, "gif": gif || cfg.kind == "gif",
             "mics": if now { vec![] } else { self.audio_inputs() }, "mic": cfg.mic, "system": cfg.system_audio, "dim": cfg.dim, "now": now,
             "camera": cfg.camera, "cameraShape": cfg.camera_shape, "cameraSize": cfg.camera_size, "cameraMirror": cfg.camera_mirror,
             "clicks": cfg.highlight_clicks, "keys": cfg.show_keystrokes,

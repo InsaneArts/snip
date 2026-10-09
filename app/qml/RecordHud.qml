@@ -28,7 +28,8 @@ Window {
     property string output: ""
     property rect area: Qt.rect(0, 0, 0, 0)       // logical px on the output
     property bool whole: false
-    property string phase: "closed"                // ready | countdown | starting | recording | paused | finishing | closed
+    property string phase: "closed"                // ready | countdown | starting | launching | recording | paused | finishing | closed
+    property real scale: 1                          // the output's (Hyprland's: Qt rounds 1.25 up)
     property bool gif: false
     property var mics: []                           // [{id, label}]
     property string mic: ""                         // "" none, or a mic's id
@@ -71,6 +72,7 @@ Window {
     function open(s) {
         output = s.output
         area = Qt.rect(s.x, s.y, s.w, s.h)
+        scale = s.scale || 1
         whole = !!s.whole
         gif = !!s.gif
         mics = s.mics || []
@@ -293,6 +295,7 @@ Window {
         visible: hud.cameraEntry !== null && hud.phase !== "closed" && hud.phase !== "finishing"
         running: visible
         device: hud.cameraEntry ? hud.cameraEntry.device : null
+        pixelScale: hud.scale
         fake: hud.cameraEntry !== null && hud.cameraEntry.device === null
         shape: hud.cameraFull ? "full" : hud.cameraShape
         mirror: hud.cameraMirror
