@@ -4,8 +4,8 @@ import org.kde.layershell as LayerShell
 import Snip.Core
 
 // Snip's menu in the bar (OMA-08, D35): CleanShot's, in its order (from its
-// MainMenu.nib), less what Snip hasn't got yet (Record Screen, Check for
-// Updates); Hide Desktop Icons is Hide Desktop Clutter (CAP-12). A click on
+// MainMenu.nib), less what Snip hasn't got yet (Check for Updates); Hide
+// Desktop Icons is Hide Desktop Clutter (CAP-12). A click on
 // the bar icon opens it under the icon.
 // A full-output layer, so a click anywhere else (the icon too) closes it, as
 // Esc does. An entry runs once the menu is off screen, so it's never in a
@@ -19,6 +19,8 @@ Window {
     property int barBottom: 0
     property var keys: ({})                     // action → its key, as Settings shows it
     property string pending: ""
+    // REC-06: Snip's menu stops a recording that runs
+    readonly property bool recording: !!controller && ["recording", "paused", "starting", "countdown"].includes(controller.recordHud.phase)
 
     flags: Qt.FramelessWindowHint
     color: "transparent"
@@ -34,7 +36,8 @@ Window {
     readonly property var entries: [
         ["all-in-one", "All-In-One"], ["area", "Capture Area"], ["previous", "Capture Previous Area"],
         ["fullscreen", "Capture Fullscreen"], ["window", "Capture Window"], ["timer-area", "Self-Timer"],
-        ["scroll", "Scrolling Capture"], ["text", "Capture Text"], null,
+        ["scroll", "Scrolling Capture"], ["text", "Capture Text"],
+        ["record", tray.recording ? "Stop Recording" : "Record Screen"], null,
         ["open", "Open…"], ["edit-clipboard", "Open from Clipboard"], ["pin", "Pin to the Screen…"],
         ["history", "Capture History…"], ["restore", "Restore Recently Closed"], null,
         ["desktop-toggle", tray.controller && tray.controller.quickAccess.clutterHidden ? "Show Desktop Clutter" : "Hide Desktop Clutter"], null,
