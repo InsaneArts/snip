@@ -18,6 +18,13 @@ main(int argc, char* argv[])
   // Qt picks the basic loop on NVIDIA, which caps at 125 fps (spike S05).
   if (!qEnvironmentVariableIsSet("QSG_RENDER_LOOP"))
     qputenv("QSG_RENDER_LOOP", "threaded");
+  // QtMultimedia tries every FFmpeg hardware device on the GUI thread at its
+  // first use (at start: 0.87 s to ready instead of 0.3 s) unless both lists
+  // are given. Snip never encodes through Qt, and decodes in software: no
+  // CUDA context per video, and no CUDA teardown at exit.
+  for (const char* var : { "QT_FFMPEG_ENCODING_HW_DEVICE_TYPES", "QT_FFMPEG_DECODING_HW_DEVICE_TYPES" })
+    if (!qEnvironmentVariableIsSet(var))
+      qputenv(var, ",");
   QQuickWindow::setDefaultAlphaBuffer(true);
 
   QGuiApplication app(argc, argv);

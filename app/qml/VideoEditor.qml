@@ -140,6 +140,7 @@ Window {
         // what's cut or trimmed off is skipped, as in the result
         onPositionChanged: {
             if (playbackState !== MediaPlayer.PlayingState) return
+            ve.headMs = position
             if (position >= ve.outMs - 1) { pause(); return }
             const p = ve.parts[ve.partAt(position)]
             if (position < ve.inMs) position = ve.inMs
@@ -152,12 +153,42 @@ Window {
     }
     function playPause() {
         if (player.playbackState === MediaPlayer.PlayingState) { player.pause(); return }
-        if (player.position >= outMs - frameMs || player.position < inMs) player.position = inMs
+        // from the playhead (a seek may still be on its way there)
+        seekNext = -1
+        player.position = headMs >= outMs - frameMs || headMs < inMs ? inMs : headMs
         player.play()
     }
+    // From the frame shown (the first one that ends at or after the
+    // playhead: on a frame's first instant Qt shows the one before), to the
+    // middle of another
     function step(frames) {
         player.pause()
-        player.position = Math.max(0, Math.min(duration, player.position + frames * frameMs))
+        const shown = Math.max(0, Math.ceil(headMs / frameMs - 1e-6) - 1)
+        const n = Math.max(0, Math.min(Math.floor((duration - 1) / frameMs), shown + frames))
+        seek(Math.round((n + 0.5) * frameMs))
+    }
+    // Where the playhead is: the frame asked for, or where playback is.
+    // One seek at a time, the newest waiting: each new seek drops the one
+    // under way, so seeking on every move of a drag showed nothing until
+    // the drag stopped.
+    property real headMs: 0
+    property real seekNext: -1
+    property bool seeking: false
+    function seek(ms) {
+        headMs = ms
+        if (seeking) { seekNext = ms; return }
+        seeking = true
+        seekGuard.restart()
+        player.position = ms
+    }
+    function seekDone() {
+        seeking = false
+        if (seekNext >= 0) { const ms = seekNext; seekNext = -1; seek(ms) }
+    }
+    Timer { id: seekGuard; interval: 600; onTriggered: ve.seekDone() }
+    Connections {
+        target: video.videoSink
+        function onVideoFrameChanged() { if (ve.seeking) { seekGuard.stop(); ve.seekDone() } }
     }
 
     Item {
@@ -165,12 +196,12 @@ Window {
         Keys.onPressed: (e) => {
             const ctrl = e.modifiers & Qt.ControlModifier, shift = e.modifiers & Qt.ShiftModifier
             if (e.key === Qt.Key_Space) ve.playPause()
-            else if (e.key === Qt.Key_B) ve.split(player.position)
+            else if (e.key === Qt.Key_B) ve.split(ve.headMs)
             else if (e.key === Qt.Key_Delete || e.key === Qt.Key_Backspace) ve.toggleCut(ve.selected)
             else if (e.key === Qt.Key_Left) ve.step(shift ? -10 : -1)
             else if (e.key === Qt.Key_Right) ve.step(shift ? 10 : 1)
-            else if (e.key === Qt.Key_Home) player.position = ve.inMs
-            else if (e.key === Qt.Key_End) player.position = ve.outMs
+            else if (e.key === Qt.Key_Home) { player.pause(); ve.seek(ve.inMs) }
+            else if (e.key === Qt.Key_End) { player.pause(); ve.seek(ve.outMs) }
             else if (ctrl && e.key === Qt.Key_S) ve.exportIt(!shift)
             else if (e.key === Qt.Key_Escape || (ctrl && e.key === Qt.Key_W)) ve.close()
             else return
@@ -203,14 +234,14 @@ Window {
         Text {
             objectName: "video-time"
             anchors.verticalCenter: parent.verticalCenter
-            text: ve.clock(player.position) + " / " + ve.clock(ve.keptMs)
+            text: ve.clock(ve.headMs) + " / " + ve.clock(ve.keptMs)
             color: Theme.text
             font.family: Theme.fontUi
             font.pixelSize: 13
             font.features: { "tnum": 1 }
         }
         Item { width: 12; height: 1 }
-        TextButton { objectName: "video-split"; anchors.verticalCenter: parent.verticalCenter; text: "Split"; tip: "At the playhead (B)"; onClicked: ve.split(player.position) }
+        TextButton { objectName: "video-split"; anchors.verticalCenter: parent.verticalCenter; text: "Split"; tip: "At the playhead (B)"; onClicked: ve.split(ve.headMs) }
         TextButton {
             objectName: "video-cut"
             anchors.verticalCenter: parent.verticalCenter
@@ -318,8 +349,8 @@ Window {
         // click: the part under it is selected and the playhead goes there
         MouseArea {
             anchors.fill: parent
-            onPressed: (m) => { const ms = timeline.msAt(m.x); ve.selected = ve.partAt(ms); player.pause(); player.position = ms }
-            onPositionChanged: (m) => { if (pressed) player.position = timeline.msAt(m.x) }
+            onPressed: (m) => { const ms = timeline.msAt(m.x); ve.selected = ve.partAt(ms); player.pause(); ve.seek(ms) }
+            onPositionChanged: (m) => { if (pressed) ve.seek(timeline.msAt(m.x)) }
         }
         // the trim handles
         Repeater {
@@ -347,14 +378,14 @@ Window {
                         const ms = timeline.msAt(x)
                         if (parent.isIn) ve.inMs = Math.min(ms, ve.outMs - 10 * ve.frameMs)
                         else ve.outMs = Math.max(ms, ve.inMs + 10 * ve.frameMs)
-                        player.position = parent.isIn ? ve.inMs : ve.outMs
+                        ve.seek(parent.isIn ? ve.inMs : ve.outMs)
                     }
                 }
             }
         }
         // the playhead
         Rectangle {
-            x: player.position * timeline.k - 1
+            x: ve.headMs * timeline.k - 1
             y: -6
             width: 2
             height: timeline.height + 12
@@ -471,7 +502,7 @@ Window {
         switch (a[0]) {
         case "split": split(Number(a[1])); break
         case "cut": toggleCut(Number(a[1])); break
-        case "seek": player.pause(); player.position = Number(a[1]); break
+        case "seek": player.pause(); seek(Number(a[1])); break
         case "trim": inMs = Number(a[1]); outMs = Number(a[2]); break
         case "volume": { const v = volumes.slice(); v[Number(a[1])] = Number(a[2]); volumes = v; break }
         case "keys": Platform.sendKeys(ve, a.slice(1).join(" ")); break
@@ -486,7 +517,7 @@ Window {
         case "state":
             Engine.log("video_state", JSON.stringify({ id: info.id, duration: duration, cuts: cuts, cut: parts.filter(p => p.cut).map(p => [p.a, p.b]),
                                                      in: inMs, out: outMs, kept: kept, keptMs: keptMs, selected: selected, volumes: volumes,
-                                                     playing: player.playbackState === MediaPlayer.PlayingState, position: player.position,
+                                                     playing: player.playbackState === MediaPlayer.PlayingState, position: headMs,
                                                      progress: progress, error: error, estimate: Math.round(estimate), thumbs: (info.thumbs || []).length,
                                                      tracks: info.tracks || 0, gif: gif }).slice(1, -1))
             break

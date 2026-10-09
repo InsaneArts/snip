@@ -1796,14 +1796,18 @@ def video_state(s):
     return s.traces("video_state")[-1]
 
 
-def video_click(s, env, name):
+def video_point(s, env, name):
     n = len(s.traces("video_where"))
     s.debug("ui", "video", "where", name)
     assert wait_for(lambda: len(s.traces("video_where")) > n, 2)
     p = s.traces("video_where")[-1]
     assert p["x"] >= 0, (name, "isn't shown")
     w, mon = video_editor_window(), env.monitor()
-    s.move(w["at"][0] - mon["x"] + p["x"], w["at"][1] - mon["y"] + p["y"]); time.sleep(0.1); s.click()
+    return w["at"][0] - mon["x"] + p["x"], w["at"][1] - mon["y"] + p["y"]
+
+
+def video_click(s, env, name):
+    s.move(*video_point(s, env, name)); time.sleep(0.1); s.click()
 
 
 @case
@@ -1836,6 +1840,17 @@ def video_editor(s, env):
         assert wait_for(lambda: abs(video_state(s)["position"] - ms) < 40, 3), video_state(s)
         video_click(s, env, "video-split")
         assert wait_for(lambda: any(abs(c - ms) < 40 for c in video_state(s)["cuts"]), 2), video_state(s)["cuts"]
+    # a drag along the timeline: the playhead ends where the pointer does (seeks
+    # don't pile up behind it)
+    (x0, y0), (x1, y1) = video_point(s, env, "video-part:0"), video_point(s, env, "video-part:2")
+    s.drag(x0, y0, x1, y1, steps=12)
+    assert wait_for(lambda: abs(video_state(s)["position"] - 3250) < 60, 3), video_state(s)
+    # frame steps go from the frame shown to the middle of the next: at 30 fps, 1000 ms
+    # is frame 30's first instant, where Qt still shows frame 29
+    s.debug("ui", "video", "seek", "1000")
+    for key, ms in (("{Right}", 1017), ("{Right}", 1050), ("{Left}", 1017)):
+        s.debug("ui", "video", "keys", key)
+        assert wait_for(lambda: video_state(s)["position"] == ms, 2), (key, ms, video_state(s))
     # the middle part: select it on the timeline, then Cut
     video_click(s, env, "video-part:1")
     assert wait_for(lambda: video_state(s)["selected"] == 1, 2), video_state(s)

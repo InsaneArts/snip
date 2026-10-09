@@ -64,6 +64,8 @@ Window {
             source: pv.card && frameBox.media === "gif" ? "file://" + pv.card.path : ""
             fillMode: Image.PreserveAspectFit
             playing: visible
+            // by default every frame stays decoded: a 10 s GIF took 240 MB more
+            cache: false
         }
         MediaPlayer {
             id: player
