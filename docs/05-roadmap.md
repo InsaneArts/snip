@@ -208,7 +208,7 @@ Snip should feel like an app, not a set of commands. The CLI stays complete for 
 
 ## M3.9: Clean-up (D40)
 
-Before recording:
+Recording came first after all (D43). Then:
 - refactoring, and cleaning the codebase;
 - performance issues;
 - a cleanliness audit.
@@ -220,6 +220,22 @@ Before recording:
 - Trimmer and export: VED-01 to VED-03
 - Bar widget (OMA-04)
 - All-In-One (CAP-07), adjustable selection (SEL-08)
+
+### M4 status (2026-10-09; the plan: [design/recording.md](design/recording.md))
+
+| Area | Status | Notes |
+|---|---|---|
+| Videos and GIFs in history (REC-12/13, HIS-01) | ✅ | A recording is a capture: its card shows the first frame and the length, Copy offers the file, Save copies it to `~/Videos/Screencasts` as it is, History files it under Videos or GIFs, Space plays it |
+| Recording (REC-01…05, 07, 11–13, API-01) | ✅ | The record action (Snip's menu, `snip record`, a key from Settings › Shortcuts): choose an area, a window (Space) or the output; the toolbar (Video or GIF, microphone, system audio); a countdown; stop, pause, restart and discard outside the area; DND while recording. `snip record area\|fullscreen\|stop\|pause\|resume\|restart\|discard\|status` |
+| Settings › Recording (REC-06 part, REC-12/13) | ✅ | Folder, frame rate, quality, largest size, cursor, countdown, DND, dimming, microphone, system audio, separate tracks, GIF frame rate and width |
+| Video editor (VED-01…03) | ✅ | Edit Video… on a card, a double-click or `snip edit FILE`: the frames along a timeline, Split (B) and Cut (Delete), trim handles, frame steps, each track's volume, mono, MP4 or GIF, quality and size, Replace or Save as New. Cuts are exact to the frame |
+| Safety (REC-14 part) | ✅ | Recovery of takes cut short, at the next start; stops and keeps below 1 GB free or when the display is unplugged |
+| Camera bubble (REC-08) | ⏳ | Planned: [design/recording.md](design/recording.md) |
+| Click highlights, keystrokes (REC-09/10) | ⏳ | Planned: the Hyprland Lua hooks |
+| Controls and bar (REC-05, REC-06) | ⏳ | Restart and Delete ask first; a level meter; Alt+Return for a GIF; the time in Snip's menu icon |
+| Mic warnings, staying awake, lock (REC-14) | ⏳ | |
+| Privacy-safe mode (REC-15) | ⏭ | Later |
+| **To check on real hardware** | | A long recording at 3440×1440@60 (spike S7), a real microphone and system audio, a camera |
 
 **Exit:**
 - 10-minute recording at 3440×1440@60 with zero drops.

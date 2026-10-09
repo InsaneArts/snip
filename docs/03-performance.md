@@ -27,7 +27,7 @@ Every number here is a **budget we test against**, not a hope. The "Evidence" co
 | Editor stroke latency | input to photon ≤ 1 frame + vblank | E | scene graph; no full-canvas repaint |
 | Editor export (3440×1440 with 30 objects) | ≤ 150 ms | offscreen render (E) plus fast PNG (M) | — |
 | Background tool live preview | 144 fps while dragging sliders | GPU SDF + erf shadow < 1 ms (E) | one shader; no CPU blur in the preview |
-| Recording start (hotkey to first frame encoded) | ≤ 400 ms, countdown excluded | gsr start-up plus CUDA init 150–250 ms (P/E) | gsr pre-flight check off the hot path |
+| Recording start (hotkey to first frame encoded) | ≤ 400 ms, countdown excluded | gsr start-up 0.35–0.5 s, measured (M); the countdown hides it | gsr pre-flight check off the hot path |
 | Recording stop to QAO card | ≤ 1.5 s for a 1-minute recording | IPC `stop` plus finalise; remux trim 46 ms (M) | thumbnail from a keyframe |
 | Trimmer open, 20 s 1440p60 | ≤ 300 ms to an interactive scrub bar | keyframe thumbnail strip 140 ms (M) | in-process decoder; strip refined later |
 | Trimmer seek | ≤ 50 ms | all-intra proxy 26–38 ms per seek (M); accurate CPU seek with a 2 s GOP: median 190 ms (M) | proxy built in the background after recording |
@@ -44,7 +44,7 @@ Every number here is a **budget we test against**, not a hope. The "Evidence" co
 | 3440×1440@144 native | best effort; warn if the encoder falls behind | NVENC Ada h264 p4: 182 fps at 3440×1440 (M) |
 | 4K60 on an Intel/AMD iGPU (VAAPI) | 0 drops at 1440p60; warn above that | E; needs the laptop reference |
 | Keystroke/click overlay while recording | ≤ 0.5 ms per event on the compositor thread (Lua hook) | E; spike S9 |
-| Webcam overlay | 30 fps, ≤ 3 % CPU | QtMultimedia with hardware decode of MJPEG/YUYV (E) |
+| Webcam overlay | 30 fps, ≤ 3 % CPU | QtMultimedia uploads YUYV as it is (≤ 3 % at 640×480); it decodes MJPEG on the CPU, up to 23 % of a core at 1080p (M) |
 
 ## 3. Resource budgets
 

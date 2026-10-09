@@ -101,7 +101,7 @@ These are platform facts, not preferences. Each traces back to a research doc.
 
 **Why one process, not a split engine and UI**
 - The editor's export renderer **must** be the same code as its on-screen renderer, for WYSIWYG. So the document rendering lives with the UI anyway.
-- Recording, the expensive state to lose, runs in gsr's own process group. It survives a daemon crash, and we re-attach through gsr's `-ipc` socket.
+- Recording, the expensive state to lose, runs in gsr's own process group. Under systemd a daemon crash still stops gsr with the rest of the unit; SIGTERM lets it finish its file, and Snip recovers the take at its next start (REC-14). A gsr that outlived Snip (run without systemd) is stopped through its `-ipc` socket first.
 - Rust gives memory safety in the parsing and compute paths without a second process.
 - Revisit only if spike S5 (NVIDIA soak) shows Qt/EGL instability we cannot contain (Q-S2). In that case the cxx-qt seam becomes an IPC seam, and the Rust crates don't change.
 
@@ -154,15 +154,16 @@ Total from hotkey to frozen overlay: **about 15–35 ms warm** (one refresh plus
   - XWayland override-redirect menus are missing from toplevel capture, so fall back to the frozen crop.
 
 ### 4.3 Recording start (Phase 1)
-1. The selection overlay in recording mode **snaps the rectangle to what gsr can express**: logical-integer origin and size whose truncated physical size is **even**. Snapped edges are shown live, so WYSIWYG still holds.
+1. The selection overlay in recording mode **snaps the rectangle to what gsr can express**: logical-integer origin and size whose truncated physical size is **even**. Snapped edges are shown live, so WYSIWYG still holds. NVENC refuses or pads areas under about 160×128 physical px; those go to gsr's CPU encoder.
 2. Pre-roll UI: toolbar (mic, system audio, camera, keys, clicks), countdown on a no-input layer *outside* the region, or centred and removed before frame 0.
 3. Start gsr:
    ```
-   gpu-screen-recorder -w <WxH+X+Y | monitor> -c mp4 -k auto -f <fps> -fm cfr|vfr
-     -a "<sources>" -ac opus|aac -cursor yes|no -ipc <sock>
-     -write-first-frame-ts yes -o <tmp>
+   gpu-screen-recorder -w <WxH+X+Y | monitor> -c mp4 -k auto -q <quality> -f <fps> -fm cfr
+     -cursor yes|no [-a "<sources>" … -ac aac]
+     -ffmpeg-opts "flush_packets=1;frag_duration=1000000" -exclude-metadata yes
+     -write-first-frame-ts yes -ipc <sock> -v no -o <stage>/<stamp>.mp4
    ```
-   in its own process group. Wait for the first-frame timestamp, then start the timer.
+   by its full path (Omarchy's surfaces look for a bare `gpu-screen-recorder`, D44), in its own process group, its messages to a log file (never a pipe). Wait for the first-frame timestamp, then start the timer. gsr takes 0.35–0.5 s to start. The flush options keep a killed recorder's file recoverable (`-ignore_editlist 1`). The research behind this: [research/recording-2026-10/gpu-screen-recorder.md](research/recording-2026-10/gpu-screen-recorder.md).
 4. Turn on DND (`omarchy-shell notifications setDnd on`, previous state saved). Install the keystroke and click Lua hooks if they are enabled (§6.3).
 5. Stop: IPC `stop`, which replies after the file is finalised. Then post-process: trim the warm-up and the audio pop, and remux. Show the QAO card with a thumbnail; open the trimmer if After Capture says so.
 
@@ -193,9 +194,9 @@ OpLog        append-only [{seq, op, args, inverse}]  → undo/redo, crash recove
 |---|---|
 | `~/.config/snip/config.toml` | User settings, the single source of truth, inotify live reload |
 | `~/.local/share/snip/history.db` | SQLite (WAL): captures, tags, retention |
-| `~/.local/share/snip/history/<ulid>/` | **The default home of every capture** (product §5.0): `source.png` (original physical pixels), `document.json`, `thumb.webp`. A recording keeps its own file, `source.mp4` or `source.gif`, beside `poster.png` (its first frame, for cards and history; the text index reads it); its length is in the index. Recordings are written here while they record. Retention per HIS-02. |
+| `~/.local/share/snip/history/<ulid>/` | **The default home of every capture** (product §5.0): `source.png` (original physical pixels), `document.json`, `thumb.webp`. A recording keeps its own file, `source.mp4` or `source.gif`, beside `poster.png` (its first frame, for cards and history; the text index reads it); its length is in the index. A recording is written in `~/.local/share/snip/recording/` while it records (on the same disk, so it moves here by a rename); a take left there is recovered at the next start. Retention per HIS-02. |
 | `~/.cache/snip/drag/` | Files offered for DnD and "copy as file" (cleaned after 24 h) |
-| `$XDG_RUNTIME_DIR/snip/` | `ctl.sock`, gsr IPC socket, **working documents** (op log appended on every edit so a crash loses nothing), recording temp files |
+| `$XDG_RUNTIME_DIR/snip/` | `ctl.sock`, gsr IPC sockets, **working documents** (op log appended on every edit so a crash loses nothing). Never a recording: it is a RAM disk |
 | Export folder | Written **only on Save** (or an auto-save After Capture rule): `$XDG_PICTURES_DIR/Screenshots`, `$XDG_VIDEOS_DIR/Screencasts` (configurable). Save copies out of history; history keeps its copy until retention removes it. |
 
 ### 5.3 Project file (`.snip`, name TBD)
@@ -225,7 +226,7 @@ OpLog        append-only [{seq, op, args, inverse}]  → undo/redo, crash recove
 
 ### 6.3 Recording extras
 - **Controls pill:** a layer surface (no exclusivity) placed outside the region. On a full-monitor recording it goes on another monitor if there is one; otherwise it is hidden and we rely on the bar widget and hotkeys. Users are told why.
-- **Webcam:** our own floating, pinned toplevel (QtMultimedia camera; PipeWire camera where available, otherwise V4L2). Shape mask, mirror, corner snapping, click to go full screen. Hyprland rule through `xdg_toplevel_tag` `snip-webcam`: float, pin, no border, no shadow, no anim, no focus, opacity override. Only one process can open a V4L2 device, so the camera is **ours**, not gsr's.
+- **Webcam:** drawn in the recording HUD's layer, inside the recorded area, so it is recorded as seen and needs no window rules ([design/recording.md](design/recording.md)). QtMultimedia's camera opens V4L2 devices directly: Qt 6.11 has no PipeWire camera path. An uncompressed format of at most about 640×480, because Qt decodes MJPEG on the CPU. Shape mask, mirror, drag, click to fill the area. Only one process can stream a V4L2 device, so the camera is **ours**, not gsr's.
 - **Keystrokes and clicks:**
   - Source: the **Hyprland Lua hook** `hl.on("input.keyboard.key")` plus a `non_consuming` `mouse:272/273` bind. It is installed with `hyprctl eval` at record start and removed at stop. A Lua `hl.timer` watchdog removes it if our heartbeat stops.
   - Transport: socket2 `custom>>` events, or a 0600 file in the runtime dir for privacy (Q-S5).
