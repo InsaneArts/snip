@@ -121,7 +121,9 @@ impl Inner {
                 return status(json!({ "done": true, "ok": false, "error": e }));
             }
             trace::trace("video_exported", &format!("\"id\":\"{id}\",\"replace\":{replace},\"ms\":{}", t0.elapsed().as_millis()));
-            let output = me.cursor_output().unwrap_or_default();
+            // Replace: the card stays on its output; Save as New: a card where the pointer is
+            let card_output = me.cards.lock().unwrap().iter().find(|(i, _)| i == &id).map(|(_, o)| o.clone());
+            let output = card_output.filter(|_| replace).or_else(|| me.cursor_output()).unwrap_or_default();
             let result = if replace {
                 media::probe(&out)
                     .and_then(|p| media::poster(&out).map(|poster| (p, poster)))
