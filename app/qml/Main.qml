@@ -221,6 +221,11 @@ QtObject {
         if (a[0] === "welcome") { if (welcomeWindow) welcomeWindow.debug(a.slice(1)); return }
         if (a[0] === "scroll") { scrollHud.debug(a.slice(1)); return }
         if (a[0] === "record") { recordHud.debug(a.slice(1)); return }
+        if (a[0] === "quicklook") {
+            if (quickLook) quickLook.debug(a.slice(1))
+            else if (a[1] === "state") Engine.log("quicklook_state", '"open":false')
+            return
+        }
         if (a[0] === "video") {
             const v = Object.values(videoEditors).pop()
             if (v) v.debug(a.slice(1))
@@ -308,6 +313,14 @@ QtObject {
     }
     property Countdown countdown: Countdown {}
     property Preview preview: Preview {}
+    // Quick Look (D51): a recording or a GIF plays in a small window, made
+    // on first use (a long-lived one would start QtMultimedia with Snip)
+    property Component quickLookComponent: Component { QuickLook {} }
+    property var quickLook: null
+    function toggleQuickLook(card) {
+        if (!quickLook) quickLook = quickLookComponent.createObject(null)
+        quickLook.toggle(card)
+    }
     property History history: History { controller: root }
     property ScrollHud scrollHud: ScrollHud { controller: root }
     property RecordHud recordHud: RecordHud { controller: root }

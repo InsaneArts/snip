@@ -220,7 +220,8 @@ Window {
         case "text": card.flash("text", 0); Engine.extractText(id); break   // the result arrives as cardStatus
         case "rotate-left": case "flip-horizontal": case "scale-1x": Engine.transformCapture(id, action); break
         case "print": Engine.log("print", JSON.stringify({ id: id, pdf: Platform.printImage(card.data_.path, "Snip") }).slice(1, -1)); break
-        case "preview": c.preview.open(card.data_); break
+        // a recording or a GIF plays in Quick Look (D51)
+        case "preview": if (card.isMedia) c.toggleQuickLook(card.data_); else c.preview.open(card.data_); break
         case "trash": Engine.trash(id); remove(id, false); break
         case "close": dismiss(card, outward); break
         case "close-all": closeAll(); break
@@ -549,7 +550,13 @@ Window {
         focus: true
         Keys.onPressed: (e) => {
             const card = qa.menuCard || qa.hoveredCard
-            if (e.key === Qt.Key_Escape) { qa.menuCard = null; e.accepted = true; return }
+            if (e.key === Qt.Key_Escape) {
+                // Quick Look closes first, as on macOS (D51)
+                if (c.quickLook && c.quickLook.visible) c.quickLook.dismiss()
+                qa.menuCard = null
+                e.accepted = true
+                return
+            }
             if (!card) return
             const ctrl = e.modifiers & Qt.ControlModifier
             if (ctrl && e.key === Qt.Key_C) qa.act("copy", card)
