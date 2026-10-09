@@ -58,7 +58,8 @@ Window {
 
     // Physical px per logical px, and the frame's upright size. Mapping is
     // done here (not in C++) so every binding follows size changes.
-    readonly property real s: frame.hasFrame ? frame.frameSize.width / Math.max(1, width) : Screen.devicePixelRatio
+    readonly property real s: frame.hasFrame ? frame.frameSize.width / Math.max(1, width)
+                            : out && out.scale > 0 ? out.scale : Screen.devicePixelRatio
     readonly property int fw: frame.hasFrame ? frame.frameSize.width : Math.round(width * s)
     readonly property int fh: frame.hasFrame ? frame.frameSize.height : Math.round(height * s)
     readonly property rect phys: toPhys(raw)
