@@ -15,6 +15,7 @@ pub mod paths;
 pub mod project;
 pub mod qr;
 pub mod record;
+pub mod take;
 pub mod redact;
 pub mod stitch;
 pub mod store;
