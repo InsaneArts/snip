@@ -80,55 +80,97 @@ pub struct Edit {
     pub mono: bool,
     /// the largest height (None: as recorded); the width follows
     pub height: Option<u32>,
-    /// constant quality, 0 (best) to 51 (H.264's scale)
+    /// constant quality on x264's scale, 0 (best) to 51; NVENC looks the
+    /// same 9 steps higher (equal SSIM, ffmpeg research)
     pub quality: u32,
     /// a GIF (frames a second, the largest width) instead of an MP4
     pub gif: Option<(u32, u32)>,
     /// "h264_nvenc" or "libx264"
     pub encoder: String,
+    /// the video's frame rate: cuts land on its frames
+    pub fps: f64,
 }
 
-/// ffmpeg's arguments for `edit` from `src` to `dst`, with progress on stdout.
-pub fn export_args(src: &Path, dst: &Path, edit: &Edit) -> Vec<String> {
-    let between = edit.keep.iter().map(|(a, b)| format!("between(t\\,{a:.3}\\,{b:.3})")).collect::<Vec<_>>().join("+");
-    let select = if edit.keep.is_empty() { String::new() } else { format!("select='{between}',setpts=N/FRAME_RATE/TB,") };
-    let aselect = if edit.keep.is_empty() { String::new() } else { format!("aselect='{between}',asetpts=N/SR/TB,") };
-    let mut graph = vec![];
-    match edit.gif {
-        Some((fps, width)) => graph.push(format!(
-            "[0:v]{select}fps={fps},scale='min({width},iw)':-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle[v]"
-        )),
-        None => {
-            let scale = edit.height.map_or(String::new(), |h| format!(",scale=-2:'min({h},ih)':flags=lanczos"));
-            graph.push(format!("[0:v]{select}format=yuv420p{scale}[v]"));
-        }
-    }
-    let sound = edit.gif.is_none() && edit.tracks.iter().any(|&v| v > 0.0);
+/// The parts kept, joined into `[vc]` (and `[ac]`, the tracks mixed, when
+/// `sound`). The frames are made regular first and each cut lands on one:
+/// `select` had left frames over at each cut, and the sound up to 43 ms
+/// off the picture (ffmpeg research: this is exact).
+fn cut_graph(edit: &Edit, sound: bool) -> String {
+    let fps = if edit.fps > 0.0 { edit.fps } else { 30.0 };
+    let snap = |t: f64| (t * fps).round() / fps;
+    let keep: Vec<(f64, f64)> = edit.keep.iter().map(|&(a, b)| (snap(a), snap(b))).filter(|(a, b)| b > a).collect();
+    let k = keep.len().max(1);
+    let fan = |name: &str| (0..k).map(|i| format!("[{name}{i}]")).collect::<String>();
+    let mut g = vec![format!("[0:v]fps={fps},split={k}{}", fan("vin"))];
     if sound {
         let live: Vec<(usize, f64)> = edit.tracks.iter().copied().enumerate().filter(|&(_, v)| v > 0.0).collect();
-        let mut parts = vec![];
-        for (i, v) in &live {
-            parts.push(format!("[0:a:{i}]volume={v:.3}[t{i}]"));
-        }
+        let mut parts: Vec<String> = live.iter().map(|(i, v)| format!("[0:a:{i}]volume={v:.3}[t{i}]")).collect();
         let ins: String = live.iter().map(|(i, _)| format!("[t{i}]")).collect();
-        let mixed = if live.len() > 1 { format!("{ins}amix=inputs={}:normalize=0:duration=longest,", live.len()) } else { ins.clone() };
+        let mix = if live.len() > 1 { format!("amix=inputs={}:normalize=0:duration=first,", live.len()) } else { "anull,".into() };
         let mono = if edit.mono { "pan=mono|c0=0.5*c0+0.5*c1," } else { "" };
-        let chain = format!("{aselect}{mono}aresample=async=1");
-        parts.push(if live.len() > 1 { format!("{mixed}{chain}[a]") } else { format!("{ins}{chain}[a]") });
-        graph.push(parts.join(";"));
+        parts.push(format!("{ins}{mix}{mono}asplit={k}{}", fan("ain")));
+        g.push(parts.join(";"));
     }
+    let mut joined = String::new();
+    for (i, (a, b)) in keep.iter().enumerate() {
+        g.push(format!("[vin{i}]trim=start={a:.6}:end={b:.6},setpts=PTS-STARTPTS[v{i}]"));
+        joined += &format!("[v{i}]");
+        if sound {
+            g.push(format!("[ain{i}]atrim=start={a:.6}:end={b:.6},asetpts=PTS-STARTPTS[a{i}]"));
+            joined += &format!("[a{i}]");
+        }
+    }
+    g.push(format!("{joined}concat=n={k}:v=1:a={}[vc]{}", sound as u8, if sound { "[ac]" } else { "" }));
+    g.join(";")
+}
+
+/// A GIF's frames from `[vc]`: its rate, at most `width` wide (never wider).
+fn gif_frames(fps: u32, width: u32) -> String {
+    format!("[vc]fps={fps},scale='min({width},iw)':-1:flags=lanczos")
+}
+
+/// ffmpeg's arguments for a GIF's palette (the first of its two passes: in
+/// one, ffmpeg held every frame in memory, 1.5 GB for a minute of 1080p).
+fn palette_args(src: &Path, palette: &Path, edit: &Edit) -> Vec<String> {
+    let (fps, width) = edit.gif.unwrap_or((15, 800));
+    let graph = format!("{};{},palettegen=stats_mode=diff[p]", cut_graph(edit, false), gif_frames(fps, width));
+    let mut a: Vec<String> = ["-v", "error", "-y", "-i"].map(String::from).to_vec();
+    a.extend([src.to_string_lossy().into_owned(), "-filter_complex".into(), graph, "-map".into(), "[p]".into(), "-update".into(), "1".into()]);
+    a.push(palette.to_string_lossy().into_owned());
+    a
+}
+
+/// ffmpeg's arguments for `edit` from `src` to `dst`, with progress on
+/// stdout. A GIF takes the palette `palette_args` made, beside `dst`.
+pub fn export_args(src: &Path, dst: &Path, edit: &Edit) -> Vec<String> {
+    let sound = edit.gif.is_none() && edit.tracks.iter().any(|&v| v > 0.0);
+    let graph = match edit.gif {
+        Some((fps, width)) => format!(
+            "{};{}[x];[x][1:v]paletteuse=dither=sierra2_4a:diff_mode=rectangle[v]",
+            cut_graph(edit, false),
+            gif_frames(fps, width)
+        ),
+        None => {
+            let scale = edit.height.map_or(String::new(), |h| format!(",scale=-2:'min({h},ih)':flags=lanczos"));
+            format!("{};[vc]format=yuv420p{scale}[v]", cut_graph(edit, sound))
+        }
+    };
     let mut a: Vec<String> = ["-v", "error", "-nostats", "-progress", "pipe:1", "-y", "-i"].map(String::from).to_vec();
     a.push(src.to_string_lossy().into_owned());
-    a.extend(["-filter_complex".into(), graph.join(";"), "-map".into(), "[v]".into()]);
-    if sound {
-        a.extend(["-map".into(), "[a]".into(), "-c:a".into(), "aac".into(), "-b:a".into(), "160k".into()]);
+    if edit.gif.is_some() {
+        a.extend(["-i".into(), palette_for(dst).to_string_lossy().into_owned()]);
     }
+    a.extend(["-filter_complex".into(), graph, "-map".into(), "[v]".into()]);
+    if sound {
+        a.extend(["-map".into(), "[ac]".into(), "-c:a".into(), "aac".into(), "-b:a".into(), "160k".into()]);
+    }
+    let q = edit.quality.min(51);
     match edit.gif {
         Some(_) => a.extend(["-loop".into(), "0".into()]),
         None if edit.encoder == "h264_nvenc" => {
-            a.extend(["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", &edit.quality.min(51).to_string(), "-b:v", "0"].map(String::from));
+            a.extend(["-c:v", "h264_nvenc", "-preset", "p4", "-rc", "vbr", "-cq", &(q + 9).min(51).to_string()].map(String::from));
         }
-        None => a.extend(["-c:v", "libx264", "-preset", "medium", "-crf", &edit.quality.min(51).to_string()].map(String::from)),
+        None => a.extend(["-c:v", "libx264", "-preset", "medium", "-crf", &q.to_string()].map(String::from)),
     }
     if edit.gif.is_none() {
         a.extend(["-movflags".into(), "+faststart".into()]);
@@ -137,9 +179,23 @@ pub fn export_args(src: &Path, dst: &Path, edit: &Edit) -> Vec<String> {
     a
 }
 
+fn palette_for(dst: &Path) -> std::path::PathBuf {
+    dst.with_extension("palette.png")
+}
+
 /// Run an export, calling `progress` with 0…1 (ffmpeg's out_time over the
 /// kept length). Returns ffmpeg's error, if any.
 pub fn export(src: &Path, dst: &Path, edit: &Edit, mut progress: impl FnMut(f64)) -> Result<(), String> {
+    if edit.gif.is_some() {
+        let args = palette_args(src, &palette_for(dst), edit);
+        run_ffmpeg(&args.iter().map(String::as_str).collect::<Vec<_>>())?;
+    }
+    let done = export_frames(src, dst, edit, &mut progress);
+    let _ = std::fs::remove_file(palette_for(dst));
+    done
+}
+
+fn export_frames(src: &Path, dst: &Path, edit: &Edit, progress: &mut impl FnMut(f64)) -> Result<(), String> {
     use std::io::BufRead;
     let total: f64 = edit.keep.iter().map(|(a, b)| (b - a).max(0.0)).sum();
     let mut child = Command::new("ffmpeg")
@@ -194,10 +250,9 @@ pub fn thumbnails(src: &Path, duration_ms: u64, n: u32, height: u32, dir: &Path)
 /// wide (never enlarged), one palette fitted to the clip (architecture §1,
 /// "GIF / video post").
 pub fn gif(src: &Path, dst: &Path, fps: u32, width: u32) -> Result<(), String> {
-    let filter = format!(
-        "fps={fps},scale='min({width},iw)':-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle"
-    );
-    run_ffmpeg(&["-v", "error", "-y", "-i", &src.to_string_lossy(), "-filter_complex", &filter, "-loop", "0", &dst.to_string_lossy()])
+    let p = probe(src)?;
+    let whole = Edit { keep: vec![(0.0, p.duration_ms as f64 / 1000.0)], tracks: vec![], mono: false, height: None, quality: 0, gif: Some((fps, width)), encoder: String::new(), fps: p.fps };
+    export(src, dst, &whole, |_| {})
 }
 
 /// Whether an MP4 was never finished: its recorder died while writing
@@ -224,7 +279,9 @@ pub fn fragmented(path: &Path) -> bool {
 /// What a recording cut short holds, as a plain MP4 (REC-14). The edit list
 /// gsr writes up front would hide the first fragment, so it's ignored.
 pub fn recover(src: &Path, dst: &Path) -> Result<Probe, String> {
-    let ran = run_ffmpeg(&["-v", "error", "-y", "-ignore_editlist", "1", "-i", &src.to_string_lossy(), "-c", "copy", "-movflags", "+faststart", &dst.to_string_lossy()]);
+    let (s, d) = (src.to_string_lossy(), dst.to_string_lossy());
+    // every stream: a recording's tracks of sound may be two
+    let ran = run_ffmpeg(&["-v", "error", "-y", "-ignore_editlist", "1", "-fflags", "+discardcorrupt", "-i", &s, "-map", "0", "-c", "copy", "-movflags", "+faststart", &d]);
     // a cut-off last fragment is an error, though what came before is kept
     match probe(dst) {
         Ok(p) if p.duration_ms > 0 => Ok(p),
@@ -259,22 +316,36 @@ mod tests {
     use super::*;
 
     fn edit(keep: Vec<(f64, f64)>, tracks: Vec<f64>) -> Edit {
-        Edit { keep, tracks, mono: false, height: None, quality: 23, gif: None, encoder: "libx264".into() }
+        Edit { keep, tracks, mono: false, height: None, quality: 23, gif: None, encoder: "libx264".into(), fps: 30.0 }
     }
 
     #[test]
     fn export_keeps_the_parts_and_mixes_the_tracks() {
-        let a = export_args(Path::new("in.mp4"), Path::new("out.mp4"), &edit(vec![(0.0, 2.0), (4.5, 6.0)], vec![1.0, 0.5]));
-        let graph = &a[a.iter().position(|x| x == "-filter_complex").unwrap() + 1];
-        assert!(graph.contains("select='between(t\\,0.000\\,2.000)+between(t\\,4.500\\,6.000)'"), "{graph}");
-        assert!(graph.contains("[0:a:0]volume=1.000[t0];[0:a:1]volume=0.500[t1];[t0][t1]amix=inputs=2:normalize=0"), "{graph}");
-        assert!(a.windows(2).any(|w| w == ["-crf", "23"]) && a.last().unwrap() == "out.mp4");
+        let graph_of = |a: &[String]| a[a.iter().position(|x| x == "-filter_complex").unwrap() + 1].clone();
+        // cuts land on frames (at 30 fps, 4.51 s is frame 135: 4.5 s)
+        let a = export_args(Path::new("in.mp4"), Path::new("out.mp4"), &edit(vec![(0.0, 2.0), (4.51, 6.0)], vec![1.0, 0.5]));
+        let graph = graph_of(&a);
+        assert!(graph.starts_with("[0:v]fps=30,split=2[vin0][vin1]"), "regular frames first: {graph}");
+        assert!(graph.contains("[vin1]trim=start=4.500000:end=6.000000,setpts=PTS-STARTPTS[v1]"), "{graph}");
+        assert!(graph.contains("[ain1]atrim=start=4.500000:end=6.000000,asetpts=PTS-STARTPTS[a1]"), "{graph}");
+        assert!(graph.contains("[0:a:0]volume=1.000[t0];[0:a:1]volume=0.500[t1];[t0][t1]amix=inputs=2:normalize=0:duration=first,asplit=2[ain0][ain1]"), "{graph}");
+        assert!(graph.contains("[v0][a0][v1][a1]concat=n=2:v=1:a=1[vc][ac]"), "{graph}");
+        assert!(a.windows(2).any(|w| w == ["-crf", "23"]) && a.windows(2).any(|w| w == ["-map", "[ac]"]) && a.last().unwrap() == "out.mp4");
+        // NVENC: the same look 9 steps higher
+        let mut e = edit(vec![(0.0, 1.0)], vec![1.0]);
+        e.encoder = "h264_nvenc".into();
+        assert!(export_args(Path::new("in.mp4"), Path::new("out.mp4"), &e).windows(2).any(|w| w == ["-cq", "32"]));
         // muted: no audio at all; a muted track drops out of the mix
         let a = export_args(Path::new("in.mp4"), Path::new("out.mp4"), &edit(vec![(0.0, 1.0)], vec![0.0]));
-        assert!(!a.iter().any(|x| x == "[a]"), "{a:?}");
-        let a = export_args(Path::new("in.mp4"), Path::new("out.mp4"), &edit(vec![(0.0, 1.0)], vec![0.0, 1.0]));
-        let graph = &a[a.iter().position(|x| x == "-filter_complex").unwrap() + 1];
-        assert!(graph.contains("[0:a:1]volume=1.000[t1];[t1]aselect") && !graph.contains("amix") && !graph.contains("[0:a:0]"), "{graph}");
+        assert!(!a.iter().any(|x| x == "[ac]") && graph_of(&a).ends_with("[v0]concat=n=1:v=1:a=0[vc];[vc]format=yuv420p[v]"), "{a:?}");
+        let graph = graph_of(&export_args(Path::new("in.mp4"), Path::new("out.mp4"), &edit(vec![(0.0, 1.0)], vec![0.0, 1.0])));
+        assert!(graph.contains("[0:a:1]volume=1.000[t1];[t1]anull,asplit=1[ain0]") && !graph.contains("amix") && !graph.contains("[0:a:0]"), "{graph}");
+        // a GIF: its frames from the parts, through the palette made beside it
+        let mut g = edit(vec![(0.0, 1.0)], vec![1.0]);
+        g.gif = Some((15, 800));
+        let a = export_args(Path::new("in.mp4"), Path::new("/x/out.gif"), &g);
+        assert!(a.windows(2).any(|w| w == ["-i", "/x/out.palette.png"]) && !a.iter().any(|x| x == "[ac]"), "{a:?}");
+        assert!(graph_of(&a).ends_with("[vc]fps=15,scale='min(800,iw)':-1:flags=lanczos[x];[x][1:v]paletteuse=dither=sierra2_4a:diff_mode=rectangle[v]"), "{a:?}");
     }
 
     #[test]
@@ -348,7 +419,7 @@ mod tests {
         export(&clip, &out, &e, |f| seen.push(f)).unwrap();
         let p = probe(&out).unwrap();
         assert_eq!((p.width, p.height, p.audio_tracks), (160, 100, 1), "{p:?}");
-        assert!((450..=600).contains(&p.duration_ms), "0.5 s kept: {p:?}");
+        assert!((500..=530).contains(&p.duration_ms), "0.5 s kept, exactly (the sound ends on its last packet): {p:?}");
         assert_eq!(seen.last(), Some(&1.0), "progress ends at 1");
         e.gif = Some((10, 120));
         let g = dir.join("cut.gif");
