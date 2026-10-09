@@ -39,6 +39,10 @@ Highlight Clicks and Show Keystrokes: the two toggles; while recording, a ring w
 
 ![Clicks and keys](recording-clicks-keys.png)
 
+A recording's card (D51): close and Quick Look on top, the video editor and Open With… below; Quick Look plays it in a small window.
+
+![Quick Look](recording-quicklook.png)
+
 Snip's icon in the bar while it records (live, on DP-2; the bar is dimmed as everything outside the area is): before, recording, after.
 
 ![The bar icon](recording-bar.png)
