@@ -76,6 +76,8 @@ struct Run {
     audio: bool,
     /// the video's size in physical px (the test stand-in makes it so)
     size: (u32, u32),
+    /// gsr wrote its first frame: a stop before that leaves no usable file
+    rolling: bool,
 }
 
 impl Run {
@@ -86,6 +88,14 @@ impl Run {
 
 fn fake() -> bool {
     std::env::var("SNIP_RECORDER").is_ok_and(|v| v == "fake")
+}
+
+/// gpu-screen-recorder's full path (PATH searched), so its argv[0] isn't the
+/// bare name Omarchy matches.
+fn gsr_path() -> PathBuf {
+    std::env::var_os("PATH")
+        .and_then(|p| std::env::split_paths(&p).map(|d| d.join("gpu-screen-recorder")).find(|f| f.is_file()))
+        .unwrap_or_else(|| PathBuf::from("/usr/bin/gpu-screen-recorder"))
 }
 
 /// One request on gsr's control socket: JSON lines, each answered (its man
@@ -215,17 +225,21 @@ impl Inner {
             codec: "auto".into(),
             quality: cfg.quality.clone(),
             max_size: cfg.max_box(),
+            cpu: false,
             file: file.clone(),
             ipc: ipc.clone(),
         };
         let size = ((rec.local.w as f64 * rec.scale).round() as u32, (rec.local.h as f64 * rec.scale).round() as u32);
+        let spec = Spec { cpu: !record::gpu_can_encode(size.0, size.1), ..spec };
         let child = if fake() {
             None
         } else {
             let args = record::gsr_args(&spec);
             trace::trace("gsr", &format!("\"args\":{}", js(&args.join(" "))));
-            // its own process group: a terminal's Ctrl+C never reaches it
-            match Command::new("gpu-screen-recorder").args(&args).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped()).process_group(0).spawn() {
+            // its own process group: a terminal's Ctrl+C never reaches it. By
+            // its full path: Omarchy's bar and keys look for a bare
+            // "gpu-screen-recorder" and would stop it (and toast a bogus "saved")
+            match Command::new(gsr_path()).args(&args).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped()).process_group(0).spawn() {
                 Ok(c) => Some(c),
                 Err(e) => {
                     drop(r);
@@ -235,7 +249,8 @@ impl Inner {
             }
         };
         rec.state = State::Recording;
-        rec.run = Some(Run { child, file: file.clone(), ipc, started: Instant::now(), paused_at: None, paused: Duration::ZERO, audio: has_audio, size });
+        let rolling = fake();
+        rec.run = Some(Run { child, file: file.clone(), ipc, started: Instant::now(), paused_at: None, paused: Duration::ZERO, audio: has_audio, size, rolling });
         drop(r);
         if cfg.dnd {
             self.dnd(true);
@@ -262,9 +277,8 @@ impl Inner {
                 announced = true;
                 // the clock starts at gsr's first frame
                 run.started = Instant::now();
+                run.rolling = true;
                 drop(r);
-                // Omarchy's bar shows a recording while gsr runs
-                let _ = Command::new("omarchy-shell").args(["-q", "omarchy.indicators", "refresh"]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
                 self.record_status(json!({ "elapsed": 0 }));
                 continue;
             }
@@ -422,8 +436,10 @@ impl Inner {
         let ts = PathBuf::from(format!("{}.ts", run.file.display()));
         let _ = std::fs::remove_file(ts);
         let _ = std::fs::remove_file(&run.ipc);
-        let _ = Command::new("omarchy-shell").args(["-q", "omarchy.indicators", "refresh"]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
-        if keep && run.file.metadata().is_ok_and(|m| m.len() > 0) {
+        if keep && !run.rolling {
+            self.toast("Stopped before the first frame: nothing was recorded");
+        }
+        if keep && run.rolling && run.file.metadata().is_ok_and(|m| m.len() > 0) {
             Some(run.file)
         } else {
             let _ = std::fs::remove_file(&run.file);
