@@ -67,6 +67,10 @@ pub fn default_screenshot_dir() -> PathBuf {
     user_dir("PICTURES").unwrap_or_else(|| home().join("Pictures")).join("Screenshots")
 }
 
+pub fn default_recording_dir() -> PathBuf {
+    user_dir("VIDEOS").unwrap_or_else(|| home().join("Videos")).join("Screencasts")
+}
+
 /// Create a directory (and parents) with mode 0700 for private Snip state.
 pub fn ensure_private_dir(p: &Path) -> std::io::Result<()> {
     use std::os::unix::fs::DirBuilderExt;

@@ -141,6 +141,20 @@ pub enum ClipboardMode {
     ImageAndFile,
 }
 
+/// Screen recording (REC).
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct Recording {
+    /// Where Save writes recordings. Default: $XDG_VIDEOS_DIR/Screencasts
+    pub export_dir: String,
+}
+
+impl Default for Recording {
+    fn default() -> Self {
+        Self { export_dir: crate::paths::default_recording_dir().to_string_lossy().into_owned() }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct Ocr {
@@ -265,6 +279,7 @@ pub struct Config {
     pub history: History,
     pub clipboard: Clipboard,
     pub capture: Capture,
+    pub recording: Recording,
     pub ocr: Ocr,
     /// Settings › Shortcuts (SET-08): an action's key over snip.lua's
     /// default ("SUPER + SHIFT + code:13"; "" for none). snipd binds them.
@@ -367,6 +382,11 @@ impl Config {
 
     pub fn export_dir(&self) -> PathBuf {
         crate::paths::expand(&self.general.export_dir)
+    }
+
+    /// Where Save writes a recording (video or GIF).
+    pub fn recording_dir(&self) -> PathBuf {
+        crate::paths::expand(&self.recording.export_dir)
     }
 
     /// SET-04: a capture's file name, without its extension.

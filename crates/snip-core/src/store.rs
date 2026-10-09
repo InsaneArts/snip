@@ -16,6 +16,8 @@ use crate::naming::{self, NameContext};
 /// before any edit, and the editor's objects (ANN-16).
 const ORIGINAL: &str = "original.png";
 const EDIT: &str = "edit.json";
+/// Next to a recording's video (or GIF): its first frame, for cards and history.
+const POSTER: &str = "poster.png";
 
 #[derive(Clone, Debug, Default)]
 pub struct CaptureMeta {
@@ -119,11 +121,53 @@ impl Store {
             saved: None,
             app: meta.app,
             title: meta.title,
+            duration_ms: 0,
         };
         h.insert(&rec)?;
         drop(h);
         self.warm_put(&id, Arc::new(png));
         Ok(rec)
+    }
+
+    /// Persist a recording (or an opened video or GIF) in history: the file
+    /// itself as its source, keeping its extension, and its first frame as the
+    /// poster. `take` moves the file in (a recording's own); otherwise it's
+    /// copied (a file of the user's).
+    pub fn ingest_media(&self, file: &Path, take: bool, poster: &[u8], width: u32, height: u32, duration_ms: u64, meta: CaptureMeta, now_secs: i64) -> Result<Record, StoreError> {
+        let id = ulid::Ulid::new().to_string().to_lowercase();
+        let ext = file.extension().and_then(|e| e.to_str()).unwrap_or("mp4").to_ascii_lowercase();
+        let h = self.history.lock().unwrap();
+        let dir = h.dir_for(&id);
+        crate::paths::ensure_private_dir(&dir)?;
+        let source = dir.join(format!("source.{ext}"));
+        if !(take && std::fs::rename(file, &source).is_ok()) {
+            std::fs::copy(file, &source)?;
+            if take {
+                let _ = std::fs::remove_file(file);
+            }
+        }
+        atomic_write(&dir.join(POSTER), poster)?;
+        let rec = Record {
+            id,
+            created_at: now_secs,
+            kind: meta.kind,
+            width,
+            height,
+            scale: meta.scale,
+            output: meta.output,
+            source,
+            saved: None,
+            app: meta.app,
+            title: meta.title,
+            duration_ms,
+        };
+        h.insert(&rec)?;
+        Ok(rec)
+    }
+
+    /// A recording's poster (its first frame); None for images.
+    pub fn poster(rec: &Record) -> Option<PathBuf> {
+        (rec.media() != crate::history::Media::Image).then(|| rec.source.with_file_name(POSTER))
     }
 
     pub fn get(&self, id: &str) -> Result<Record, StoreError> {
@@ -157,12 +201,14 @@ impl Store {
     /// Save to the export folder with the name template. Never overwrites.
     pub fn save(&self, id: &str, cfg: &Config, now: chrono::DateTime<chrono::Local>) -> Result<PathBuf, StoreError> {
         let rec = self.get(id)?;
-        let ext = cfg.export_format().ext();
+        // a recording is saved as it is: its own format, never re-encoded
+        let media = rec.media() != crate::history::Media::Image;
+        let ext = if media { rec.source.extension().and_then(|e| e.to_str()).unwrap_or("mp4").to_string() } else { cfg.export_format().ext().to_string() };
+        let ext = ext.as_str();
         if let Some(p) = rec.saved.as_ref().filter(|p| p.exists() && p.extension().is_some_and(|e| e == ext)) {
             return Ok(p.clone()); // already saved in this format: Save is idempotent
         }
-        let bytes = self.bytes(id)?;
-        let dir = cfg.export_dir();
+        let dir = if media { cfg.recording_dir() } else { cfg.export_dir() };
         std::fs::create_dir_all(&dir)?;
         let ctx = NameContext {
             window_title: rec.title.clone(),
@@ -171,10 +217,15 @@ impl Store {
             random: id.chars().rev().take(4).collect(),
         };
         let stem = cfg.file_stem(now, rec.scale, &ctx);
-        let fmt = cfg.export_format();
-        let out = crate::encode::transcode(&bytes, fmt).map_err(|e| StoreError::Io(std::io::Error::other(e)))?;
-        let path = naming::unique_path(&dir, &stem, fmt.ext());
-        atomic_write(&path, &out)?;
+        let path = naming::unique_path(&dir, &stem, ext);
+        if media {
+            let tmp = path.with_extension(format!("{ext}.tmp"));
+            std::fs::copy(&rec.source, &tmp)?;
+            std::fs::rename(&tmp, &path)?;
+        } else {
+            let out = crate::encode::transcode(&self.bytes(id)?, cfg.export_format()).map_err(|e| StoreError::Io(std::io::Error::other(e)))?;
+            atomic_write(&path, &out)?;
+        }
         self.history.lock().unwrap().set_saved(id, &path)?;
         Ok(path)
     }
@@ -184,6 +235,17 @@ impl Store {
     /// its extension (png, jpg/jpeg, webp; none: .png is added). The file
     /// becomes the capture's saved file, so later edits reach it.
     pub fn save_as(&self, id: &str, path: &Path, cfg: &Config) -> Result<PathBuf, StoreError> {
+        let rec = self.get(id)?;
+        if rec.media() != crate::history::Media::Image {
+            // a recording keeps its own format (export converts, VED-02)
+            let own = rec.source.extension().and_then(|e| e.to_str()).unwrap_or("mp4");
+            let path = if path.extension().is_some_and(|e| e.eq_ignore_ascii_case(own)) { path.to_path_buf() } else { PathBuf::from(format!("{}.{own}", path.display())) };
+            let tmp = path.with_extension(format!("{own}.tmp"));
+            std::fs::copy(&rec.source, &tmp)?;
+            std::fs::rename(&tmp, &path)?;
+            self.history.lock().unwrap().set_saved(id, &path)?;
+            return Ok(path);
+        }
         let ext = path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase());
         if ext.as_deref() == Some("snip") {
             return self.save_project(id, path);
@@ -353,6 +415,37 @@ mod tests {
         let d = std::env::temp_dir().join(format!("snip-store-{}", ulid::Ulid::new()));
         std::fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    #[test]
+    fn a_recording_is_kept_and_saved_as_it_is() {
+        let root = tmp();
+        let store = Store::open(&root.join("history"), root.join("counter")).unwrap();
+        // a recording's own file is moved in; a user's file is copied
+        let rec_file = root.join("take.mp4");
+        std::fs::write(&rec_file, b"video bytes").unwrap();
+        let rec = store.ingest_media(&rec_file, true, b"\x89PNGposter", 320, 200, 4200, CaptureMeta { kind: "recording".into(), scale: 1.25, ..Default::default() }, 1000).unwrap();
+        assert!(!rec_file.exists(), "moved in");
+        assert_eq!((rec.media(), rec.duration_ms), (crate::history::Media::Video, 4200));
+        assert_eq!(rec.source.file_name().unwrap(), "source.mp4");
+        assert_eq!(std::fs::read(Store::poster(&rec).unwrap()).unwrap(), b"\x89PNGposter");
+        assert_eq!(store.get(&rec.id).unwrap(), rec, "the record round-trips, duration included");
+        let users = root.join("cat.gif");
+        std::fs::write(&users, b"gif bytes").unwrap();
+        let gif = store.ingest_media(&users, false, b"p", 10, 10, 900, CaptureMeta { kind: "import".into(), ..Default::default() }, 1001).unwrap();
+        assert!(users.exists(), "a user's file stays");
+        assert_eq!(gif.media(), crate::history::Media::Gif);
+        // Save copies the file as it is, with its own extension
+        let mut cfg = Config::default();
+        cfg.general.export_dir = root.join("Pictures").to_string_lossy().into_owned();
+        cfg.recording.export_dir = root.join("Videos").to_string_lossy().into_owned();
+        let now = chrono::Local.with_ymd_and_hms(2026, 10, 9, 4, 5, 6).unwrap();
+        let p = store.save(&rec.id, &cfg, now).unwrap();
+        assert_eq!(p, root.join("Videos/Snip 2026-10-09 at 04.05.06.mp4"), "recordings go to their own folder");
+        assert_eq!(std::fs::read(&p).unwrap(), b"video bytes");
+        assert_eq!(store.save(&rec.id, &cfg, now).unwrap(), p, "idempotent");
+        assert!(Store::poster(&store.get(&gif.id).unwrap()).is_some() && Store::poster(&store.ingest(b"x".to_vec(), 1, 1, CaptureMeta::default(), 1).unwrap()).is_none());
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
