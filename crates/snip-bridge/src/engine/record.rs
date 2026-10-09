@@ -141,6 +141,24 @@ fn gsr_request(sock: &Path, name: &str, data: Value) -> Result<Value, String> {
     }
 }
 
+/// Which sources are muted, by name, from `pactl list sources` (in English).
+fn parse_mutes(text: &str) -> std::collections::HashMap<String, bool> {
+    let mut out = std::collections::HashMap::new();
+    let mut name = None;
+    for line in text.lines().map(str::trim) {
+        if let Some(n) = line.strip_prefix("Name: ") {
+            name = Some(n.to_string());
+        } else if let (Some(m), Some(n)) = (line.strip_prefix("Mute: "), name.take()) {
+            out.insert(n, m == "yes");
+        }
+    }
+    out
+}
+
+fn pactl(args: &[&str]) -> String {
+    Command::new("pactl").args(args).env("LC_ALL", "C").stdin(Stdio::null()).stderr(Stdio::null()).output().map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default()
+}
+
 /// Wait for a child to exit, then kill it if it takes longer than `limit`.
 fn reap(child: &mut Child, limit: Duration) {
     let t0 = Instant::now();
@@ -155,12 +173,16 @@ fn reap(child: &mut Child, limit: Duration) {
 }
 
 impl Inner {
-    /// The microphones gsr can record (REC-02's picker): its own names.
+    /// The microphones gsr can record (REC-02's picker): its own names, and
+    /// whether each is muted (REC-14: the toolbar says so before recording).
     pub fn audio_inputs(&self) -> Vec<Value> {
         let mut out = vec![json!({ "id": "default_input", "label": "Default microphone" })];
         if fake() {
             return out;
         }
+        let mutes = parse_mutes(&pactl(&["list", "sources"]));
+        let default = pactl(&["get-default-source"]);
+        out[0]["muted"] = json!(mutes.get(default.trim()).copied().unwrap_or(false));
         let Ok(o) = Command::new("gpu-screen-recorder").arg("--list-audio-devices").stdin(Stdio::null()).stderr(Stdio::null()).output() else { return out };
         for line in String::from_utf8_lossy(&o.stdout).lines() {
             let Some((id, label)) = line.split_once('|') else { continue };
@@ -168,7 +190,7 @@ impl Inner {
             if id.starts_with("default_") || id.ends_with(".monitor") {
                 continue;
             }
-            out.push(json!({ "id": id, "label": label }));
+            out.push(json!({ "id": id, "label": label, "muted": mutes.get(id).copied().unwrap_or(false) }));
         }
         out
     }
@@ -708,6 +730,13 @@ impl Inner {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn muted_sources_are_read_from_pactl() {
+        let text = "Source #61\n\tState: SUSPENDED\n\tName: alsa_input.usb-mic\n\tMute: yes\nSource #62\n\tName: alsa_output.x.monitor\n\tMute: no\n";
+        let m = parse_mutes(text);
+        assert_eq!((m.get("alsa_input.usb-mic"), m.get("alsa_output.x.monitor"), m.len()), (Some(&true), Some(&false), 2));
+    }
 
     /// gsr's control socket, as its man page describes it: a JSON request
     /// line, one JSON reply line.
