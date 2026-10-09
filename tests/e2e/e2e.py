@@ -1641,6 +1641,7 @@ def record_by_command(s, env):
 
     p = start()
     assert record_state(s)["area"] == [100, 80, 400, 300], record_state(s)
+    assert wait_for(lambda: layer_mapped("snip-awake"), 2), "the screen is kept awake (an idle inhibitor on a 1×1 layer)"
     time.sleep(1.2)
     assert s.json("record", "pause")["result"]["state"] == "paused"
     time.sleep(0.8)
@@ -1654,6 +1655,7 @@ def record_by_command(s, env):
     assert 1700 <= rec["duration"] <= 2600, ("the paused time is left out", rec["duration"])
     assert wait_for(lambda: rec["id"] in s.status()["cards"], 3), "its card"
     assert record_state(s) is None, "nothing left open"
+    assert wait_for(lambda: not layer_mapped("snip-awake"), 2), "the screen may idle again"
 
     p = start("--gif")
     time.sleep(1.0)

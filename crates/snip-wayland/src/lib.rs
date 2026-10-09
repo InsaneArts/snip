@@ -75,6 +75,8 @@ pub enum Request {
     /// 1 px of real pointer motion and back: makes the compositor give pointer
     /// focus to a surface that just mapped under a pointer that hasn't moved.
     PointerNudge,
+    /// The screen stays on (no idle, no lock) while recording (REC-14).
+    KeepAwake(bool),
 }
 
 pub type Sink = Box<dyn Fn(Event) + Send>;

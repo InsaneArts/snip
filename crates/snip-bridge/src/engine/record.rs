@@ -292,6 +292,8 @@ impl Inner {
         if cfg.dnd {
             self.dnd(true);
         }
+        // the screen doesn't idle into the lock screen mid-recording
+        self.wl(snip_wayland::Request::KeepAwake(true));
         if let Some((keys, clicks)) = hooks {
             self.record_hooks(&sid, keys, clicks);
         }
@@ -519,6 +521,7 @@ impl Inner {
 
     /// Stop a take's recorder; its file is finished (kept) or deleted.
     fn record_end_run(&self, mut run: Run, keep: bool) -> Option<PathBuf> {
+        self.wl(snip_wayland::Request::KeepAwake(false));
         if run.hooks.is_some() {
             let _ = snip_hypr::eval(snip_hypr::keys::RECORDING_OFF_LUA);
         }
@@ -644,6 +647,25 @@ impl Inner {
             }
             if kept > 0 {
                 me.toast(if kept == 1 { "Recovered a recording that was cut short".to_string() } else { format!("Recovered {kept} recordings that were cut short") });
+            }
+        });
+    }
+
+    /// The focus went nowhere, as it does when the session locks (REC-14): a
+    /// recording pauses, so the lock screen isn't in it. It stays paused
+    /// until resumed.
+    pub fn record_check_lock(self: &Arc<Self>) {
+        let recording = self.recording.lock().unwrap().as_ref().is_some_and(|r| r.state == State::Recording);
+        if !recording {
+            return;
+        }
+        let me = self.clone();
+        std::thread::spawn(move || {
+            // the lock surface comes a moment after the focus goes
+            std::thread::sleep(Duration::from_millis(150));
+            if snip_hypr::locked() {
+                trace::trace("record_locked", "");
+                me.record_pause(true);
             }
         });
     }
