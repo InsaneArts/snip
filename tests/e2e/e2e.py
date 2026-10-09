@@ -1822,6 +1822,51 @@ def record_camera(s, env):
 
 
 @case
+def record_clicks_and_keys(s, env):
+    """REC-09/10: Highlight Clicks and Show Keystrokes, from the toolbar. While it records,
+    Hyprland's own hooks report each click (a ring where it is, in the area) and the command
+    keys (Ctrl+C, pressed again: ×2); nothing of them is left when the recording ends. (A
+    real keyboard can't type into the nested Hyprland: the keys come as the hook sends them,
+    the hook itself is checked against a mock of Hyprland's Lua.)"""
+    s.cli("close-all"); time.sleep(0.3)
+    binds = lambda: sh("hyprctl", "binds").stdout
+    p = s.bg("record")
+    time.sleep(0.6)
+    s.drag(300, 200, 1100, 650)
+    assert wait_for(lambda: record_hud(s)["phase"] == "ready", 3), record_hud(s)
+    record_click(s, "record-clicks")
+    assert wait_for(lambda: record_hud(s)["clicks"], 2), "Highlight clicks is on"
+    record_click(s, "record-keys")
+    assert wait_for(lambda: record_hud(s)["keys"], 2), "Show keystrokes is on"
+    n = len(s.traces("record_hooks"))
+    record_click(s, "record-go")
+    assert wait_for(lambda: record_hud(s)["phase"] == "recording", 5), record_hud(s)
+    assert wait_for(lambda: len(s.traces("record_hooks")) > n, 3), "the hooks are in"
+    sid = s.traces("record_hooks")[-1]["sid"]
+    assert "Snip: recording clicks" in binds()
+    # a real click in the area: a ring there; one outside it isn't recorded, so none
+    rings = record_hud(s)["rings"]
+    s.move(700, 420); time.sleep(0.1); s.click()
+    assert wait_for(lambda: record_hud(s)["rings"] == rings + 1, 2), ("a ring where it clicked", record_hud(s))
+    s.move(1300, 760); time.sleep(0.1); s.click()
+    time.sleep(0.4)
+    assert record_hud(s)["rings"] == rings + 1, "not for a click outside the area"
+    # Ctrl+C, twice, as the key hook sends it
+    for code, st in ((37, 1), (54, 1), (54, 0), (54, 1), (54, 0), (37, 0)):
+        hypr_eval(f'hl.dispatch(hl.dsp.event("snip:{sid}:k:{code}:{st}"))')
+    assert wait_for(lambda: record_hud(s)["keystrokes"] == "Ctrl + C  ×2", 2), record_hud(s)
+    assert wait_for(lambda: record_hud(s)["keystrokes"] == "", 3), "it fades"
+    hypr_eval('hl.dispatch(hl.dsp.event("snip:other:k:9:1"))')
+    time.sleep(0.3)
+    assert record_hud(s)["keystrokes"] == "", "another recording's keys aren't shown"
+    s.json("record", "stop")
+    r, code = finish(p, timeout=20)
+    assert code == 0, r
+    assert wait_for(lambda: "Snip: recording clicks" not in binds(), 3), "the hooks are gone"
+    s.write_config("")
+
+
+@case
 def recording_safety(s, env):
     """REC-14: takes left behind when Snip stopped mid-recording are recovered at its next
     start (a finished one as it is, one cut short from its fragments), each with its card;

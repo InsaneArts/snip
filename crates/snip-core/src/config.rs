@@ -180,6 +180,10 @@ pub struct Recording {
     pub camera_size: String,
     /// REC-08: shown as in a mirror
     pub camera_mirror: bool,
+    /// REC-09: a ring where the pointer clicks
+    pub highlight_clicks: bool,
+    /// REC-10: the command keys pressed (never plain typing)
+    pub show_keystrokes: bool,
 }
 
 impl Default for Recording {
@@ -203,6 +207,8 @@ impl Default for Recording {
             camera_shape: "circle".into(),
             camera_size: "medium".into(),
             camera_mirror: true,
+            highlight_clicks: false,
+            show_keystrokes: false,
         }
     }
 }

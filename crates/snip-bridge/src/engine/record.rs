@@ -78,6 +78,9 @@ struct Run {
     size: (u32, u32),
     /// gsr wrote its first frame: a stop before that leaves no usable file
     rolling: bool,
+    /// the Hyprland hooks for clicks and keys (REC-09/10), by this take's id
+    sid: String,
+    hooks: Option<(bool, bool)>,
 }
 
 impl Run {
@@ -195,6 +198,7 @@ impl Inner {
             "output": output, "x": local.x, "y": local.y, "w": local.w, "h": local.h, "whole": whole, "gif": gif || cfg.kind == "gif",
             "mics": if now { vec![] } else { self.audio_inputs() }, "mic": cfg.mic, "system": cfg.system_audio, "dim": cfg.dim, "now": now,
             "camera": cfg.camera, "cameraShape": cfg.camera_shape, "cameraSize": cfg.camera_size, "cameraMirror": cfg.camera_mirror,
+            "clicks": cfg.highlight_clicks, "keys": cfg.show_keystrokes,
             // tests: a test card stands in for a camera (the suite's machine has none)
             "fakeCamera": std::env::var("SNIP_CAMERA").is_ok_and(|v| v == "fake"),
         })
@@ -281,10 +285,15 @@ impl Inner {
         };
         rec.state = State::Recording;
         let rolling = fake();
-        rec.run = Some(Run { child, file: file.clone(), ipc, started: Instant::now(), paused_at: None, paused: Duration::ZERO, audio: has_audio, size, rolling });
+        let hooks = (cfg.show_keystrokes || cfg.highlight_clicks).then_some((cfg.show_keystrokes, cfg.highlight_clicks));
+        let sid = stamp.replace('-', "");
+        rec.run = Some(Run { child, file: file.clone(), ipc, started: Instant::now(), paused_at: None, paused: Duration::ZERO, audio: has_audio, size, rolling, sid: sid.clone(), hooks });
         drop(r);
         if cfg.dnd {
             self.dnd(true);
+        }
+        if let Some((keys, clicks)) = hooks {
+            self.record_hooks(&sid, keys, clicks);
         }
         self.record_status(json!({ "elapsed": 0 }));
         let me = self.clone();
@@ -354,6 +363,9 @@ impl Inner {
                 trace::warn("gsr_pause", &format!("\"msg\":{}", js(&e)));
                 return;
             }
+        }
+        if run.hooks.is_some() {
+            let _ = snip_hypr::eval(&snip_hypr::keys::recording_mute_lua(pause));
         }
         if pause {
             run.paused_at = Some(Instant::now());
@@ -450,8 +462,66 @@ impl Inner {
         self.ui(move |e| e.record_status(&QString::from(j.as_str())));
     }
 
+    /// Clicks and keys while `sid` records (REC-09/10): Hyprland's hooks send
+    /// them as socket2 events; a heartbeat keeps the hooks, which remove
+    /// themselves once it stops (Snip gone).
+    fn record_hooks(self: &Arc<Self>, sid: &str, keys: bool, clicks: bool) {
+        match snip_hypr::eval(&snip_hypr::keys::recording_lua(sid, keys, clicks)) {
+            Ok(r) if r.trim() == "ok" => {}
+            r => return trace::warn("record_hooks", &format!("\"reply\":{}", js(&format!("{r:?}")))),
+        }
+        trace::trace("record_hooks", &format!("\"sid\":\"{sid}\",\"keys\":{keys},\"clicks\":{clicks}"));
+        let (me, sid) = (self.clone(), sid.to_string());
+        std::thread::spawn(move || loop {
+            std::thread::sleep(Duration::from_secs(1));
+            let live = me.recording.lock().unwrap().as_ref().and_then(|r| r.run.as_ref()).is_some_and(|run| run.sid == sid);
+            if !live {
+                return;
+            }
+            let _ = snip_hypr::eval(&snip_hypr::keys::recording_beat_lua(&sid));
+        });
+    }
+
+    /// Hyprland reloaded its config, and its Lua with it: the hooks again.
+    pub fn record_rehook(self: &Arc<Self>) {
+        let run = self.recording.lock().unwrap().as_ref().and_then(|r| r.run.as_ref()).and_then(|run| run.hooks.map(|h| (run.sid.clone(), h)));
+        if let Some((sid, (keys, clicks))) = run {
+            match snip_hypr::eval(&snip_hypr::keys::recording_lua(&sid, keys, clicks)) {
+                Ok(_) => trace::trace("record_rehooked", &format!("\"sid\":\"{sid}\"")),
+                Err(e) => trace::warn("record_hooks", &format!("\"msg\":{}", js(&e.to_string()))),
+            }
+        }
+    }
+
+    /// A click or a key from the hooks (`snip:<sid>:c:<button>:<x>:<y>`, in
+    /// global logical px, or `snip:<sid>:k:<code>:<0|1>`), for the HUD.
+    pub fn record_input(&self, data: &str) {
+        let Some(rest) = data.strip_prefix("snip:") else { return };
+        let parts: Vec<&str> = rest.split(':').collect();
+        let r = self.recording.lock().unwrap();
+        let Some(rec) = r.as_ref().filter(|r| r.run.as_ref().is_some_and(|run| Some(&run.sid.as_str()) == parts.first())) else { return };
+        let origin = self.outputs.lock().unwrap().iter().find(|o| o.name == rec.output).map(|o| (o.logical.x as f64, o.logical.y as f64));
+        let j = match parts.as_slice() {
+            [_, "k", code, st] => {
+                let Ok(code) = code.parse::<u32>() else { return };
+                json!({ "kind": "key", "code": code, "down": *st == "1", "label": snip_hypr::keys::key_label(code) })
+            }
+            [_, "c", button, x, y] => {
+                let (Ok(x), Ok(y), Some((ox, oy))) = (x.parse::<f64>(), y.parse::<f64>(), origin) else { return };
+                json!({ "kind": "click", "button": button.parse::<u32>().unwrap_or(272), "x": x - ox, "y": y - oy })
+            }
+            _ => return,
+        };
+        drop(r);
+        let j = j.to_string();
+        self.ui(move |e| e.record_input(&QString::from(j.as_str())));
+    }
+
     /// Stop a take's recorder; its file is finished (kept) or deleted.
     fn record_end_run(&self, mut run: Run, keep: bool) -> Option<PathBuf> {
+        if run.hooks.is_some() {
+            let _ = snip_hypr::eval(snip_hypr::keys::RECORDING_OFF_LUA);
+        }
         match run.child.as_mut() {
             Some(child) => {
                 if keep {

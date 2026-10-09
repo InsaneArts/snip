@@ -12,6 +12,8 @@ import Snip.Core
 // stop with the time, pause, restart, discard (REC-05). The camera (REC-08) is
 // a bubble inside the area, there to be recorded: dragged anywhere, before
 // and while recording; a click fills the area with it, another brings it back.
+// While recording it can also show a ring where the pointer clicks (REC-09)
+// and the command keys pressed (REC-10), from Hyprland's own hooks.
 //
 // gpu-screen-recorder records whatever is on screen in the area, Snip's own
 // layers included, so this layer never draws inside it: the frame and the
@@ -45,6 +47,14 @@ Window {
     property bool camerasOpen: false
     property bool cameraFull: false                 // filling the area
     property point cameraAt: Qt.point(-1, -1)       // its corner from the area's (-1: not moved)
+    property bool clicks: false                     // REC-09: a ring where the pointer clicks
+    property bool keys: false                       // REC-10: the command keys pressed
+    property var heldMods: []                       // the modifiers held, by label
+    property string combo: ""                       // the last command, e.g. "Ctrl + C"
+    property int comboCount: 0                      // pressed again and again
+    property real comboAt: 0
+    property bool comboShown: false
+    property int ringsShown: 0                      // tests: rings drawn so far
 
     flags: Qt.FramelessWindowHint
     color: "transparent"
@@ -74,6 +84,11 @@ Window {
         camerasOpen = false
         cameraFull = false
         cameraAt = Qt.point(-1, -1)
+        clicks = !!s.clicks
+        keys = !!s.keys
+        heldMods = []
+        combo = ""
+        comboShown = false
         // `snip record area|fullscreen`: recording at once, no toolbar
         phase = s.now ? "starting" : "ready"
         micsOpen = false
@@ -149,6 +164,40 @@ Window {
                                      cameraAt.x < 0 ? area.width - cameraMargin - cameraBox.width : cameraAt.x)))
     readonly property real cameraY: Math.round(area.y + Math.max(0, Math.min(area.height - cameraBox.height,
                                      cameraAt.y < 0 ? area.height - cameraMargin - cameraBox.height : cameraAt.y)))
+
+    function setShown(key, on) {
+        if (key === "highlight_clicks") clicks = on
+        else keys = on
+        Engine.setSetting("recording." + key, JSON.stringify(on))
+    }
+    // a click or a key from Hyprland's hooks (only command keys come)
+    function input(e) {
+        if (phase !== "recording") return
+        if (e.kind === "click") {
+            // outside the area it isn't recorded
+            if (!clicks || e.x < area.x || e.y < area.y || e.x > area.x + area.width || e.y > area.y + area.height) return
+            rings.append({ rx: e.x, ry: e.y, second: e.button !== 272 })
+            ringsShown++
+            return
+        }
+        if (!keys || !e.label) return
+        if (["Ctrl", "Shift", "Alt", "Super"].includes(e.label)) {
+            const rest = heldMods.filter(m => m !== e.label)
+            heldMods = e.down ? rest.concat([e.label]) : rest
+            return
+        }
+        if (!e.down) return
+        const c = ["Super", "Ctrl", "Alt", "Shift"].filter(m => heldMods.includes(m)).concat([e.label]).join(" + ")
+        comboCount = c === combo && comboShown && Date.now() - comboAt < 1500 ? comboCount + 1 : 1
+        combo = c
+        comboAt = Date.now()
+        comboShown = true
+        comboFade.restart()
+    }
+    Timer { id: comboFade; interval: 1500; onTriggered: hud.comboShown = false }
+    // what the keystrokes show: the last command a moment, else the modifiers held
+    readonly property string keyText: comboShown ? combo + (comboCount > 1 ? "  ×" + comboCount : "")
+                                                 : heldMods.length ? heldMods.join(" + ") + " +" : ""
 
     readonly property string micLabel: {
         if (mic === "") return "No microphone"
@@ -271,6 +320,50 @@ Window {
                 bubble.x = Qt.binding(() => hud.cameraFull ? hud.area.x : hud.cameraX)
                 bubble.y = Qt.binding(() => hud.cameraFull ? hud.area.y : hud.cameraY)
             }
+        }
+    }
+
+    // ---------------------------------------------------------------- clicks and keys (REC-09/10)
+    // inside the area, to be recorded
+    ListModel { id: rings }
+    Repeater {
+        model: rings
+        Rectangle {
+            required property real rx
+            required property real ry
+            required property bool second
+            property real size: 16
+            x: rx - size / 2
+            y: ry - size / 2
+            width: size
+            height: size
+            radius: size / 2
+            color: "transparent"
+            border.width: 3
+            border.color: second ? Theme.warning : Theme.accent
+            NumberAnimation on size { from: 16; to: 56; duration: 450; easing.type: Easing.OutCubic }
+            // they end in the order they began: the oldest goes
+            NumberAnimation on opacity { from: 1; to: 0; duration: 450; easing.type: Easing.InQuad; onFinished: Qt.callLater(() => rings.remove(0)) }
+        }
+    }
+    Rectangle {
+        id: keyPill
+        objectName: "record-keystrokes"
+        visible: hud.keys && hud.keyText !== "" && hud.phase === "recording"
+        x: hud.area.x + hud.area.width / 2 - width / 2
+        y: hud.area.y + hud.area.height - height - Math.min(48, hud.area.height * 0.08)
+        width: keyLabel.implicitWidth + 32
+        height: keyLabel.implicitHeight + 16
+        radius: 12
+        color: Qt.rgba(0, 0, 0, 0.72)
+        Text {
+            id: keyLabel
+            anchors.centerIn: parent
+            text: hud.keyText
+            color: "white"
+            font.family: Theme.fontUi
+            font.pixelSize: Math.round(Math.max(14, Math.min(36, hud.area.height * 0.04)))
+            font.weight: Font.DemiBold
         }
     }
 
@@ -420,6 +513,25 @@ Window {
                 }
                 HoverHandler { id: camHover; cursorShape: Qt.PointingHandCursor }
                 TapHandler { onTapped: hud.camerasOpen = !hud.camerasOpen }
+            }
+            // clicks and keys (REC-09/10)
+            Repeater {
+                model: [["highlight_clicks", "pointer", "Highlight clicks", "record-clicks"], ["show_keystrokes", "keyboard", "Show keystrokes", "record-keys"]]
+                Rectangle {
+                    required property var modelData
+                    readonly property bool on: modelData[0] === "highlight_clicks" ? hud.clicks : hud.keys
+                    objectName: modelData[3]
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 30
+                    height: 30
+                    radius: 15
+                    color: on ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22)
+                              : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, showHover.hovered ? 0.12 : 0.06)
+                    Icon { anchors.centerIn: parent; name: parent.modelData[1]; size: 15; color: parent.on ? Theme.accent : Theme.textSecondary }
+                    HoverHandler { id: showHover; cursorShape: Qt.PointingHandCursor }
+                    TapHandler { onTapped: hud.setShown(parent.modelData[0], !parent.on) }
+                    Tip { text: parent.modelData[2] + (parent.modelData[0] === "show_keystrokes" ? " (command keys only)" : "") }
+                }
             }
             Rectangle { width: 1; height: 22; anchors.verticalCenter: parent.verticalCenter; color: Theme.hairline }
             TextButton { objectName: "record-cancel"; anchors.verticalCenter: parent.verticalCenter; text: "Cancel"; tip: "Esc"; onClicked: Engine.recordCancel() }
@@ -689,7 +801,8 @@ Window {
                                                     camera: bubble.visible ? [bubble.x, bubble.y, bubble.width, bubble.height] : null,
                                                     cameraName: camera, cameraShape: cameraShape, cameraSize: cameraSize, cameraMirror: cameraMirror,
                                                     cameraFull: cameraFull, cameraReady: bubble.ready, cameras: cameras.map(c => c.name),
-                                                    camerasOpen: cameraList.visible }).slice(1, -1))
+                                                    camerasOpen: cameraList.visible, clicks: clicks, keys: keys, rings: ringsShown,
+                                                    keystrokes: keyPill.visible ? keyText : "" }).slice(1, -1))
             break
         }
     }
