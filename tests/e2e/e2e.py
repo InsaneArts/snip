@@ -3896,6 +3896,15 @@ def shift_skips_preset(s, env):
         assert Image.open(rec["source"]).size == (250, 75), "the plain shot"
         r, _ = area(s, 100, 100, 300, 160)
         assert wait_for(lambda: [e for e in s.traces("edited") if e["id"] == r["result"]["id"]], 5), "without Shift: the preset again"
+        # Shift on a capture that gets no preset (Capture Text) is for that capture only:
+        # an exact area from `snip area` after it still gets the preset
+        p = s.bg("text"); time.sleep(0.5)
+        s.drag(100, 100, 300, 160, during=lambda: s.key("Shift", "keydown"))
+        s.key("Shift", "keyup")
+        finish(p, timeout=20)
+        r = s.json("area", "--x", "100", "--y", "100", "--w", "200", "--h", "120", "--monitor", OUT)
+        assert r["ok"], r
+        assert wait_for(lambda: [e for e in s.traces("edited") if e["id"] == r["result"]["id"]], 5), "the preset, after a Shift-released text capture"
     finally:
         s.json("edit", str(png))
         if wait_for(lambda: editor_window(), 5):
