@@ -684,6 +684,9 @@ impl Inner {
     #[allow(clippy::too_many_arguments)]
     fn open_session(self: &Arc<Self>, mode: String, epoch: u64, waiter: Option<Waiter>, snap: Snapshot, frames_: Vec<Frame>, cursor: bool, delay: u32) {
         let outputs = self.outputs.lock().unwrap().clone();
+        // over the live screen there's no frame to tell an output's scale:
+        // Hyprland's (QScreen rounds 1.25 up to 2)
+        let monitors = if frames_.is_empty() { snip_hypr::monitors() } else { vec![] };
         let mut out_json = serde_json::Map::new();
         for o in &outputs {
             let f = frames_.iter().find(|f| f.output == o.name);
@@ -706,7 +709,7 @@ impl Inner {
                 o.name.clone(),
                 json!({
                     "x": o.logical.x, "y": o.logical.y, "w": o.logical.w, "h": o.logical.h,
-                    "scale": f.map(|f| f.scale).unwrap_or(0.0),
+                    "scale": f.map(|f| f.scale).or_else(|| monitors.iter().find(|m| m.name == o.name).map(|m| m.scale)).unwrap_or(0.0),
                     "frozen": f.is_some(),
                     "windows": wins,
                 }),
