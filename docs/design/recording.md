@@ -65,6 +65,8 @@ history card ─ Edit Video… ─▶ VideoEditor window ─▶ media::export (f
 - It runs by its full path in its own process group, so Omarchy's indicator, ALT+PRINT and its menu never see or stop it (D44). Its messages go to a log file, never a pipe: with Snip gone, a write to the pipe would kill it mid-save.
 - Areas under about 160×128 physical pixels go to the CPU encoder: NVENC refuses or pads them.
 
+**Out of the shot.** Snip's cards step aside while the toolbar is up and while it records (KMS would record them). With Hide desktop clutter on, the bars show the wallpaper and the pins step aside too, as for screenshots (CAP-12).
+
 **Files.** A take is written in `~/.local/share/snip/recording/` (on disk, beside history; the runtime dir is a RAM disk) and moved into history when it stops. Save copies it to `[recording] export_dir` (`~/Videos/Screencasts`).
 
 **Safety (REC-14, D47).**
@@ -73,6 +75,7 @@ history card ─ Edit Video… ─▶ VideoEditor window ─▶ media::export (f
 - When its display is unplugged the recording stops and is kept; gsr would go on encoding the last frame.
 
 **The editor (VED-01…03).**
+- The editor opens at once; ffmpeg's frames for the timeline fill it a moment later.
 - Qt Multimedia plays the recording, decoding in software. Snip names the FFmpeg device lists at start; without them, QtMultimedia probed every hardware decoder on the GUI thread and Snip took 0.87 s to start instead of 0.3 s.
 - One seek runs at a time, the newest waiting, so the picture follows a drag along the timeline. Frame steps go to a frame's middle.
 - Export: the frames are made regular (`fps=`), and each kept part is trimmed and joined (`trim`/`atrim` + `concat`), every cut on a frame. This is exact, where `select` left frames over and the sound up to 43 ms off. A GIF takes two passes, the palette first, since one pass held every frame in memory.
