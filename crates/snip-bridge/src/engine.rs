@@ -27,6 +27,7 @@ use snip_wayland::{CaptureResult, Event, Features, Frame, OutputInfo, Request as
 use crate::bridge::qobject::Engine;
 use crate::frames;
 
+mod record;
 mod scroll;
 
 pub type Waiter = mpsc::Sender<Response>;
@@ -110,12 +111,15 @@ pub struct Inner {
     cover: Mutex<Option<Cover>>,
     /// CAP-12, the live toggle: clutter is hidden; DND was on before it
     desktop_hidden: AtomicBool,
-    dnd_before: Mutex<Option<bool>>,
+    /// who holds DND on (hidden clutter, a recording), and whether it was on before them
+    dnd_holds: Mutex<(u32, Option<bool>)>,
     /// OCR-02: the capture under way keeps (Some(true)) or joins line breaks,
     /// whatever ocr.keep_line_breaks says ("text-lines", "text-one-line")
     line_breaks: Mutex<Option<bool>>,
     /// A scrolling capture (SCR-01), from the chosen area until Done
     scroll: Mutex<Option<scroll::Scroll>>,
+    /// the recording being set up or made (REC)
+    recording: Mutex<Option<record::Rec>>,
 }
 
 fn reply(w: Option<Waiter>, r: Response) {
@@ -207,9 +211,10 @@ impl Inner {
             capture_action: Mutex::new(None),
             cover: Mutex::new(None),
             desktop_hidden: AtomicBool::new(false),
-            dnd_before: Mutex::new(None),
+            dnd_holds: Mutex::new((0, None)),
             line_breaks: Mutex::new(None),
             scroll: Mutex::new(None),
+            recording: Mutex::new(None),
         }))
     }
 
@@ -255,6 +260,11 @@ impl Inner {
 
     /// The output under the cursor (CAP-04, QAO-01), else the focused one.
     /// A test instance (SNIP_OUTPUTS) always uses its own output.
+    /// An output's scale, from Hyprland (1 if unknown)
+    fn output_scale(&self, output: &str) -> f64 {
+        snip_hypr::monitors().into_iter().find(|m| m.name == output).map_or(1.0, |m| m.scale)
+    }
+
     /// The scale of the monitor in use (1 if unknown)
     pub fn cursor_scale(&self) -> f64 {
         let out = self.cursor_output();
@@ -322,6 +332,15 @@ impl Inner {
             "area-annotate" => self.begin("area", None, None, None, 0, Some(AfterCapture::Annotate)),
             "scroll-go" => self.scroll_go(),
             "scroll-cancel" => self.scroll_cancel(),
+            // REC: the Record hotkey starts (or stops); Enter and Esc while it's set up
+            "record" => self.record_toggle(false, None),
+            "record-gif" => self.record_toggle(true, None),
+            "record-pause" => {
+                let paused = self.record_state()["state"] == "paused";
+                self.record_pause(!paused);
+            }
+            "record-go" => self.record_start(None),
+            "record-cancel" => self.record_cancel(),
             "timer-area" | "timer-fullscreen" => {
                 let delay = self.cfg().capture.timer_seconds;
                 self.begin(&id["timer-".len()..], None, None, None, delay, None)
@@ -376,7 +395,7 @@ impl Inner {
             return;
         }
         match mode {
-            "area" | "window" | "text" | "all-in-one" | "insert" | "pick" | "area-pin" | "scroll" => {
+            "area" | "window" | "text" | "all-in-one" | "insert" | "pick" | "area-pin" | "scroll" | "record" | "record-gif" => {
                 // SEL-09: the capture hotkey while the overlay is up cancels it.
                 if let Some(s) = self.session.lock().unwrap().take() {
                     reply(s.waiter, cancelled());
@@ -399,7 +418,8 @@ impl Inner {
                 let monitor = monitor.or_else(|| std::env::var("SNIP_OUTPUTS").ok().filter(|s| !s.is_empty()));
                 let outputs = monitor.filter(|m| self.output_names().contains(m)).map(|m| vec![m]);
                 // the eyedropper reads the frozen pixels, so it always freezes
-                if self.cfg().capture.freeze || mode == "pick" {
+                // recording is chosen over the live screen, as CleanShot does
+                if (self.cfg().capture.freeze && !mode.starts_with("record")) || mode == "pick" {
                     self.pending.lock().unwrap().insert(req, Pending::Overlay { mode, waiter, snap, cursor, delay });
                     self.capture_clean(req, Source::Outputs(outputs), cursor);
                 } else {
@@ -547,22 +567,29 @@ impl Inner {
         self.desktop_hidden.load(Ordering::Relaxed)
     }
 
-    /// Omarchy's do-not-disturb while clutter is hidden, as it was after.
-    /// Tests (SNIP_NO_PORTALS) never touch the user's notifications.
+    /// Omarchy's do-not-disturb while clutter is hidden or a recording runs
+    /// (REC-11), as it was once neither holds it. Tests (SNIP_NO_PORTALS)
+    /// never touch the user's notifications.
     fn dnd(&self, on: bool) {
-        if std::env::var_os("SNIP_NO_PORTALS").is_some() {
-            return;
-        }
         let shell = |args: &[&str]| std::process::Command::new("omarchy-shell").args(args).output().ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+        let real = std::env::var_os("SNIP_NO_PORTALS").is_none();
+        let mut holds = self.dnd_holds.lock().unwrap();
         if on {
-            let was = shell(&["notifications", "isDnd"]).is_some_and(|s| s == "on");
-            *self.dnd_before.lock().unwrap() = Some(was);
-            if !was {
-                shell(&["-q", "notifications", "setDnd", "on"]);
+            holds.0 += 1;
+            if holds.0 == 1 {
+                let was = real && shell(&["notifications", "isDnd"]).is_some_and(|s| s == "on");
+                holds.1 = Some(was);
+                if real && !was {
+                    shell(&["-q", "notifications", "setDnd", "on"]);
+                }
             }
-        } else if self.dnd_before.lock().unwrap().take() == Some(false) {
-            shell(&["-q", "notifications", "setDnd", "off"]);
+        } else if holds.0 > 0 {
+            holds.0 -= 1;
+            if holds.0 == 0 && holds.1.take() == Some(false) && real {
+                shell(&["-q", "notifications", "setDnd", "off"]);
+            }
         }
+        trace::trace("dnd", &format!("\"holds\":{}", holds.0));
     }
 
     /// Screen captures never contain Snip's own cards (CleanShot hides its
@@ -749,6 +776,11 @@ impl Inner {
             frames::clear();
             return self.scroll_open(output, rect, scale, s.waiter, &s.clients);
         }
+        if s.mode.starts_with("record") {
+            frames::clear();
+            let scale = self.output_scale(&output);
+            return self.record_open(output, rect, scale, s.waiter, s.mode == "record-gif", false);
+        }
         // Capture Area & Pin (PIN-01): an area, pinned where it was
         let kind = if s.mode == "text" || s.mode == "insert" || (s.mode == "area-pin" && kind == "area") { s.mode.clone() } else { kind };
         if kind == "area" || kind == "area-pin" {
@@ -818,6 +850,12 @@ impl Inner {
             let scale = frames::get(&output).map(|f| f.scale).unwrap_or(1.0);
             frames::clear();
             return self.scroll_open(output, rect, scale, s.waiter, &s.clients);
+        }
+        if s.mode.starts_with("record") {
+            // REC-01: a window is recorded as its area on screen
+            frames::clear();
+            let scale = self.output_scale(&output);
+            return self.record_open(output, rect, scale, s.waiter, s.mode == "record-gif", false);
         }
         if s.mode == "insert" {
             // for an editor: the window as it is on screen
@@ -2054,6 +2092,38 @@ impl Inner {
                 Response::ok(Value::Null)
             }
             Ctl::Desktop { action } => self.desktop(&action),
+            Ctl::Record { action, gif, monitor, rect, whole } => match action.as_str() {
+                "start" if rect.is_some() || whole => {
+                    let (tx, rx) = mpsc::channel();
+                    match self.record_area(monitor, rect, gif, tx.clone()) {
+                        Ok(()) => rx.recv().unwrap_or_else(|_| Response::err("the recording ended")),
+                        Err(e) => Response::err(e),
+                    }
+                }
+                "toggle" | "start" => {
+                    let (tx, rx) = mpsc::channel();
+                    self.record_toggle(gif, Some(tx));
+                    rx.recv().unwrap_or_else(|_| Response::err("the recording ended"))
+                }
+                "stop" => {
+                    self.record_stop();
+                    Response::ok(Value::Null)
+                }
+                "pause" | "resume" => {
+                    self.record_pause(action == "pause");
+                    Response::ok(self.record_state())
+                }
+                "restart" => {
+                    self.record_restart();
+                    Response::ok(Value::Null)
+                }
+                "discard" => {
+                    self.record_discard();
+                    Response::ok(Value::Null)
+                }
+                "status" => Response::ok(self.record_state()),
+                _ => Response::err("record: toggle, stop, pause, resume, restart, discard or status"),
+            },
             Ctl::Pins { action } => match action.as_str() {
                 "toggle" | "close" | "unlock" => {
                     self.ui(move |e| e.pins_command(&QString::from(action.as_str())));
@@ -2120,6 +2190,7 @@ impl Inner {
             "outputs": self.outputs.lock().unwrap().iter().map(|o| json!({"name": o.name, "x": o.logical.x, "y": o.logical.y, "w": o.logical.w, "h": o.logical.h, "transform": o.transform})).collect::<Vec<_>>(),
             "features": {"data_control": f.data_control, "global_shortcuts": f.global_shortcuts, "virtual_pointer": f.virtual_pointer, "toplevel_capture": f.toplevel_capture},
             "overlay": self.session.lock().unwrap().as_ref().map(|s| s.mode.clone()),
+            "recording": self.record_state(),
             "cards": self.cards.lock().unwrap().iter().map(|(i, _)| i.clone()).collect::<Vec<_>>(),
             "closed": self.closed.lock().unwrap().len(),
             "history_bytes": self.store.disk_usage(),

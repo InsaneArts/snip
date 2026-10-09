@@ -258,6 +258,22 @@ pub mod qobject {
         fn scroll_auto(self: Pin<&mut Engine>);
         #[qinvokable]
         fn scroll_cancel(self: Pin<&mut Engine>);
+        /// Recording (REC): the toolbar's Record (gif: 1 GIF, 0 video, -1 as
+        /// chosen before), the countdown's end, and the controls
+        #[qinvokable]
+        fn record_start(self: Pin<&mut Engine>, gif: i32);
+        #[qinvokable]
+        fn record_go(self: Pin<&mut Engine>);
+        #[qinvokable]
+        fn record_pause(self: Pin<&mut Engine>, pause: bool);
+        #[qinvokable]
+        fn record_stop(self: Pin<&mut Engine>);
+        #[qinvokable]
+        fn record_restart(self: Pin<&mut Engine>);
+        #[qinvokable]
+        fn record_discard(self: Pin<&mut Engine>);
+        #[qinvokable]
+        fn record_cancel(self: Pin<&mut Engine>);
 
         #[qinvokable]
         fn annotate(self: Pin<&mut Engine>, id: QString);
@@ -397,6 +413,15 @@ pub mod qobject {
         fn scroll_status(self: Pin<&mut Engine>, json: &QString);
         #[qsignal]
         fn scroll_close(self: Pin<&mut Engine>);
+        /// Recording (REC): the area is chosen ({output, x, y, w, h, whole,
+        /// gif, mics, mic, system, dim}), how it's going ({state, seconds |
+        /// elapsed}), it ended
+        #[qsignal]
+        fn record_open(self: Pin<&mut Engine>, json: &QString);
+        #[qsignal]
+        fn record_status(self: Pin<&mut Engine>, json: &QString);
+        #[qsignal]
+        fn record_close(self: Pin<&mut Engine>);
 
         /// Every pin at once (PIN-07): toggle (hide or show) | close
         #[qsignal]
@@ -942,6 +967,48 @@ impl qobject::Engine {
     fn scroll_cancel(self: Pin<&mut Self>) {
         if let Some(i) = self.inner() {
             i.scroll_cancel();
+        }
+    }
+
+    fn record_start(self: Pin<&mut Self>, gif: i32) {
+        if let Some(i) = self.inner() {
+            i.record_start((gif >= 0).then_some(gif == 1));
+        }
+    }
+
+    fn record_go(self: Pin<&mut Self>) {
+        if let Some(i) = self.inner() {
+            i.record_go();
+        }
+    }
+
+    fn record_pause(self: Pin<&mut Self>, pause: bool) {
+        if let Some(i) = self.inner() {
+            i.record_pause(pause);
+        }
+    }
+
+    fn record_stop(self: Pin<&mut Self>) {
+        if let Some(i) = self.inner() {
+            i.record_stop();
+        }
+    }
+
+    fn record_restart(self: Pin<&mut Self>) {
+        if let Some(i) = self.inner() {
+            i.record_restart();
+        }
+    }
+
+    fn record_discard(self: Pin<&mut Self>) {
+        if let Some(i) = self.inner() {
+            i.record_discard();
+        }
+    }
+
+    fn record_cancel(self: Pin<&mut Self>) {
+        if let Some(i) = self.inner() {
+            i.record_cancel();
         }
     }
 

@@ -26,6 +26,11 @@ captures (default: the most recent)
   pin [ID|FILE]    float it above every window (drag to move, scroll: opacity, Ctrl+scroll: size)
   pins toggle|close|unlock  hide or show every pin, close them all, or unlock locked ones
   desktop hide|show|toggle  hide desktop clutter: the wallpaper over the bar, notifications held, no pins or cards
+recording
+  record [--gif]   choose an area (Enter: the monitor, Space: a window), then Record; again: stop
+  record area --x X --y Y --w W --h H [--monitor NAME] [--gif]   record that area at once (logical px)
+  record fullscreen [--monitor NAME] [--gif]   record a whole monitor at once
+  record stop|pause|resume|restart|discard|status
   list [-n N]      recent captures from history
   search TEXT [-n N]  find captures by the text in them (and window title/app)
   history          browse and search past captures (Enter restores one)
@@ -92,6 +97,24 @@ fn main() -> ExitCode {
                 cmd.clone()
             };
             (Request::Capture { mode, monitor, cursor, delay, action, rect }, Duration::from_secs(600))
+        }
+        "record" => {
+            let gif = args.iter().any(|a| a == "--gif");
+            let monitor = flag(&mut args, "--monitor");
+            let n = |args: &mut Vec<String>, name: &str| flag(args, name).and_then(|v| v.parse::<i32>().ok());
+            let rect = match (n(&mut args, "--x"), n(&mut args, "--y"), n(&mut args, "--w"), n(&mut args, "--h")) {
+                (Some(x), Some(y), Some(w), Some(h)) => Some([x, y, w, h]),
+                _ => None,
+            };
+            let (action, whole) = match arg1.as_deref() {
+                Some(a @ ("stop" | "pause" | "resume" | "restart" | "discard" | "status")) => (a.to_string(), false),
+                Some("fullscreen") => ("start".to_string(), true),
+                Some("area") if rect.is_some() => ("start".to_string(), false),
+                _ => ("toggle".to_string(), false),
+            };
+            // a start is answered when the recording ends: hours, maybe
+            let wait = if matches!(action.as_str(), "start" | "toggle") { Duration::from_secs(24 * 3600) } else { Duration::from_secs(30) };
+            (Request::Record { action, gif, monitor, rect, whole }, wait)
         }
         "edit" if arg1.as_deref() == Some("--clipboard") => (Request::EditClipboard, Duration::from_secs(10)),
         "open" | "edit" => {
