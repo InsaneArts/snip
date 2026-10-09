@@ -7,16 +7,12 @@
 -- the dofile):
 --
 --   snip_print_keys = true     -- also take PRINT (area) and SUPER+CTRL+PRINT (text)
---   snip_keys = false          -- rules only; bind snip:<action> yourself
+--   snip_keys = false          -- no keys; bind snip:<action> yourself
 --
 -- Every binding dispatches a global shortcut to the running snipd
 -- (hl.dsp.global): no process is spawned, so the overlay appears instantly.
--- Actions: area, fullscreen, window, previous, text, all-in-one, restore, close-all,
--- timer-area, timer-fullscreen, edit-clipboard (open the clipboard's image in the editor),
--- history (browse and search past captures), area-pin (capture an area and pin it
--- in place), pins-toggle (hide or show every pin),
--- pins-close, pins-unlock (locked pins take no clicks), settings, scroll (scrolling
--- capture; while it runs Snip binds Enter and Esc itself).
+-- Settings › Shortcuts lists every action, with its keys. While a scrolling
+-- capture runs, Snip binds Enter and Esc itself.
 --
 -- Settings › Shortcuts records other keys for any action; snipd binds those
 -- over these defaults (config.toml [shortcuts]), and Restore Defaults calls
@@ -47,23 +43,6 @@ end
 
 snip_bind_defaults()
 
--- Snip's surfaces appear instantly: no layer fade (which would also show up
--- in the first frames of a recording). snipd re-applies this at runtime too.
-hl.layer_rule({ match = { namespace = "^snip-" }, no_anim = true, animation = "none" })
-
--- The editor is a floating window, centred, sized to the image, above the
--- tiled windows. (Hyprland 0.56: patterns match the whole title, "Snip
--- Editor — <name>"; a rule matching class and title together, or a title
--- pattern with non-ASCII characters, never matches.)
-hl.window_rule({ match = { title = "^Snip Editor.*" }, float = true, center = true, opacity = "1 1", tag = "+snip-editor" })
-hl.window_rule({ match = { title = "^Snip Video Editor.*" }, float = true, center = true, opacity = "1 1", tag = "+snip-video-editor" })
--- Quick Look plays a recording in a small window, floating and centred too.
-hl.window_rule({ match = { title = "^Snip Quick Look$" }, float = true, center = true, opacity = "1 1", tag = "+snip-quicklook" })
-
--- Settings float too, centred, as on macOS.
-hl.window_rule({ match = { title = "^Snip Settings$" }, float = true, center = true, opacity = "1 1", tag = "+snip-settings" })
-hl.window_rule({ match = { title = "^Welcome to Snip$" }, float = true, center = true, opacity = "1 1", tag = "+snip-welcome" })
-
--- Pins float above every window, on every workspace of their monitor, and
--- draw their own corners and shadow. (Rule patterns match the whole title.)
-hl.window_rule({ match = { title = "^Snip Pin .*" }, float = true, pin = true, center = true, border_size = 0, no_shadow = true, no_blur = true, no_dim = true, no_anim = true, rounding = 0, opacity = "1 override 1 override", suppress_event = "maximize fullscreen" })
+-- Snip's window and layer rules (floating, centred editors and Settings,
+-- pins on every workspace, no fade for its overlays) come from snipd itself,
+-- at start and after every config reload, so they live in one place.
