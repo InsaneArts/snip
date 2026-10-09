@@ -69,6 +69,7 @@ impl Inner {
                 quality: spec["quality"].as_u64().unwrap_or(23) as u32,
                 gif,
                 encoder: "h264_nvenc".into(),
+                fps: media::probe(&rec.source).map_or(0.0, |p| p.fps),
             };
             let dir = paths::runtime_dir().join("export");
             let _ = paths::ensure_private_dir(&dir);
