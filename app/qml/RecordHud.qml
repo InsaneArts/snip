@@ -123,8 +123,14 @@ Window {
     function status(s) {
         if (s.state === "countdown") {
             seconds = s.seconds
-            phase = "countdown"
-            tick.restart()
+            if (seconds > 0) {
+                phase = "countdown"
+                tick.restart()
+            } else {
+                // none: record once the panel is off screen (D49)
+                phase = "starting"
+                Platform.notifyNextFrame(hud)
+            }
             return
         }
         phase = s.state

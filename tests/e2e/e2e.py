@@ -2037,6 +2037,33 @@ def record_stops_from_the_bar(s, env):
 
 
 @case
+def record_without_countdown(s, env):
+    """REC-03, D49: with no countdown, Record still waits until the panel is off screen,
+    then records."""
+    s.cli("close-all"); time.sleep(0.3)
+    cfg = s.tmp / "cfg/snip/config.toml"
+    before = cfg.read_text()
+    cfg.write_text(before.replace("countdown = 1", "countdown = 0"))
+    time.sleep(0.8)
+    try:
+        n = len(s.traces("record_status"))
+        p = record_panel(s)
+        s.drag(300, 200, 700, 500)
+        assert wait_for(lambda: record_hud(s)["area"] == [300, 200, 400, 300], 3), record_hud(s)
+        s.debug("ui", "record", "keys", "{Return}")
+        assert wait_for(lambda: record_hud(s)["phase"] == "recording", 5), record_hud(s)
+        states = [e["state"] for e in s.traces("record_status")[n:]]
+        assert states[0] == "countdown" and "recording" in states, ("the panel's frame first, then recording", states)
+        assert record_hud(s)["panel"] is None, "the panel is gone"
+        time.sleep(0.5)
+        s.json("record", "stop")
+        r, code = finish(p, timeout=20)
+        assert code == 0 and r["result"]["media"] == "video", r
+    finally:
+        cfg.write_text(before)
+
+
+@case
 def record_puts_dnd_back(s, env):
     """REC-11: a take puts Do Not Disturb back as it found it, even when the setting
     changes while it records."""
