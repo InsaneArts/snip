@@ -25,6 +25,17 @@ pub struct General {
     pub utc_time: bool,
     /// SET-04: file names of HiDPI captures end in "@2x" (their scale)
     pub scale_suffix: bool,
+    /// D48: Snip's colours: the Omarchy theme's, or its own dark or light
+    pub appearance: Appearance,
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Appearance {
+    #[default]
+    Omarchy,
+    Dark,
+    Light,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -369,6 +380,7 @@ impl Default for General {
             external_editor: String::new(),
             utc_time: false,
             scale_suffix: false,
+            appearance: Appearance::Omarchy,
         }
     }
 }

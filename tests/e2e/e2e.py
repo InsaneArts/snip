@@ -2209,6 +2209,39 @@ def welcome_first_run(s, env):
 
 
 @case
+def appearance_own_or_omarchy(s, env):
+    """D48: Settings › General › Appearance: Snip takes the Omarchy theme's colours (the
+    default), or its own CleanShot-like look in light or dark, at once."""
+    from PIL import Image
+    s.cli("settings", "general")
+    assert wait_for(lambda: settings_client(), 6), "Settings opens"
+    time.sleep(0.6)
+    sc = env.monitor()["scale"]
+
+    def page_luma():
+        w, mon = settings_client(), env.monitor()
+        f = s.tmp / "appearance.png"
+        sh("grim", "-o", OUT, str(f))
+        x, y = w["at"][0] - mon["x"] + w["size"][0] - 30, w["at"][1] - mon["y"] + w["size"][1] - 30
+        r, g, b = Image.open(f).convert("RGB").getpixel((round(x * sc), round(y * sc)))
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+    themes = lambda: [t["name"] for t in s.traces("theme")]
+    first = themes()[-1]
+    for look, light in (("light", True), ("dark", False)):
+        n = len(themes())
+        s.write_config(f'appearance = "{look}"')
+        assert wait_for(lambda: themes()[n:] and themes()[-1] == f"snip-{look}", 3), themes()[n:]
+        time.sleep(0.5)
+        luma = page_luma()
+        assert (luma > 200) if light else (luma < 60), (look, luma)
+    n = len(themes())
+    s.write_config("")
+    assert wait_for(lambda: themes()[n:] and themes()[-1] == first, 3), ("back to the Omarchy theme", first, themes()[n:])
+    s.cli("close-all")
+
+
+@case
 def settings_window(s, env):
     """SET-02: `snip settings TAB` opens Settings on that tab, floating (its rule tags it).
     A click writes config.toml, keeping the file's comments, and the window follows the

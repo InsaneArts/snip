@@ -14,7 +14,7 @@ use cxx_qt::CxxQtThread;
 use cxx_qt_lib::QString;
 use serde_json::{json, Value};
 
-use snip_core::config::{AfterCapture, ClipboardMode, Config, OpenLinks, Retention};
+use snip_core::config::{AfterCapture, Appearance, ClipboardMode, Config, OpenLinks, Retention};
 use snip_core::geometry::Rect;
 use snip_core::history::{Media, Record};
 use snip_core::store::{CaptureMeta, Store};
@@ -1907,9 +1907,12 @@ impl Inner {
 
     pub fn reload_config(&self) {
         let (cfg, err) = Config::load();
-        let before = std::mem::replace(&mut *self.cfg.write().unwrap(), cfg).shortcuts;
-        if before != self.cfg().shortcuts {
-            self.apply_shortcuts(&before);
+        let before = std::mem::replace(&mut *self.cfg.write().unwrap(), cfg);
+        if before.shortcuts != self.cfg().shortcuts {
+            self.apply_shortcuts(&before.shortcuts);
+        }
+        if before.general.appearance != self.cfg().general.appearance {
+            self.push_theme();
         }
         *self.cfg_error.lock().unwrap() = err.clone();
         if let Some(e) = err {
@@ -2029,7 +2032,12 @@ impl Inner {
 
     pub fn push_theme(&self) {
         let rounding = snip_hypr::option_int("decoration:rounding").unwrap_or(0).max(0) as u32;
-        let mut t = theme::current(rounding);
+        // D48: the Omarchy theme's colours, or Snip's own
+        let mut t = match self.cfg().general.appearance {
+            Appearance::Omarchy => theme::current(rounding),
+            Appearance::Dark => theme::builtin(true, rounding),
+            Appearance::Light => theme::builtin(false, rounding),
+        };
         t["roundingPower"] = json!(snip_hypr::option_float("decoration:rounding_power").unwrap_or(2.0));
         let j = t.to_string();
         trace::trace("theme", &format!("\"name\":{}", t["name"]));

@@ -238,6 +238,11 @@ Window {
                 visible: win.tab === "general"
                 spacing: 22
                 Section {
+                    label: "Appearance"
+                    Choice { key: "general.appearance"; options: [["omarchy", "Omarchy theme"], ["dark", "Dark"], ["light", "Light"]] }
+                    Note { text: "Omarchy theme: Snip takes the colours of the theme Omarchy applies." }
+                }
+                Section {
                     label: "Sounds"
                     Check { key: "general.sounds"; text: "Play sounds" }
                 }
