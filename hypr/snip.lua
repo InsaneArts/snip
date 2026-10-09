@@ -56,6 +56,7 @@ hl.layer_rule({ match = { namespace = "^snip-" }, no_anim = true, animation = "n
 -- Editor — <name>"; a rule matching class and title together, or a title
 -- pattern with non-ASCII characters, never matches.)
 hl.window_rule({ match = { title = "^Snip Editor.*" }, float = true, center = true, opacity = "1 1", tag = "+snip-editor" })
+hl.window_rule({ match = { title = "^Snip Video Editor.*" }, float = true, center = true, opacity = "1 1", tag = "+snip-video-editor" })
 
 -- Settings float too, centred, as on macOS.
 hl.window_rule({ match = { title = "^Snip Settings$" }, float = true, center = true, opacity = "1 1", tag = "+snip-settings" })

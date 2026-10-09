@@ -187,6 +187,9 @@ QtObject {
         function onRecordOpen(json) { root.recordHud.open(JSON.parse(json)) }
         function onRecordStatus(json) { root.recordHud.status(JSON.parse(json)) }
         function onRecordClose() { root.recordHud.close() }
+        // the video editor (VED)
+        function onVideoEditorOpen(json) { root.openVideoEditor(JSON.parse(json)) }
+        function onVideoExportStatus(id, json) { const v = root.videoEditors[id]; if (v) v.exportStatus(JSON.parse(json)) }
         function onBackgroundAuto(json) {
             const r = root.renderComponent.createObject(null, { capture: JSON.parse(json), token: root.nextToken() })
             r.done.connect(() => r.destroy())
@@ -215,6 +218,11 @@ QtObject {
         if (a[0] === "welcome") { if (welcomeWindow) welcomeWindow.debug(a.slice(1)); return }
         if (a[0] === "scroll") { scrollHud.debug(a.slice(1)); return }
         if (a[0] === "record") { recordHud.debug(a.slice(1)); return }
+        if (a[0] === "video") {
+            const v = Object.values(videoEditors).pop()
+            if (v) v.debug(a.slice(1))
+            return
+        }
         if (a[0] === "tray") { trayMenu.debug(a.slice(1)); return }
         if (a[0] === "link") { linkPrompt.debug(a.slice(1)); return }
         if (a[0] === "desktop") {
@@ -316,6 +324,16 @@ QtObject {
         const e = editorComponent.createObject(null, { capture: capture, controller: root })
         editors[capture.id] = e
         e.finished.connect(() => { delete editors[capture.id]; e.destroy() })
+    }
+    // The video editor (VED): one window per recording, created like editors
+    property var videoEditors: ({})
+    property Component videoEditorComponent: Component { VideoEditor {} }
+    function openVideoEditor(info) {
+        const open = videoEditors[info.id]
+        if (open) { open.raise(); open.requestActivate(); return }
+        const v = videoEditorComponent.createObject(null, { info: info, controller: root })
+        videoEditors[info.id] = v
+        v.finished.connect(() => { delete videoEditors[info.id]; v.destroy() })
     }
     // Pins (PIN-01): one window each, created directly like editors
     property var pins: []

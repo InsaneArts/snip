@@ -22,6 +22,7 @@ Rectangle {
         { label: card && card.saved ? "Show in Files" : "Save", key: card && card.saved ? "" : "Ctrl+S", action: card && card.saved ? "show" : "save", icon: card && card.saved ? "folder" : "save" },
         { label: "Save As…", key: "Ctrl+Shift+S", action: "save-as", icon: "save" },
         { label: "Annotate", key: "Ctrl+E", action: "annotate", icon: "pencil", hidden: menu.isMedia },
+        { label: "Edit Video…", key: "Ctrl+E", action: "annotate", icon: "scissors", hidden: !(card && card.data_.media === "video") },
         { label: "Pin to Screen", key: "Ctrl+P", action: "pin", icon: "pin", hidden: menu.isMedia },
         { label: "Open With…", key: "", action: "open-with", icon: "share" },
         { label: "Extract Text", key: "", action: "text", icon: "scan-text", hidden: menu.isMedia },
