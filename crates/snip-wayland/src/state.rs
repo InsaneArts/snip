@@ -10,8 +10,8 @@ use calloop::{EventLoop, LoopHandle, RegistrationToken};
 use calloop_wayland_source::WaylandSource;
 use wayland_client::globals::{registry_queue_init, GlobalListContents};
 use wayland_client::protocol::{
-    wl_buffer::WlBuffer, wl_compositor::WlCompositor, wl_output, wl_output::WlOutput, wl_pointer, wl_region::WlRegion, wl_registry,
-    wl_registry::WlRegistry, wl_seat::WlSeat, wl_shm, wl_shm::WlShm, wl_shm_pool::WlShmPool, wl_surface::WlSurface,
+    wl_buffer::WlBuffer, wl_compositor::WlCompositor, wl_output, wl_output::WlOutput, wl_pointer, wl_registry, wl_registry::WlRegistry,
+    wl_seat::WlSeat, wl_shm, wl_shm::WlShm, wl_shm_pool::WlShmPool, wl_surface::WlSurface,
 };
 use wayland_client::{event_created_child, Connection, Dispatch, Proxy, QueueHandle, WEnum};
 use wayland_protocols::ext::data_control::v1::client::{
@@ -34,6 +34,10 @@ use wayland_protocols::ext::image_copy_capture::v1::client::{
     ext_image_copy_capture_manager_v1::{ExtImageCopyCaptureManagerV1, Options},
     ext_image_copy_capture_session_v1::{self, ExtImageCopyCaptureSessionV1},
 };
+use wayland_protocols::ext::idle_notify::v1::client::{
+    ext_idle_notification_v1::{self, ExtIdleNotificationV1},
+    ext_idle_notifier_v1::ExtIdleNotifierV1,
+};
 use wayland_protocols::wp::idle_inhibit::zv1::client::{
     zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1, zwp_idle_inhibitor_v1::ZwpIdleInhibitorV1,
 };
@@ -48,10 +52,6 @@ use wayland_protocols_hyprland::global_shortcuts::v1::client::{
 use wayland_protocols_hyprland::toplevel_mapping::v1::client::{
     hyprland_toplevel_mapping_manager_v1::HyprlandToplevelMappingManagerV1,
     hyprland_toplevel_window_mapping_handle_v1::{self, HyprlandToplevelWindowMappingHandleV1},
-};
-use wayland_protocols_wlr::layer_shell::v1::client::{
-    zwlr_layer_shell_v1::{self, ZwlrLayerShellV1},
-    zwlr_layer_surface_v1::{self, ZwlrLayerSurfaceV1},
 };
 use wayland_protocols_wlr::virtual_pointer::v1::client::{
     zwlr_virtual_pointer_manager_v1::ZwlrVirtualPointerManagerV1, zwlr_virtual_pointer_v1::ZwlrVirtualPointerV1,
@@ -79,15 +79,6 @@ struct Output {
 struct Toplevel {
     handle: ExtForeignToplevelHandleV1,
     address: Option<u64>,
-}
-
-/// A 1×1 transparent layer that holds an idle inhibitor: Hyprland counts a
-/// layer as visible, so the screen doesn't idle (and lock) while recording.
-struct Awake {
-    surface: WlSurface,
-    layer: ZwlrLayerSurfaceV1,
-    inhibitor: Option<ZwpIdleInhibitorV1>,
-    pixel: Option<(ShmBuf, WlShmPool, WlBuffer)>,
 }
 
 struct PoolBuf {
@@ -149,9 +140,12 @@ pub(crate) struct State {
     app_id: String,
     ready_sent: bool,
     compositor: Option<WlCompositor>,
-    layer_shell: Option<ZwlrLayerShellV1>,
     idle_mgr: Option<ZwpIdleInhibitManagerV1>,
-    awake: Option<Awake>,
+    /// an idle inhibitor while recording, on a surface of ours with no role
+    awake: Option<(WlSurface, ZwpIdleInhibitorV1)>,
+    idle_notifier: Option<ExtIdleNotifierV1>,
+    /// tests: whether the session would go idle
+    idle_watch: Option<ExtIdleNotificationV1>,
 }
 
 // The sink pointer is only used on the Wayland thread for the lifetime of run().
@@ -196,8 +190,8 @@ pub(crate) fn run(app_id: String, rx: Channel<Request>, sink: &Sink) -> Result<(
     let mapping: Option<HyprlandToplevelMappingManagerV1> = globals.bind(&qh, 1..=1, ()).ok();
     let toplevel_list: Option<ExtForeignToplevelListV1> = globals.bind(&qh, 1..=1, ()).ok();
     let compositor: Option<WlCompositor> = globals.bind(&qh, 4..=6, ()).ok();
-    let layer_shell: Option<ZwlrLayerShellV1> = globals.bind(&qh, 1..=4, ()).ok();
     let idle_mgr: Option<ZwpIdleInhibitManagerV1> = globals.bind(&qh, 1..=1, ()).ok();
+    let idle_notifier: Option<ExtIdleNotifierV1> = globals.bind(&qh, 1..=1, ()).ok();
     let dc_device = match (&dc_mgr, &seat) {
         (Some(m), Some(s)) => Some(m.get_data_device(s, &qh, ())),
         _ => None,
@@ -233,9 +227,10 @@ pub(crate) fn run(app_id: String, rx: Channel<Request>, sink: &Sink) -> Result<(
         app_id,
         ready_sent: false,
         compositor,
-        layer_shell,
         idle_mgr,
         awake: None,
+        idle_notifier,
+        idle_watch: None,
     };
     for g in globals.contents().clone_list() {
         if g.interface == WlOutput::interface().name {
@@ -318,40 +313,32 @@ impl State {
                 }
             }
             Request::KeepAwake(on) => self.keep_awake(on),
+            Request::IdleWatch(ms) => {
+                if let Some(w) = self.idle_watch.take() {
+                    w.destroy();
+                }
+                if let (Some(n), Some(seat), true) = (&self.idle_notifier, &self.seat, ms > 0) {
+                    self.idle_watch = Some(n.get_idle_notification(ms, seat, &self.qh, ()));
+                }
+            }
         }
     }
 
+    /// The screen doesn't idle (and lock) while recording: an idle inhibitor
+    /// on a surface of ours with no role, which Hyprland counts as visible.
+    /// (On a layer it judged the inhibitor before the layer mapped, and never
+    /// again: a take nobody touched still went idle.)
     fn keep_awake(&mut self, on: bool) {
-        if !on {
-            if let Some(a) = self.awake.take() {
-                if let Some(i) = a.inhibitor {
-                    i.destroy();
-                }
-                a.layer.destroy();
-                a.surface.destroy();
-                if let Some((_, pool, buffer)) = a.pixel {
-                    buffer.destroy();
-                    pool.destroy();
-                }
-            }
-            return;
+        if let Some((surface, inhibitor)) = self.awake.take() {
+            inhibitor.destroy();
+            surface.destroy();
         }
-        let (Some(comp), Some(shell)) = (&self.compositor, &self.layer_shell) else { return };
-        if self.awake.is_some() || self.idle_mgr.is_none() {
-            return;
+        if let (true, Some(comp), Some(mgr)) = (on, &self.compositor, &self.idle_mgr) {
+            let surface = comp.create_surface(&self.qh, ());
+            let inhibitor = mgr.create_inhibitor(&surface, &self.qh, ());
+            self.awake = Some((surface, inhibitor));
         }
-        let surface = comp.create_surface(&self.qh, ());
-        // no input: clicks go through it
-        let region = comp.create_region(&self.qh, ());
-        surface.set_input_region(Some(&region));
-        region.destroy();
-        let layer = shell.get_layer_surface(&surface, None, zwlr_layer_shell_v1::Layer::Background, "snip-awake".into(), &self.qh, ());
-        layer.set_size(1, 1);
-        layer.set_anchor(zwlr_layer_surface_v1::Anchor::Top | zwlr_layer_surface_v1::Anchor::Left);
-        layer.set_keyboard_interactivity(zwlr_layer_surface_v1::KeyboardInteractivity::None);
-        surface.commit();
-        let inhibitor = self.idle_mgr.as_ref().map(|m| m.create_inhibitor(&surface, &self.qh, ()));
-        self.awake = Some(Awake { surface, layer, inhibitor, pixel: None });
+        trace::trace("keep_awake", &format!("\"on\":{}", self.awake.is_some()));
     }
 
     fn pointer_for(&mut self, output: &str) -> Option<&ZwlrVirtualPointerV1> {
@@ -652,24 +639,11 @@ macro_rules! ignore_events {
         }
     )*};
 }
-impl Dispatch<ZwlrLayerSurfaceV1, ()> for State {
-    fn event(st: &mut Self, layer: &ZwlrLayerSurfaceV1, ev: zwlr_layer_surface_v1::Event, _: &(), _: &Connection, qh: &QueueHandle<Self>) {
+impl Dispatch<ExtIdleNotificationV1, ()> for State {
+    fn event(st: &mut Self, _: &ExtIdleNotificationV1, ev: ext_idle_notification_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
         match ev {
-            zwlr_layer_surface_v1::Event::Configure { serial, .. } => {
-                layer.ack_configure(serial);
-                let shm = st.shm.clone();
-                let Some(a) = st.awake.as_mut().filter(|a| &a.layer == layer) else { return };
-                if a.pixel.is_none() {
-                    // a layer maps with a buffer: one transparent pixel
-                    let Ok(buf) = ShmBuf::new(1, 1, PixelFormat::Argb8888) else { return };
-                    let pool = shm.create_pool(buf.fd(), buf.len() as i32, qh, ());
-                    let buffer = pool.create_buffer(0, 1, 1, 4, wl_shm::Format::Argb8888, qh, ());
-                    a.surface.attach(Some(&buffer), 0, 0);
-                    a.pixel = Some((buf, pool, buffer));
-                }
-                a.surface.commit();
-            }
-            zwlr_layer_surface_v1::Event::Closed => st.keep_awake(false),
+            ext_idle_notification_v1::Event::Idled => st.emit(Event::Idle(true)),
+            ext_idle_notification_v1::Event::Resumed => st.emit(Event::Idle(false)),
             _ => {}
         }
     }
@@ -678,10 +652,9 @@ impl Dispatch<ZwlrLayerSurfaceV1, ()> for State {
 ignore_events!(
     WlCompositor,
     WlSurface,
-    WlRegion,
-    ZwlrLayerShellV1,
     ZwpIdleInhibitManagerV1,
     ZwpIdleInhibitorV1,
+    ExtIdleNotifierV1,
     WlShm,
     WlShmPool,
     WlBuffer,

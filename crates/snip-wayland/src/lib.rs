@@ -48,6 +48,8 @@ pub enum Event {
     /// Another client took the clipboard
     ClipboardLost,
     Error(String),
+    /// Tests (`IdleWatch`): the session went idle, or came back
+    Idle(bool),
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -77,6 +79,9 @@ pub enum Request {
     PointerNudge,
     /// The screen stays on (no idle, no lock) while recording (REC-14).
     KeepAwake(bool),
+    /// Tests: report when the session would go idle after `ms` without input
+    /// (inhibitors respected); 0 stops.
+    IdleWatch(u32),
 }
 
 pub type Sink = Box<dyn Fn(Event) + Send>;
