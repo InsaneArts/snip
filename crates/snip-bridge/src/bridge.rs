@@ -558,17 +558,19 @@ impl qobject::Engine {
                 w.push_desktop();
             }
         });
-        // Omarchy's theme switch and `hyprctl reload` drop runtime rules and
-        // may change rounding: re-apply and re-resolve.
-        let _ = snip_hypr::install_runtime_rules();
+        // Omarchy's theme switch and `hyprctl reload` start Hyprland's Lua
+        // over and may change rounding: Snip's rules, keys and hooks go back
+        // in, and the theme is resolved again.
+        crate::engine::hypr("rules", snip_hypr::install_runtime_rules());
         inner.apply_shortcuts(&Default::default());
         let h = inner.clone();
         let _ = snip_hypr::subscribe(move |name, data| {
             if name == "configreloaded" {
-                let _ = snip_hypr::install_runtime_rules();
+                let r = snip_hypr::reinstall();
+                trace::trace("hypr_reinstalled", &format!("\"ok\":{}", r.is_ok()));
+                crate::engine::hypr("reinstall", r);
                 h.apply_shortcuts(&Default::default());
                 h.push_theme();
-                h.record_rehook();
             }
             if name == "monitorremoved" {
                 h.record_output_removed(data);
@@ -888,7 +890,7 @@ impl qobject::Engine {
     }
 
     fn record_keys(&self, on: bool) {
-        let _ = snip_hypr::eval(snip_hypr::keys::record_lua(on));
+        crate::engine::hypr("recorder_keys", snip_hypr::keys::recorder_keys(on));
     }
 
     fn tray_icon_dir(&self) -> QString {

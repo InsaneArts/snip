@@ -68,7 +68,7 @@ impl Inner {
             old.state.store(CANCEL, Ordering::Relaxed);
             reply(old.waiter, cancelled());
         }
-        let _ = snip_hypr::eval(&snip_hypr::keys::session_lua(&crate::bridge::app_id(), true));
+        super::hypr("session_keys", snip_hypr::keys::session_keys(&crate::bridge::app_id(), true));
         let j = json!({ "output": output, "x": (rect.x as f64 / s).round(), "y": (rect.y as f64 / s).round(), "w": (rect.w as f64 / s).round(), "h": (rect.h as f64 / s).round() }).to_string();
         self.ui(move |e| e.scroll_open(&QString::from(j.as_str())));
     }
@@ -134,7 +134,7 @@ impl Inner {
 
     fn scroll_close(&self) -> Option<Scroll> {
         let s = self.scroll.lock().unwrap().take();
-        let _ = snip_hypr::eval(&snip_hypr::keys::session_lua("", false));
+        super::hypr("session_keys", snip_hypr::keys::session_keys("", false));
         self.ui(|e| e.scroll_close());
         s
     }

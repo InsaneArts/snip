@@ -133,6 +133,13 @@ fn cancelled() -> Response {
     Response::err("cancelled")
 }
 
+/// A Hyprland request that failed goes to the trace: the rest goes on.
+pub(crate) fn hypr(what: &str, r: Result<(), String>) {
+    if let Err(e) = r {
+        trace::warn("hypr", &format!("\"what\":\"{what}\",\"msg\":{}", js(&e)));
+    }
+}
+
 fn now_secs() -> i64 {
     chrono::Local::now().timestamp()
 }
@@ -1930,16 +1937,17 @@ impl Inner {
         let gone: Vec<&String> = before.keys().filter(|a| !now.contains_key(*a)).collect();
         if !gone.is_empty() {
             let binds = keys::binds();
-            let _ = snip_hypr::eval(&keys::set_lua(&app, &gone.iter().map(|a| (a.to_string(), current(&binds, a), String::new())).collect::<Vec<_>>()));
-            let _ = snip_hypr::eval("if snip_bind_defaults then snip_bind_defaults() end");
+            hypr("unbind", keys::set_binds(&app, &gone.iter().map(|a| (a.to_string(), current(&binds, a), String::new())).collect::<Vec<_>>()));
+            hypr("bind_defaults", keys::bind_defaults());
         }
         if now.is_empty() {
             return;
         }
         let binds = keys::binds();
         let changes: Vec<_> = now.iter().map(|(a, spec)| (a.clone(), current(&binds, a), spec.clone())).collect();
-        let r = snip_hypr::eval(&keys::set_lua(&app, &changes));
-        trace::trace("shortcuts", &format!("\"n\":{},\"reply\":{}", now.len(), js(&format!("{r:?}"))));
+        let r = keys::set_binds(&app, &changes);
+        trace::trace("shortcuts", &format!("\"n\":{},\"ok\":{}", now.len(), r.is_ok()));
+        hypr("set_binds", r);
     }
 
     /// Settings › Shortcuts: every action, with the keys Hyprland has for it.
@@ -2177,7 +2185,7 @@ impl Inner {
             Ctl::Reload => {
                 self.reload_config();
                 self.push_theme();
-                let _ = snip_hypr::install_runtime_rules();
+                hypr("rules", snip_hypr::install_runtime_rules());
                 match self.cfg_error.lock().unwrap().clone() {
                     Some(e) => Response::err(format!("config.toml: {e}")),
                     None => Response::ok(Value::Null),

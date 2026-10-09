@@ -46,7 +46,7 @@ pub const SESSION_KEYS: &[(&str, &str)] = &[
 /// unbinding them. A bind handle is removed exactly once (removing one twice
 /// crashes Hyprland 0.56): the table is cleared before its handles go. A
 /// timer unbinds them if Snip never does.
-pub fn session_lua(app_id: &str, on: bool) -> String {
+pub(crate) fn session_lua(app_id: &str, on: bool) -> String {
     const OFF: &str = "if SNIP_SESSION_KEYS then local k = SNIP_SESSION_KEYS; SNIP_SESSION_KEYS = nil; for _, b in ipairs(k) do b:remove() end end";
     if !on {
         return OFF.into();
@@ -73,7 +73,7 @@ const SPECIAL_KEYS: &[u32] = &[9, 23, 36, 111, 113, 114, 116, 110, 115, 112, 117
 /// Snip's recording hooks (REC-09/10, `recording.lua`), on for the
 /// recording `sid`: the command keys when `keys`, clicks when `clicks`.
 /// Silent while a password manager or the polkit prompt has the focus.
-pub fn recording_lua(sid: &str, keys: bool, clicks: bool) -> String {
+pub(crate) fn recording_lua(sid: &str, keys: bool, clicks: bool) -> String {
     let set = |codes: &[u32]| format!("{{ {} }}", codes.iter().map(|c| format!("[{c}] = true")).collect::<Vec<_>>().join(", "));
     let keys = if keys { format!("{{ mods = {}, cmd = {}, special = {} }}", set(MOD_KEYS), set(CMD_KEYS), set(SPECIAL_KEYS)) } else { "nil".into() };
     let buttons = if clicks { "{ 272, 273 }" } else { "{}" };
@@ -85,15 +85,15 @@ return SNIP_REC.on({{ sid = "{sid}", keys = {keys}, buttons = {buttons},
     )
 }
 
-pub const RECORDING_OFF_LUA: &str = "if SNIP_REC then SNIP_REC.off() end";
+const RECORDING_OFF_LUA: &str = "if SNIP_REC then SNIP_REC.off() end";
 
 /// Snip still records `sid`: without this every second, the hooks remove themselves.
-pub fn recording_beat_lua(sid: &str) -> String {
+fn recording_beat_lua(sid: &str) -> String {
     format!(r#"if SNIP_REC then SNIP_REC.beat("{sid}") end"#)
 }
 
 /// Paused: nothing is sent.
-pub fn recording_mute_lua(on: bool) -> String {
+pub(crate) fn recording_mute_lua(on: bool) -> String {
     format!("if SNIP_REC then SNIP_REC.mute({on}) end")
 }
 
@@ -295,7 +295,7 @@ pub fn conflict<'a>(binds: &'a [Bind], action: &str, spec: &str) -> Option<&'a B
 
 /// Lua giving actions their keys: `(action, its binds now, its key or "")`.
 /// Every old bind goes before any new one comes, so two actions can swap keys.
-pub fn set_lua(app_id: &str, changes: &[(String, Vec<String>, String)]) -> String {
+fn set_lua(app_id: &str, changes: &[(String, Vec<String>, String)]) -> String {
     let mut lua = String::new();
     for (_, old, new) in changes {
         for s in old.iter().chain(std::iter::once(new).filter(|n| !n.is_empty())) {
@@ -313,7 +313,7 @@ pub fn set_lua(app_id: &str, changes: &[(String, Vec<String>, String)]) -> Strin
 /// While a key is recorded, Hyprland's binds must let it through to the
 /// Settings window: an empty submap (Escape still leaves it, and a timer does
 /// if Snip never comes back).
-pub fn record_lua(on: bool) -> &'static str {
+pub(crate) fn record_lua(on: bool) -> &'static str {
     if on {
         r#"if not SNIP_RECORD_SUBMAP then
   hl.define_submap("snip-record", function() hl.bind("Escape", hl.dsp.submap("reset"), { non_consuming = true }) end)
@@ -324,6 +324,65 @@ hl.timer(function() if hl.get_current_submap() == "snip-record" then hl.dispatch
     } else {
         r#"if hl.get_current_submap() == "snip-record" then hl.dispatch(hl.dsp.submap("reset")) end"#
     }
+}
+
+// ---------------------------------------------------------------- what callers ask for
+// Each runs its Lua (crate::run reads the reply) and keeps the footprint
+// up to date, so crate::reinstall can put it back after a config reload.
+
+/// Enter and Esc go to a scrolling capture while it runs (`on`), then back
+/// to the page.
+pub fn session_keys(app_id: &str, on: bool) -> Result<(), String> {
+    crate::footprint(|f| f.session = on.then(|| app_id.to_string()));
+    crate::run(&session_lua(app_id, on))
+}
+
+/// While Settings records a key, Hyprland's binds let it through (`on`).
+pub fn recorder_keys(on: bool) -> Result<(), String> {
+    crate::footprint(|f| f.recorder = on);
+    crate::run(record_lua(on))
+}
+
+/// Snip's recording hooks for the recording `sid`: the command keys, the
+/// clicks (REC-09/10).
+pub fn recording_hooks(sid: &str, keys: bool, clicks: bool) -> Result<(), String> {
+    crate::footprint(|f| {
+        f.hooks = Some((sid.to_string(), keys, clicks));
+        f.muted = false;
+    });
+    crate::run(&recording_lua(sid, keys, clicks))
+}
+
+/// The recording is over: its hooks go.
+pub fn recording_hooks_off() -> Result<(), String> {
+    crate::footprint(|f| {
+        f.hooks = None;
+        f.muted = false;
+    });
+    crate::run(RECORDING_OFF_LUA)
+}
+
+/// Snip still records `sid`: without this every second, the hooks remove
+/// themselves (Snip is gone).
+pub fn recording_beat(sid: &str) -> Result<(), String> {
+    crate::run(&recording_beat_lua(sid))
+}
+
+/// Paused (`on`): the hooks send nothing.
+pub fn recording_mute(on: bool) -> Result<(), String> {
+    crate::footprint(|f| f.muted = on);
+    crate::run(&recording_mute_lua(on))
+}
+
+/// Give actions their keys: `(action, its binds now, its key or "")`.
+pub fn set_binds(app_id: &str, changes: &[(String, Vec<String>, String)]) -> Result<(), String> {
+    crate::run(&set_lua(app_id, changes))
+}
+
+/// snip.lua's own default keys again, when it's loaded (its global
+/// `snip_bind_defaults`).
+pub fn bind_defaults() -> Result<(), String> {
+    crate::run("if snip_bind_defaults then snip_bind_defaults() end")
 }
 
 #[cfg(test)]

@@ -7,7 +7,8 @@ pub mod keys;
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::net::UnixStream;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 fn socket_dir() -> Option<PathBuf> {
     let rt = std::env::var_os("XDG_RUNTIME_DIR")?;
@@ -153,22 +154,22 @@ pub fn window(class: &str, title: &str) -> std::io::Result<Client> {
 
 /// Resize one of our windows to `w` × `h` (logical px): Hyprland keeps a
 /// floating window's size, so a client can't resize itself.
-pub fn resize_window(class: &str, title: &str, w: i32, h: i32) -> std::io::Result<String> {
-    let c = window(class, title)?;
-    eval(&format!(r#"hl.dispatch(hl.dsp.window.resize({{ x = {w}, y = {h}, window = "address:0x{:x}" }}))"#, c.address))
+pub fn resize_window(class: &str, title: &str, w: i32, h: i32) -> Result<(), String> {
+    let c = window(class, title).map_err(|e| e.to_string())?;
+    run(&format!(r#"hl.dispatch(hl.dsp.window.resize({{ x = {w}, y = {h}, window = "address:0x{:x}" }}))"#, c.address))
 }
 
 /// Pin one of our windows: above the others, on every workspace.
-pub fn pin_window(class: &str, title: &str) -> std::io::Result<String> {
-    let c = window(class, title)?;
-    eval(&format!(r#"hl.dispatch(hl.dsp.window.pin({{ action = "enable", window = "address:0x{:x}" }}))"#, c.address))
+pub fn pin_window(class: &str, title: &str) -> Result<(), String> {
+    let c = window(class, title).map_err(|e| e.to_string())?;
+    run(&format!(r#"hl.dispatch(hl.dsp.window.pin({{ action = "enable", window = "address:0x{:x}" }}))"#, c.address))
 }
 
 /// Move one of our windows to (x, y) in layout px, or by (x, y) when
 /// `relative`: a client can't place itself.
-pub fn move_window(class: &str, title: &str, x: i32, y: i32, relative: bool) -> std::io::Result<String> {
-    let c = window(class, title)?;
-    eval(&format!(r#"hl.dispatch(hl.dsp.window.move({{ x = {x}, y = {y}, relative = {relative}, window = "address:0x{:x}" }}))"#, c.address))
+pub fn move_window(class: &str, title: &str, x: i32, y: i32, relative: bool) -> Result<(), String> {
+    let c = window(class, title).map_err(|e| e.to_string())?;
+    run(&format!(r#"hl.dispatch(hl.dsp.window.move({{ x = {x}, y = {y}, relative = {relative}, window = "address:0x{:x}" }}))"#, c.address))
 }
 
 pub fn cursor_pos() -> Option<(i32, i32)> {
@@ -189,19 +190,82 @@ pub fn option_float(name: &str) -> Option<f64> {
     v["float"].as_f64().or_else(|| v["int"].as_f64())
 }
 
-/// Run Lua in Hyprland (0.56+ config API). Returns the reply ("ok" on success).
-pub fn eval(lua: &str) -> std::io::Result<String> {
+/// Run Lua in Hyprland (0.56+ config API): Ok when it answers "ok", else
+/// what it said. A Lua error comes back as an ordinary reply, never as a
+/// failed request, so every caller goes through here.
+pub fn run(lua: &str) -> Result<(), String> {
     // the leading "/": no flags (hyprctl's form)
-    request(&format!("/eval {lua}"))
+    ok_reply(request(&format!("/eval {lua}")))
 }
 
-/// Runtime rules Snip needs whatever the user's config says: overlays must
-/// appear instantly (no layer fade), which also keeps fading overlays out of
-/// the first frames of a recording; the editors and Quick Look float,
-/// centred; a pin floats on every workspace, above fullscreen windows, with
-/// its own look. Re-applied on every `configreloaded`.
-pub fn install_runtime_rules() -> std::io::Result<String> {
-    eval(
+fn ok_reply(r: std::io::Result<String>) -> Result<(), String> {
+    match r {
+        Ok(r) if r.trim() == "ok" => Ok(()),
+        Ok(r) => Err(r.trim().to_string()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// Load a Lua file into Hyprland, as its config would (Snip's module).
+pub fn dofile(path: &Path) -> Result<(), String> {
+    run(&format!("dofile({:?})", path.to_string_lossy()))
+}
+
+/// What Snip has added to Hyprland's Lua that a config reload wipes
+/// (Hyprland starts its Lua over): `reinstall` puts it back.
+pub(crate) struct Footprint {
+    /// the scrolling capture's Enter and Esc, for this app id
+    pub(crate) session: Option<String>,
+    /// the shortcut recorder's empty submap (SET-08)
+    pub(crate) recorder: bool,
+    /// a recording's hooks (REC-09/10): its id, keys, clicks; muted while paused
+    pub(crate) hooks: Option<(String, bool, bool)>,
+    pub(crate) muted: bool,
+}
+
+static FOOTPRINT: Mutex<Footprint> = Mutex::new(Footprint { session: None, recorder: false, hooks: None, muted: false });
+
+pub(crate) fn footprint(f: impl FnOnce(&mut Footprint)) {
+    f(&mut FOOTPRINT.lock().unwrap_or_else(|e| e.into_inner()));
+}
+
+/// After Hyprland reloaded its config (`configreloaded`): Snip's rules, and
+/// whatever of its keys and hooks was on. Every part is tried; the first
+/// error is returned.
+pub fn reinstall() -> Result<(), String> {
+    let (session, recorder, hooks, muted) = {
+        let f = FOOTPRINT.lock().unwrap_or_else(|e| e.into_inner());
+        (f.session.clone(), f.recorder, f.hooks.clone(), f.muted)
+    };
+    let mut done = install_runtime_rules();
+    if let Some(app) = session {
+        done = done.and(run(&keys::session_lua(&app, true)));
+    }
+    if recorder {
+        done = done.and(run(keys::record_lua(true)));
+    }
+    if let Some((sid, keys_on, clicks)) = hooks {
+        done = done.and(run(&keys::recording_lua(&sid, keys_on, clicks)));
+        if muted {
+            done = done.and(run(&keys::recording_mute_lua(true)));
+        }
+    }
+    done
+}
+
+/// Snip's rules, its only copy: overlays appear instantly (no layer fade),
+/// which also keeps fading overlays out of the first frames of a recording;
+/// the editors, Settings, the Welcome and Quick Look float, centred; a pin
+/// floats on every workspace, above fullscreen windows, with its own look.
+/// Applied at start and on every `configreloaded` (`reinstall`).
+///
+/// Hyprland 0.56: a title pattern matches the whole title ("Snip Editor —
+/// <name>" needs `.*`); a rule matching class and title together never
+/// matches, nor does a pattern with non-ASCII characters; and when one rule
+/// moves a window, `float` from another rule is dropped. So: one ASCII field
+/// per rule, everything a window needs in one rule.
+pub fn install_runtime_rules() -> Result<(), String> {
+    run(
         r#"SNIP_LAYER_RULE = hl.layer_rule({ match = { namespace = "^snip-" }, no_anim = true, animation = "none" })
 SNIP_EDITOR_RULE = hl.window_rule({ match = { title = "^Snip Editor.*" }, float = true, center = true, opacity = "1 1", tag = "+snip-editor" })
 SNIP_VIDEO_EDITOR_RULE = hl.window_rule({ match = { title = "^Snip Video Editor.*" }, float = true, center = true, opacity = "1 1", tag = "+snip-video-editor" })
@@ -230,6 +294,16 @@ pub fn subscribe(mut f: impl FnMut(&str, &str) -> bool + Send + 'static) -> std:
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn only_ok_is_success() {
+        assert_eq!(super::ok_reply(Ok("ok".into())), Ok(()));
+        assert_eq!(super::ok_reply(Ok("ok\n".into())), Ok(()));
+        // a Lua error is an ordinary reply
+        let lua = "[string \"eval\"]:1: attempt to call a nil value (field 'nope')";
+        assert_eq!(super::ok_reply(Ok(lua.into())), Err(lua.to_string()));
+        assert_eq!(super::ok_reply(Err(std::io::Error::other("no socket"))), Err("no socket".into()));
+    }
+
     #[test]
     fn address_parsing() {
         assert_eq!(super::parse_address("0x5a73050505e0"), Some(0x5a73050505e0));

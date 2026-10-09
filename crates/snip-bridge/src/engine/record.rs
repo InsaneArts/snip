@@ -431,7 +431,7 @@ impl Inner {
             }
         }
         if hooks {
-            let _ = snip_hypr::eval(&snip_hypr::keys::recording_mute_lua(pause));
+            super::hypr("recording_mute", snip_hypr::keys::recording_mute(pause));
         }
         let mut r = self.recording.lock().unwrap();
         let Some(rec) = r.as_mut() else { return };
@@ -557,9 +557,8 @@ impl Inner {
     /// them as socket2 events; a heartbeat keeps the hooks, which remove
     /// themselves once it stops (Snip gone).
     fn record_hooks(self: &Arc<Self>, sid: &str, keys: bool, clicks: bool) {
-        match snip_hypr::eval(&snip_hypr::keys::recording_lua(sid, keys, clicks)) {
-            Ok(r) if r.trim() == "ok" => {}
-            r => return trace::warn("record_hooks", &format!("\"reply\":{}", js(&format!("{r:?}")))),
+        if let Err(e) = snip_hypr::keys::recording_hooks(sid, keys, clicks) {
+            return trace::warn("record_hooks", &format!("\"reply\":{}", js(&e)));
         }
         trace::trace("record_hooks", &format!("\"sid\":\"{sid}\",\"keys\":{keys},\"clicks\":{clicks}"));
         let (me, sid) = (self.clone(), sid.to_string());
@@ -569,19 +568,8 @@ impl Inner {
             if !live {
                 return;
             }
-            let _ = snip_hypr::eval(&snip_hypr::keys::recording_beat_lua(&sid));
+            let _ = snip_hypr::keys::recording_beat(&sid);
         });
-    }
-
-    /// Hyprland reloaded its config, and its Lua with it: the hooks again.
-    pub fn record_rehook(self: &Arc<Self>) {
-        let run = self.recording.lock().unwrap().as_ref().and_then(|r| r.run.as_ref()).and_then(|run| run.hooks.map(|h| (run.sid.clone(), h)));
-        if let Some((sid, (keys, clicks))) = run {
-            match snip_hypr::eval(&snip_hypr::keys::recording_lua(&sid, keys, clicks)) {
-                Ok(_) => trace::trace("record_rehooked", &format!("\"sid\":\"{sid}\"")),
-                Err(e) => trace::warn("record_hooks", &format!("\"msg\":{}", js(&e.to_string()))),
-            }
-        }
     }
 
     /// A click or a key from the hooks (`snip:<sid>:c:<button>:<x>:<y>`, in
@@ -635,7 +623,7 @@ impl Inner {
             self.desktop("show");
         }
         if run.hooks.is_some() {
-            let _ = snip_hypr::eval(snip_hypr::keys::RECORDING_OFF_LUA);
+            super::hypr("recording_hooks", snip_hypr::keys::recording_hooks_off());
         }
         let ts = PathBuf::from(format!("{}.ts", run.file.display()));
         let _ = std::fs::remove_file(ts);
