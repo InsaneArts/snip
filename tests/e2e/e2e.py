@@ -1861,6 +1861,7 @@ def record_camera(s, env):
     assert "Test camera" in h["cameras"] and h["camera"] is None, h
     record_click(s, "record-camera-button")
     assert wait_for(lambda: record_hud(s)["camerasOpen"], 2), "its menu opens"
+    time.sleep(0.3)                                  # the menu takes input a frame after it shows
     record_click(s, "record-camera:1")               # 0 is "No camera"
     assert wait_for(lambda: record_hud(s)["camera"] is not None and record_hud(s)["cameraReady"], 3), record_hud(s)
     h = record_hud(s)
@@ -1875,6 +1876,7 @@ def record_camera(s, env):
     # Large, and Vertical (9:16)
     record_click(s, "record-camera-button")
     assert wait_for(lambda: record_hud(s)["camerasOpen"], 2)
+    time.sleep(0.3)
     record_click(s, "record-camera-size=large")
     assert wait_for(lambda: record_hud(s)["cameraSize"] == "large", 2)
     record_click(s, "record-camera-shape=vertical")

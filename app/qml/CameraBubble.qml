@@ -17,6 +17,7 @@ Item {
     property bool fake: false              // tests: a card stands in for a camera
     property string shape: "circle"
     property bool mirror: true
+    property real pixelScale: 1             // physical px per logical px
     property bool running: false           // on screen: the camera runs
     property int frames: 0
     readonly property bool ready: fake || frames > 0
@@ -43,7 +44,7 @@ Item {
         frames = 0
         cam = cameraComponent.createObject(bubble, { cameraDevice: device })
         // after the device: setting one resets the format
-        const f = pickFormat(device, Math.ceil(Math.min(width, height) * 2))
+        const f = pickFormat(device, Math.ceil(Math.min(width, height) * pixelScale))
         if (f) cam.cameraFormat = f
         session.camera = cam
         cam.active = true
