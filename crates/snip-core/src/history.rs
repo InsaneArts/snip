@@ -223,6 +223,16 @@ impl History {
         Ok(())
     }
 
+    pub fn set_source(&self, id: &str, source: &Path) -> rusqlite::Result<()> {
+        self.db.execute("UPDATE captures SET source = ?2 WHERE id = ?1", params![id, source.to_string_lossy()])?;
+        Ok(())
+    }
+
+    pub fn set_duration(&self, id: &str, duration_ms: u64) -> rusqlite::Result<()> {
+        self.db.execute("UPDATE captures SET duration_ms = ?2 WHERE id = ?1", params![id, duration_ms as i64])?;
+        Ok(())
+    }
+
     pub fn set_scale(&self, id: &str, scale: f64) -> rusqlite::Result<()> {
         self.db.execute("UPDATE captures SET scale = ?2 WHERE id = ?1", params![id, scale])?;
         Ok(())

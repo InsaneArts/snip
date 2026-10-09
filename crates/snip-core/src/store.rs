@@ -165,6 +165,32 @@ impl Store {
         Ok(rec)
     }
 
+    /// The video editor's Replace (VED-02): the recording becomes `file`
+    /// (moved in; its format may change, say to a GIF), with its new first
+    /// frame, size and length. A saved copy is rewritten too.
+    pub fn replace_media(&self, id: &str, file: &Path, poster: &[u8], width: u32, height: u32, duration_ms: u64) -> Result<Record, StoreError> {
+        let rec = self.get(id)?;
+        let ext = file.extension().and_then(|e| e.to_str()).unwrap_or("mp4").to_ascii_lowercase();
+        let source = rec.source.with_file_name(format!("source.{ext}"));
+        if std::fs::rename(file, &source).is_err() {
+            std::fs::copy(file, &source)?;
+            let _ = std::fs::remove_file(file);
+        }
+        if source != rec.source {
+            let _ = std::fs::remove_file(&rec.source);
+        }
+        atomic_write(&rec.source.with_file_name(POSTER), poster)?;
+        let h = self.history.lock().unwrap();
+        h.set_source(id, &source)?;
+        h.set_size(id, width, height)?;
+        h.set_duration(id, duration_ms)?;
+        if let Some(saved) = rec.saved.as_ref().filter(|p| p.exists() && p.extension().is_some_and(|e| e.eq_ignore_ascii_case(&ext))) {
+            std::fs::copy(&source, saved)?;
+        }
+        drop(h);
+        self.get(id)
+    }
+
     /// A recording's poster (its first frame); None for images.
     pub fn poster(rec: &Record) -> Option<PathBuf> {
         (rec.media() != crate::history::Media::Image).then(|| rec.source.with_file_name(POSTER))
@@ -445,6 +471,15 @@ mod tests {
         assert_eq!(std::fs::read(&p).unwrap(), b"video bytes");
         assert_eq!(store.save(&rec.id, &cfg, now).unwrap(), p, "idempotent");
         assert!(Store::poster(&store.get(&gif.id).unwrap()).is_some() && Store::poster(&store.ingest(b"x".to_vec(), 1, 1, CaptureMeta::default(), 1).unwrap()).is_none());
+        // the video editor's Replace: a GIF now, with its own poster, size and length;
+        // the saved MP4 stays as it was (it's another format now)
+        let export = root.join("export.gif");
+        std::fs::write(&export, b"gif now").unwrap();
+        let r = store.replace_media(&rec.id, &export, b"p2", 160, 100, 1500).unwrap();
+        assert_eq!((r.media(), r.width, r.height, r.duration_ms), (crate::history::Media::Gif, 160, 100, 1500));
+        assert!(!rec.source.exists() && r.source.ends_with("source.gif") && !export.exists());
+        assert_eq!(std::fs::read(Store::poster(&r).unwrap()).unwrap(), b"p2");
+        assert_eq!(std::fs::read(&p).unwrap(), b"video bytes", "the saved file isn't a GIF: left alone");
         std::fs::remove_dir_all(root).unwrap();
     }
 
