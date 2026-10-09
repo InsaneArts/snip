@@ -166,6 +166,29 @@ pub fn export(src: &Path, dst: &Path, edit: &Edit, mut progress: impl FnMut(f64)
     }
 }
 
+/// `n` frames spread over a video (the editor's timeline, VED-01), `height`
+/// px high, as JPEGs in `dir`: one ffmpeg, one accurate seek per frame (about
+/// 1 s for a 20 s 3440×1440 recording; a full decode took 2.5 s).
+pub fn thumbnails(src: &Path, duration_ms: u64, n: u32, height: u32, dir: &Path) -> Result<Vec<std::path::PathBuf>, String> {
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let n = n.max(1);
+    let mut args: Vec<String> = ["-v", "error", "-y"].map(String::from).to_vec();
+    for i in 0..n {
+        // the middle of each slice of the timeline
+        let t = (duration_ms as f64 / 1000.0) * (i as f64 + 0.5) / n as f64;
+        args.extend(["-ss".into(), format!("{t:.3}"), "-i".into(), src.to_string_lossy().into_owned()]);
+    }
+    let mut out = vec![];
+    for i in 0..n {
+        let f = dir.join(format!("thumb-{i:02}.jpg"));
+        args.extend(["-map".into(), format!("{i}:v:0"), "-frames:v".into(), "1".into(), "-vf".into(), format!("scale=-2:{height}"), "-q:v".into(), "4".into()]);
+        args.push(f.to_string_lossy().into_owned());
+        out.push(f);
+    }
+    run_ffmpeg(&args.iter().map(String::as_str).collect::<Vec<_>>())?;
+    Ok(out.into_iter().filter(|f| f.exists()).collect())
+}
+
 /// A recording as a GIF (REC-13): `fps` frames a second, at most `width` px
 /// wide (never enlarged), one palette fitted to the clip (architecture §1,
 /// "GIF / video post").
@@ -277,6 +300,10 @@ mod tests {
         let g = dir.join("cut.gif");
         export(&clip, &g, &e, |_| {}).unwrap();
         assert_eq!((probe(&g).unwrap().width, probe(&g).unwrap().audio_tracks), (120, 0));
+        // the timeline's frames
+        let thumbs = thumbnails(&clip, p.duration_ms, 4, 40, &dir.join("thumbs")).unwrap();
+        assert_eq!(thumbs.len(), 4);
+        assert_eq!(crate::encode::decode_png(&std::fs::read(&thumbs[0]).unwrap()).ok().map(|_| ()), None, "JPEGs");
         // the tests' stand-in recording
         let t = dir.join("take.mp4");
         test_clip(&t, 401, 301, 1500, true).unwrap();
