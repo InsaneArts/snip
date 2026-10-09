@@ -121,25 +121,16 @@ Window {
     }
 
     // Save As (QAO-09): the desktop's save dialog; the card says Saved once written.
-    property var saveAsIds: ({})
     function saveAs(card) {
-        Engine.log("save_as_dialog", JSON.stringify({ id: card.cardId }).slice(1, -1))
-        const sug = JSON.parse(Engine.saveAsSuggestion(card.cardId) || "{}")
-        const token = c.nextToken()
-        saveAsIds[token] = card.cardId
-        Platform.saveFileDialog(token, "Save As", sug.name || "", sug.folder || "")
-    }
-    Connections {
-        target: Platform
-        function onFileChosen(token, path) {
-            const id = qa.saveAsIds[token]
-            if (id === undefined) return
-            delete qa.saveAsIds[token]
+        const id = card.cardId
+        Engine.log("save_as_dialog", JSON.stringify({ id: id }).slice(1, -1))
+        const sug = JSON.parse(Engine.saveAsSuggestion(id) || "{}")
+        Platform.saveFileDialog("Save As", sug.name || "", sug.folder || "", (path) => {
             if (path === "") return
             Engine.saveAs(id, path)
-            const card = qa.cardById(id)
-            if (card) card.flash("saved", 900)
-        }
+            const shown = qa.cardById(id)        // unless it's gone meanwhile
+            if (shown) shown.flash("saved", 900)
+        })
     }
 
     function moveTo(o) {

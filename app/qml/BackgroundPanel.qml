@@ -27,11 +27,6 @@ Rectangle {
         ownWalls = JSON.parse(Engine.customWallpapers() || "[]")
         if (bg && bg.value === path) ed.setBg(null)
     }
-    property int wallToken: 0
-    Connections {
-        target: Platform
-        function onFileChosen(token, path) { if (token === panel.wallToken && path !== "") panel.addWallpaper(path) }
-    }
     property bool allGradients: true
     property Item firstTile: null            // the first gradient's tile (tests look at its edge)
     // a slider let go (or a typed value committed): one undo step, and the
@@ -211,7 +206,7 @@ Rectangle {
                             }
                         }
                         Icon { anchors.centerIn: parent; name: "plus"; size: 16; color: Theme.text }
-                        onPicked: { panel.wallToken = panel.ed.controller.nextToken(); Platform.openImageDialog(panel.wallToken, "Add Wallpaper") }
+                        onPicked: Platform.openImageDialog("Add Wallpaper", (path) => { if (path !== "") panel.addWallpaper(path) })
                     }
                 }
                 DropArea {

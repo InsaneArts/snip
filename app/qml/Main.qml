@@ -194,7 +194,7 @@ QtObject {
         function onVideoExportStatus(id, json) { const v = root.videoEditors[id]; if (v) v.exportStatus(JSON.parse(json)) }
         function onVideoThumbs(id, json) { const v = root.videoEditors[id]; if (v) v.thumbs = JSON.parse(json) }
         function onBackgroundAuto(json) {
-            const r = root.renderComponent.createObject(null, { capture: JSON.parse(json), token: root.nextToken() })
+            const r = root.renderComponent.createObject(null, { capture: JSON.parse(json) })
             r.done.connect(() => r.destroy())
         }
         function onPinsCommand(cmd) {

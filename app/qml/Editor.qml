@@ -391,7 +391,6 @@ Window {
     property int commitRevision: 0
     property string commitAction: ""
     property string commitDoc: ""
-    property int commitToken: 0
     property bool queued: false
     property string queuedAction: ""
     property bool closing: false
@@ -412,16 +411,11 @@ Window {
         commitRevision = revision
         commitAction = action
         commitDoc = JSON.stringify(doc)
-        commitToken = controller.nextToken()
-        Platform.grabExact(exportRoot, exportRect.w, exportRect.h, commitToken)
-    }
-    Connections {
-        target: Platform
-        function onGrabbed(token, ok) {
-            if (token !== ed.commitToken || !ed.committing) return
+        Platform.grabExact(exportRoot, exportRect.w, exportRect.h, (token, ok) => {
+            if (!ed.committing) return
             if (ok) Engine.editorCommit(ed.captureId, token, ed.commitDoc, ed.commitAction === "close" ? "" : ed.commitAction)
             else ed.committed(false, "Couldn't render the image")
-        }
+        })
     }
     Connections {
         target: Engine
@@ -480,20 +474,14 @@ Window {
         if (path) Platform.openWith(path)
     }
     // Save As (ANN-15): pick a path, write the edits back, then save there
-    property int saveAsToken: 0
     property string pendingSaveAs: ""
     function saveAsDialog() {
         const sug = JSON.parse(Engine.saveAsSuggestion(captureId) || "{}")
-        saveAsToken = controller.nextToken()
-        Platform.saveFileDialog(saveAsToken, "Save As", sug.name || "", sug.folder || "")
-    }
-    Connections {
-        target: Platform
-        function onFileChosen(token, path) {
-            if (token !== ed.saveAsToken || path === "") return
+        Platform.saveFileDialog("Save As", sug.name || "", sug.folder || "", (path) => {
+            if (path === "") return
             ed.pendingSaveAs = path
             ed.flush("")
-        }
+        })
     }
     Timer { id: pinTimer; interval: 150; onTriggered: Engine.pinWindow(ed.title) }
     function toast(t) { controller.toast.show(t, capture.output || Qt.application.screens[0].name) }
@@ -660,7 +648,6 @@ Window {
     }
     // Add image (ANN-12): a file, the clipboard's image or a dropped file,
     // copied beside the base image and placed at most half the canvas big
-    property int imageToken: 0
     function addImageFile(file, at) {
         if (!file) return false
         const sz = Platform.imageSize(basePath.replace(/[^/]*$/, "") + file)
@@ -744,17 +731,10 @@ Window {
     }
 
     function chooseImage() {
-        imageToken = controller.nextToken()
-        Platform.openImageDialog(imageToken, "Add Image")
+        Platform.openImageDialog("Add Image", (path) => { if (path !== "") ed.addImageFile(Engine.editorImportImage(ed.basePath, path)) })
     }
     function pasteImage() {
         if (!addImageFile(Engine.editorPasteImage(basePath))) toast("No image on the clipboard")
-    }
-    Connections {
-        target: Platform
-        function onFileChosen(token, path) {
-            if (token === ed.imageToken && path !== "") ed.addImageFile(Engine.editorImportImage(ed.basePath, path))
-        }
     }
     function duplicateSelected() {
         if (selectedObj) addItem(Ed.moved(selectedObj, 16 * unit, 16 * unit))

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QJSValue>
 #include <QObject>
 #include <QQuickItem>
 #include <QScreen>
@@ -61,9 +62,10 @@ public:
 
   // The editor's export (ANN-15): render `item` in its own coordinates
   // (its transform ignored) at exactly width x height pixels, one item unit
-  // per pixel, and hand the pixels to the engine under `token`. Resizes
-  // `item` to make that exact at a fractional scale. Emits grabbed().
-  Q_INVOKABLE void grabExact(QQuickItem* item, int width, int height, int token);
+  // per pixel, and hand the pixels to the engine under a token. Resizes
+  // `item` to make that exact at a fractional scale. Then done(token, ok):
+  // the engine takes the pixels by that token.
+  Q_INVOKABLE void grabExact(QQuickItem* item, int width, int height, const QJSValue& done);
 
   // Tests: deliver key events to `w` inside this process (never through the
   // seat, so nothing can reach another app). Plain characters type
@@ -75,10 +77,10 @@ public:
   Q_INVOKABLE bool altHeld() const;
 
   // Save As (QAO-09, ANN-15): the desktop's own save dialog, through the
-  // xdg-desktop-portal FileChooser. Answers with fileChosen(token, path);
-  // the path is empty when cancelled or when there is no portal. With
-  // SNIP_NO_PORTALS set (tests) every file dialog answers cancelled at once.
-  Q_INVOKABLE void saveFileDialog(int token, const QString& title, const QString& name, const QString& folder);
+  // xdg-desktop-portal FileChooser. Then done(path): empty when cancelled or
+  // when there is no portal. With SNIP_NO_PORTALS set (tests) every file
+  // dialog answers cancelled at once.
+  Q_INVOKABLE void saveFileDialog(const QString& title, const QString& name, const QString& folder, const QJSValue& done);
   // "Open With…" (CleanShot's share): the desktop's app chooser for a file,
   // through the OpenURI portal. Nothing happens with SNIP_NO_PORTALS set
   // (tests: no dialog on the user's screen).
@@ -88,12 +90,12 @@ public:
   // SNIP_NO_PORTALS set (tests) it only writes that PDF, for A4, and returns
   // its path; otherwise it returns "".
   Q_INVOKABLE QString printImage(const QString& path, const QString& title);
-  // Add image (ANN-12): the desktop's open dialog for images. Answers with
-  // fileChosen(token, path) like saveFileDialog.
-  Q_INVOKABLE void openImageDialog(int token, const QString& title);
+  // Add image (ANN-12): the desktop's open dialog for images. Then
+  // done(path), like saveFileDialog.
+  Q_INVOKABLE void openImageDialog(const QString& title, const QJSValue& done);
   // Settings › Export location: the desktop's folder chooser, starting in
-  // `folder`. Answers with fileChosen(token, path) like saveFileDialog.
-  Q_INVOKABLE void openFolderDialog(int token, const QString& title, const QString& folder);
+  // `folder`. Then done(path), like saveFileDialog.
+  Q_INVOKABLE void openFolderDialog(const QString& title, const QString& folder, const QJSValue& done);
   // An image file's size without decoding it ({width, height}; 0 x 0 if unreadable).
   Q_INVOKABLE QSize imageSize(const QString& path) const;
   // Tests: cancel every open dialog (portal Request.Close).
@@ -107,9 +109,11 @@ public:
   Q_INVOKABLE void setTrayRecording(bool on);
 
 Q_SIGNALS:
-  void fileChosen(int token, const QString& path);
   void trayActivated(int x, int y);
   void trayMenuRequested(int x, int y);
   void framePresented(QQuickWindow* window);
-  void grabbed(int token, bool ok);
+
+private:
+  // the engine's handle for a grab's pixels
+  int m_grabs = 0;
 };
