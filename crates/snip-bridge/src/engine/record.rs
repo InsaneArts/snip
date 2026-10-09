@@ -81,6 +81,8 @@ struct Run {
     /// the Hyprland hooks for clicks and keys (REC-09/10), by this take's id
     sid: String,
     hooks: Option<(bool, bool)>,
+    /// this take put the desktop cover up (CAP-12): it takes it down
+    covered: bool,
 }
 
 impl Run {
@@ -309,8 +311,14 @@ impl Inner {
         let rolling = fake();
         let hooks = (cfg.show_keystrokes || cfg.highlight_clicks).then_some((cfg.show_keystrokes, cfg.highlight_clicks));
         let sid = stamp.replace('-', "");
-        rec.run = Some(Run { child, file: file.clone(), ipc, started: Instant::now(), paused_at: None, paused: Duration::ZERO, audio: has_audio, size, rolling, sid: sid.clone(), hooks });
+        // CAP-12: with Hide desktop clutter on, the bars show the wallpaper and
+        // pins step aside while it records (unless they're hidden already)
+        let covered = self.cfg().capture.hide_desktop && !self.desktop_is_hidden();
+        rec.run = Some(Run { child, file: file.clone(), ipc, started: Instant::now(), paused_at: None, paused: Duration::ZERO, audio: has_audio, size, rolling, sid: sid.clone(), hooks, covered });
         drop(r);
+        if covered {
+            self.desktop("hide");
+        }
         if cfg.dnd {
             self.dnd(true);
         }
@@ -544,6 +552,9 @@ impl Inner {
     /// Stop a take's recorder; its file is finished (kept) or deleted.
     fn record_end_run(&self, mut run: Run, keep: bool) -> Option<PathBuf> {
         self.wl(snip_wayland::Request::KeepAwake(false));
+        if run.covered {
+            self.desktop("show");
+        }
         if run.hooks.is_some() {
             let _ = snip_hypr::eval(snip_hypr::keys::RECORDING_OFF_LUA);
         }

@@ -1772,6 +1772,42 @@ def record_gif_by_alt_enter(s, env):
 
 
 @case
+def recording_keeps_out_cards_and_clutter(s, env):
+    """Principle 8, CAP-12: Snip's cards are never in a recording (they step aside while it
+    records), and with Hide Desktop Clutter on, a recording covers the bars with the
+    wallpaper and hides pins meanwhile, then puts everything back."""
+    s.cli("close-all"); time.sleep(0.3)
+
+    def desktop():
+        n = len(s.traces("desktop_state"))
+        s.debug("ui", "desktop")
+        assert wait_for(lambda: len(s.traces("desktop_state")) > n, 2)
+        return s.traces("desktop_state")[-1]
+
+    def take():
+        p = s.bg("record", "area", "--x", "100", "--y", "80", "--w", "400", "--h", "300", "--monitor", OUT)
+        assert wait_for(lambda: (record_hud(s) or {}).get("phase") == "recording", 5), record_hud(s)
+        return p
+
+    shot = s.json("fullscreen", "--monitor", OUT)["result"]
+    assert wait_for(lambda: shot["id"] in s.status()["cards"], 3), "a card on screen"
+    p = take()
+    assert record_hud(s)["cardsAway"] and not desktop()["hidden"], "the cards step aside; clutter stays (the setting is off)"
+    s.json("record", "stop")
+    finish(p, timeout=20)
+    assert wait_for(lambda: not record_hud(s)["cardsAway"], 2), "the cards come back"
+    s.write_config("[capture]\nhide_desktop = true")
+    time.sleep(0.6)
+    p = take()
+    assert wait_for(lambda: desktop()["hidden"], 2), "the bars show the wallpaper while it records"
+    s.json("record", "stop")
+    finish(p, timeout=20)
+    assert wait_for(lambda: not desktop()["hidden"], 2), "back as it was"
+    s.write_config("")
+    s.cli("close-all")
+
+
+@case
 def record_controls_ask_first(s, env):
     """REC-05: Restart and Delete on the controls ask first, as CleanShot's do, and the
     recording goes on meanwhile; Cancel keeps it, Delete throws it away (no card)."""

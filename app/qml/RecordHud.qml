@@ -840,7 +840,8 @@ Window {
                                                     cameraName: camera, cameraShape: cameraShape, cameraSize: cameraSize, cameraMirror: cameraMirror,
                                                     cameraFull: cameraFull, cameraReady: bubble.ready, cameras: cameras.map(c => c.name),
                                                     camerasOpen: cameraList.visible, clicks: clicks, keys: keys, rings: ringsShown,
-                                                    keystrokes: keyPill.visible ? keyText : "", asking: asking }).slice(1, -1))
+                                                    keystrokes: keyPill.visible ? keyText : "", asking: asking,
+                                                    cardsAway: !!(controller && controller.quickAccess.capturing) }).slice(1, -1))
             break
         }
     }
