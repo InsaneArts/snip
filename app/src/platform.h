@@ -102,6 +102,8 @@ public:
   // `iconDir`; trayActivated when it's clicked. Not with SNIP_NO_TRAY set
   // (tests: no second icon in the user's bar).
   Q_INVOKABLE void showTray(const QString& iconDir);
+  // REC-06: the tray icon turns red while Snip records.
+  Q_INVOKABLE void setTrayRecording(bool on);
 
 Q_SIGNALS:
   void fileChosen(int token, const QString& path);

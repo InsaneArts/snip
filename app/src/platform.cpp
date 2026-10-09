@@ -428,3 +428,10 @@ Platform::showTray(const QString& iconDir)
   auto* tray = new Tray(iconDir, this);
   connect(tray, &Tray::activated, this, &Platform::trayActivated);
 }
+
+void
+Platform::setTrayRecording(bool on)
+{
+  if (auto* tray = findChild<Tray*>())
+    tray->setRecording(on);
+}

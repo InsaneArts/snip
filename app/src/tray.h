@@ -15,7 +15,7 @@ class Tray : public QObject
   Q_PROPERTY(QString Id READ id CONSTANT)
   Q_PROPERTY(QString Title READ title CONSTANT)
   Q_PROPERTY(QString Status READ status CONSTANT)
-  Q_PROPERTY(QString IconName READ iconName CONSTANT)
+  Q_PROPERTY(QString IconName READ iconName NOTIFY NewIcon)
   Q_PROPERTY(QString IconThemePath READ iconThemePath CONSTANT)
   Q_PROPERTY(bool ItemIsMenu READ itemIsMenu CONSTANT)
 
@@ -27,9 +27,11 @@ public:
   QString id() const { return QStringLiteral("snip"); }
   QString title() const { return QStringLiteral("Snip"); }
   QString status() const { return QStringLiteral("Active"); }
-  QString iconName() const { return QStringLiteral("snip-tray-symbolic"); }
+  // REC-06: red while Snip records (a whole-screen take shows no controls)
+  QString iconName() const { return m_recording ? QStringLiteral("snip-tray-recording") : QStringLiteral("snip-tray-symbolic"); }
   QString iconThemePath() const { return m_iconDir; }
   bool itemIsMenu() const { return false; }
+  void setRecording(bool on);
 
 public Q_SLOTS:
   void Activate(int x, int y) { Q_EMIT activated(x, y); }
@@ -39,10 +41,13 @@ public Q_SLOTS:
 
 Q_SIGNALS:
   void activated(int x, int y);
+  // the StatusNotifierItem signal: the bar reads IconName again
+  Q_SCRIPTABLE void NewIcon();
 
 private:
   // to the bar's watcher, now and whenever it (re)starts
   void announce();
   QString m_iconDir;
   QString m_service;
+  bool m_recording = false;
 };

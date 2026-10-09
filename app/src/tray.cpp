@@ -15,10 +15,19 @@ Tray::Tray(const QString& iconDir, QObject* parent)
   QDBusConnection bus = QDBusConnection::sessionBus();
   bus.registerService(m_service);
   bus.registerObject(QStringLiteral("/StatusNotifierItem"), QStringLiteral("org.kde.StatusNotifierItem"), this,
-                     QDBusConnection::ExportAllProperties | QDBusConnection::ExportAllSlots);
+                     QDBusConnection::ExportAllProperties | QDBusConnection::ExportAllSlots | QDBusConnection::ExportScriptableSignals);
   auto* watcher = new QDBusServiceWatcher(WATCHER, bus, QDBusServiceWatcher::WatchForRegistration, this);
   connect(watcher, &QDBusServiceWatcher::serviceRegistered, this, &Tray::announce);
   announce();
+}
+
+void
+Tray::setRecording(bool on)
+{
+  if (m_recording == on)
+    return;
+  m_recording = on;
+  Q_EMIT NewIcon();
 }
 
 void
