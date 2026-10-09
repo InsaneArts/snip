@@ -269,8 +269,8 @@ A normal floating window (Hyprland rule: float, centred, with optional pin / alw
 
 | ID | Feature | Pri | Notes |
 |---|---|---|---|
-| REC-01 | Area, monitor or window recording. The selection overlay supports Enter for full screen, Space for window, typed size, ratio lock and remembered area | P1 | Window recording means "record the window's rectangle" in P0; true per-window capture comes later (P2). |
-| REC-02 | Recorder toolbar before start: Video / GIF, microphone picker, system audio toggle, camera picker, highlight clicks, show keystrokes, settings | P1 | |
+| REC-01 | Area, monitor or window recording, chosen on the recording panel (D49): the whole screen until a drag draws an area (its handles resize it, a drag inside moves it), Space for a window, typed size, ratio lock and remembered area | P1 | Window recording means "record the window's rectangle" in P0; true per-window capture comes later (P2). |
+| REC-02 | Recording panel before start, CleanShot's (D49): settings, W × H, full screen, select area / microphone picker, system audio toggle, camera picker, highlight clicks, show keystrokes / Record GIF (Alt+Enter), Record Video (Enter) | P1 | Shown at once, centred on the screen; then in the area's middle, or beside the area when it doesn't fit. Gone before the first frame. |
 | REC-03 | Optional 3-2-1 countdown | P1 | |
 | REC-04 | Dim outside the region, or show a border only | P1 | The dim and border sit **outside** the encoded rectangle with a 2 px safety margin. |
 | REC-05 | Controls pill: stop and timer, pause/resume, restart, discard, audio level | P1 | Placed **outside the region**. For full-monitor recordings, the controls sit on another monitor or are hidden, and the bar indicator plus hotkeys are used instead (the controls cannot be hidden from the recording, see the platform doc §3). |

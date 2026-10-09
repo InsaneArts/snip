@@ -2,30 +2,30 @@
 
 The product owner's brief (2026-10-09): CleanShot X's recording as it was before Studio Mode. Record a window, the full screen or one display, with an optional microphone and an optional camera (its size and shape chosen, and moved during the recording). Record video or a GIF. After saving, an editor to cut, trim, save, merge and mute audio. No Studio Mode: no automatic zooms (D3).
 
-Sources: the six research reports in [research/recording-2026-10/](../research/recording-2026-10/README.md). The CleanShot facts come from its own 4.7.6 and 4.8.11 app files ([cleanshot-x-4-recording.md](../research/recording-2026-10/cleanshot-x-4-recording.md)). Spec: REC-01…15, VED-01…03. Decisions: D3, D6, D43–D47.
+Sources: the six research reports in [research/recording-2026-10/](../research/recording-2026-10/README.md). The CleanShot facts come from its own 4.7.6 and 4.8.11 app files ([cleanshot-x-4-recording.md](../research/recording-2026-10/cleanshot-x-4-recording.md)). Spec: REC-01…15, VED-01…03. Decisions: D3, D6, D43–D47, D49.
 
 ## What CleanShot 4.x does, and what Snip does
 
 | | CleanShot 4.x (before Studio Mode) | Snip |
 |---|---|---|
 | **Start** | Menu "Record Screen"; a hotkey that also stops (none by default); the URL API | Snip's menu (Record Screen / Stop Recording), `snip record`, the `record` action in Settings › Shortcuts (no default key yet; spec §7 proposes ALT+PRINT, an open question) |
-| **What** | Drag an area; **Space** snaps it to a window; ⤢ or Return with no area records the display | The same overlay as screenshots: drag an area, hold Space for a window, the whole output. `snip record area\|fullscreen` for scripts |
-| **Toolbar** | Settings, W×H, ⤢ / Microphone (with a level meter), Computer audio, Camera, Highlight Clicks, Show Keystrokes / **Record GIF ⌥↩**, **Record Video ↩** | Video / GIF, microphone picker, system audio, Cancel, Record. Camera, clicks and keystrokes come with their slices |
+| **What** | Drag an area; **Space** snaps it to a window; ⤢ or Return with no area records the display | The same (D49): the panel shows at once over the whole output; a drag draws an area (handles resize it, a drag inside moves it), Space then a click picks a window, ⤢ goes back to the whole output, W × H types a size. `snip record area\|fullscreen` for scripts |
+| **Panel** | Settings, W×H, ⤢, Select area / Microphone (with a level meter), Computer audio, Camera, Highlight Clicks, Show Keystrokes / **Record GIF ⌥↩**, **Record Video ↩** | The same, without the level meter; centred on the screen, then in the area's middle (beside it when it doesn't fit), gone before the first frame |
 | **Before it starts** | Optional 3-2-1 countdown (off by default), dim outside the area (on), Do Not Disturb (off) | Countdown (3 s by default), dim outside, Omarchy's DND on while recording, the earlier state restored |
 | **While recording** | A pill: stop with the time and a level meter, pause/resume, restart and delete (each asks first), a drag grip | Stop with the time, pause/resume, restart and delete (each asks first, in the pill); **outside the area**, since KMS capture records whatever is on screen (macOS left CleanShot's pill out of the capture). Hidden for a whole-output recording, where the menu and `snip record stop` stop it. No level meter yet |
 | **After** | Quick Access card (length, size, sound); double-click opens the editor; a GIF is made after Stop | The same card (first frame, length); double-click or Edit Video… opens the editor; a GIF is made after Stop |
 | **Editor** | Trim (in and out only), dimensions, quality (7 steps), audio: as is / mono / mute / volume 0–200 %, Trim Only or Trim & Convert, **Replace** or **Save as New**, an estimated size | Trim, **cuts in the middle** (Split at the playhead, Cut a part), each track's volume (0 mutes it; several are mixed into one), mono, MP4 or **GIF**, quality (4 steps) and size, Replace or Save as New, an estimated size |
-| **Camera** | Devices; Small/Medium/Large/Huge (scaled to the area); Circle/Square/Rectangle/Vertical; mirrored by default; drag anywhere, any time; a click fills the area | The same, from the toolbar's Camera menu (below) |
-| **Clicks, keys** | Highlight clicks (size, colour, outline or filled, animated); keystrokes (size, 6 positions, dark or light, command keys only by default) | Two toolbar toggles: a ring in the theme's accent (right click: warning) where the pointer clicks; the command keys at the bottom centre of the area, held modifiers kept, repeats counted (×2). Command keys only, no options yet |
-| **Safety** | Crash recovery; a low-disk warning (no auto-stop); mic muted or unplugged: Continue Without Audio or Stop; display sleep prevented | Recovery at start; **stops and keeps** below 1 GB free or when its display goes away; the screen kept awake; **paused** when the session locks; a muted microphone flagged in the toolbar |
+| **Camera** | Devices; Small/Medium/Large/Huge (scaled to the area); Circle/Square/Rectangle/Vertical; mirrored by default; drag anywhere, any time; a click fills the area | The same, from the panel's Camera menu (below) |
+| **Clicks, keys** | Highlight clicks (size, colour, outline or filled, animated); keystrokes (size, 6 positions, dark or light, command keys only by default) | Two toggles on the panel: a ring in the theme's accent (right click: warning) where the pointer clicks; the command keys at the bottom centre of the area, held modifiers kept, repeats counted (×2). Command keys only, no options yet |
+| **Safety** | Crash recovery; a low-disk warning (no auto-stop); mic muted or unplugged: Continue Without Audio or Stop; display sleep prevented | Recovery at start; **stops and keeps** below 1 GB free or when its display goes away; the screen kept awake; **paused** when the session locks; a muted microphone flagged on the panel |
 
 Snip goes beyond CleanShot 4.x in two places, both asked for: cuts in the middle and GIF export in the editor ("cut things up"), and mixing the tracks with their own volumes in the editor ("merge audio, mute audio"; CleanShot asked for each track's volume in a dialog after recording).
 
 ## As built (2026-10-09)
 
-The toolbar, once the area is chosen (outside it, as is all of the HUD):
+The panel (D49, 2026-10-10), at once over the whole screen, then in the middle of a dragged area (its handles resize it):
 
-![The recording toolbar](recording-toolbar.png)
+![The recording panel](recording-panel.png)
 
 Recording: the frame turns red; the controls sit outside the area.
 
@@ -50,9 +50,9 @@ The video editor: two splits, the middle part cut (dimmed, "1.5 s"), a trim (the
 ## How it works
 
 ```
-overlay (area / window / output)
-  └─ record_open ─▶ HUD layer "snip-record" (QML): frame, dim, toolbar, countdown, controls
-                      └─ Record ─▶ record_go (engine/record.rs)
+Record Screen ─▶ record_open ─▶ HUD layer "snip-record" (QML): the panel; frame, dim, handles; countdown, controls
+                    └─ the area, a window (Space) or the output, chosen on the panel
+                      └─ Record ─▶ record_start (the area) ─▶ record_go (engine/record.rs)
                                      ├─ gpu-screen-recorder (KMS, NVENC) ─ IPC socket: pause, stop
                                      ├─ record_watch: first frame (.ts), exit, free disk
                                      └─ Stop ─▶ the file ─▶ GIF? ─▶ history (a rename) ─▶ card
@@ -71,7 +71,7 @@ history card ─ Edit Video… ─▶ VideoEditor window ─▶ media::export (f
 - It runs by its full path in its own process group, so Omarchy's indicator, ALT+PRINT and its menu never see or stop it (D44). Its messages go to a log file, never a pipe: with Snip gone, a write to the pipe would kill it mid-save.
 - Areas under about 160×128 physical pixels go to the CPU encoder: NVENC refuses or pads them.
 
-**Out of the shot.** Snip's cards step aside while the toolbar is up and while it records (KMS would record them). With Hide desktop clutter on, the bars show the wallpaper and the pins step aside too, as for screenshots (CAP-12).
+**Out of the shot.** Snip's cards step aside while the panel is up and while it records (KMS would record them). With Hide desktop clutter on, the bars show the wallpaper and the pins step aside too, as for screenshots (CAP-12).
 
 **Files.** A take is written in `~/.local/share/snip/recording/` (on disk, beside history; the runtime dir is a RAM disk) and moved into history when it stops. Save copies it to `[recording] export_dir` (`~/Videos/Screencasts`).
 
@@ -93,7 +93,8 @@ history card ─ Edit Video… ─▶ VideoEditor window ─▶ media::export (f
 | Slice | Spec | Status |
 |---|---|---|
 | Videos and GIFs in history: cards, preview, Copy, Save, History's filters | REC-12/13, HIS-01 | ✅ built |
-| Recording: area, window, output; the toolbar (Video/GIF, mic, system audio); countdown; controls; DND; `snip record` | REC-01…05, 07, 11–13, API-01 | ✅ built |
+| Recording: area, window, output; a toolbar (Video/GIF, mic, system audio; the panel replaced it, D49); countdown; controls; DND; `snip record` | REC-01…05, 07, 11–13, API-01 | ✅ built |
+| CleanShot's panel at once: the area chosen on it (drag, handles, W × H, ⤢, Space for a window), Record GIF and Record Video | REC-01/02, D49 | ✅ built |
 | Settings › Recording; Record Screen in Snip's menu | REC-06 (part), REC-12/13 | ✅ built |
 | Video editor: split, cut, trim, track volumes, mono, MP4 or GIF, Replace or Save as New | VED-01…03 | ✅ built |
 | Safety: recovery, low disk, display unplugged | REC-14 (part) | ✅ built |
