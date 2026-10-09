@@ -17,7 +17,7 @@ Window {
     property string output: ""
     property var all: []                     // the most recent captures (or what the search found)
     property var items: []                   // ...those the filter shows
-    property string filter: "all"            // HIS-01: all | screenshots | projects (objects still editable)
+    property string filter: "all"            // HIS-01: all | screenshots | videos | gifs | projects (objects still editable)
     property int current: 0
     property string query: ""
     property var restored: ({})              // ids restored this time, marked on their thumbnails
@@ -50,7 +50,11 @@ Window {
     }
     function reload() {
         all = JSON.parse(Engine.history(query, 200))
-        items = all.filter(i => filter === "all" || (filter === "projects") === !!i.project)
+        const media = (i) => i.media || "image"
+        items = all.filter(i => filter === "all" || (filter === "videos" ? media(i) === "video"
+                                                    : filter === "gifs" ? media(i) === "gif"
+                                                    : filter === "projects" ? !!i.project
+                                                    : media(i) === "image" && !i.project))
         current = current < 0 ? -1 : Math.min(current, items.length - 1)
         list.positionViewAtIndex(current, ListView.Contain)
     }
@@ -151,12 +155,12 @@ Window {
             spacing: 14
             Text { text: "Capture History"; color: Theme.text; font.family: Theme.fontUi; font.pixelSize: 15; font.weight: Font.DemiBold
                    anchors.verticalCenter: parent.verticalCenter }
-            // HIS-01 (Videos and GIFs come with recording)
+            // HIS-01
             Row {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 2
                 Repeater {
-                    model: [["all", "All"], ["screenshots", "Screenshots"], ["projects", "Projects"]]
+                    model: [["all", "All"], ["screenshots", "Screenshots"], ["videos", "Videos"], ["gifs", "GIFs"], ["projects", "Projects"]]
                     Rectangle {
                         required property var modelData
                         readonly property bool on: hist.filter === modelData[0]
@@ -270,7 +274,7 @@ Window {
                     Image {
                         id: picture
                         anchors.fill: parent
-                        source: "file://" + entry.modelData.path + "?" + (entry.modelData.rev || 0)
+                        source: "file://" + (entry.modelData.thumb || entry.modelData.path) + "?" + (entry.modelData.rev || 0)
                         sourceSize.height: entry.th * 2
                         fillMode: Image.PreserveAspectCrop
                         asynchronous: true
