@@ -12,12 +12,12 @@ Sources: the six research reports in [research/recording-2026-10/](../research/r
 | **What** | Drag an area; **Space** snaps it to a window; ⤢ or Return with no area records the display | The same overlay as screenshots: drag an area, hold Space for a window, the whole output. `snip record area\|fullscreen` for scripts |
 | **Toolbar** | Settings, W×H, ⤢ / Microphone (with a level meter), Computer audio, Camera, Highlight Clicks, Show Keystrokes / **Record GIF ⌥↩**, **Record Video ↩** | Video / GIF, microphone picker, system audio, Cancel, Record. Camera, clicks and keystrokes come with their slices |
 | **Before it starts** | Optional 3-2-1 countdown (off by default), dim outside the area (on), Do Not Disturb (off) | Countdown (3 s by default), dim outside, Omarchy's DND on while recording, the earlier state restored |
-| **While recording** | A pill: stop with the time and a level meter, pause/resume, restart and delete (each asks first), a drag grip | Stop with the time, pause/resume, restart, discard; **outside the area**, since KMS capture records whatever is on screen (macOS left CleanShot's pill out of the capture). Hidden for a whole-output recording, where the menu and `snip record stop` stop it |
+| **While recording** | A pill: stop with the time and a level meter, pause/resume, restart and delete (each asks first), a drag grip | Stop with the time, pause/resume, restart and delete (each asks first, in the pill); **outside the area**, since KMS capture records whatever is on screen (macOS left CleanShot's pill out of the capture). Hidden for a whole-output recording, where the menu and `snip record stop` stop it. No level meter yet |
 | **After** | Quick Access card (length, size, sound); double-click opens the editor; a GIF is made after Stop | The same card (first frame, length); double-click or Edit Video… opens the editor; a GIF is made after Stop |
 | **Editor** | Trim (in and out only), dimensions, quality (7 steps), audio: as is / mono / mute / volume 0–200 %, Trim Only or Trim & Convert, **Replace** or **Save as New**, an estimated size | Trim, **cuts in the middle** (Split at the playhead, Cut a part), each track's volume (0 mutes it; several are mixed into one), mono, MP4 or **GIF**, quality (4 steps) and size, Replace or Save as New, an estimated size |
 | **Camera** | Devices; Small/Medium/Large/Huge (scaled to the area); Circle/Square/Rectangle/Vertical; mirrored by default; drag anywhere, any time; a click fills the area | The same, from the toolbar's Camera menu (below) |
 | **Clicks, keys** | Highlight clicks (size, colour, outline or filled, animated); keystrokes (size, 6 positions, dark or light, command keys only by default) | Two toolbar toggles: a ring in the theme's accent (right click: warning) where the pointer clicks; the command keys at the bottom centre of the area, held modifiers kept, repeats counted (×2). Command keys only, no options yet |
-| **Safety** | Crash recovery; a low-disk warning (no auto-stop); mic muted or unplugged: Continue Without Audio or Stop | Recovery at start; **stops and keeps** below 1 GB free or when its display goes away. Mic warnings planned |
+| **Safety** | Crash recovery; a low-disk warning (no auto-stop); mic muted or unplugged: Continue Without Audio or Stop; display sleep prevented | Recovery at start; **stops and keeps** below 1 GB free or when its display goes away; the screen kept awake; **paused** when the session locks; a muted microphone flagged in the toolbar |
 
 Snip goes beyond CleanShot 4.x in two places, both asked for: cuts in the middle and GIF export in the editor ("cut things up"), and mixing the tracks with their own volumes in the editor ("merge audio, mute audio"; CleanShot asked for each track's volume in a dialog after recording).
 
@@ -90,8 +90,9 @@ history card ─ Edit Video… ─▶ VideoEditor window ─▶ media::export (f
 | Safety: recovery, low disk, display unplugged | REC-14 (part) | ✅ built |
 | Camera bubble | REC-08 | ✅ built; a real camera is untested (none here) |
 | Click highlights and keystrokes | REC-09/10 | ✅ built; real typing into the hook is untested (the nested Hyprland has no keyboard of ours) |
-| Controls: Restart and Delete ask first, a level meter, Alt+Return records a GIF, Snip's menu icon shows the time | REC-05, REC-06 | planned |
-| Mic muted or unplugged warnings; keep the screen awake; pause while locked | REC-14 | planned |
+| Restart and Delete ask first; Alt+Enter records a GIF | REC-05, REC-02 | ✅ built |
+| The screen kept awake; paused when the session locks; a muted microphone flagged | REC-14 | ✅ built; the lock is untested (the nested Hyprland can't lock) |
+| A level meter; Snip's menu icon shows the time; a microphone unplugged mid-recording; the Bluetooth headset warning | REC-05, REC-06, REC-14 | planned |
 | Editor: a scrubbing proxy, keyframe thumbnails at once, a smooth playhead | VED-01 | planned |
 | Privacy-safe mode; true window capture | REC-15, P2 | later |
 
