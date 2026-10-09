@@ -52,6 +52,9 @@ pub struct Spec {
     pub quality: String,
     /// the largest video size (gsr `-s`); None: as captured
     pub max_size: Option<(u32, u32)>,
+    /// encode on the CPU: NVENC refuses H.264 narrower than 146 px and pads
+    /// anything shorter than 128 px (measured), so small areas need it
+    pub cpu: bool,
     /// the MP4 gsr writes
     pub file: PathBuf,
     /// gsr's control socket (stop, set-paused)
@@ -67,13 +70,16 @@ pub fn gsr_args(s: &Spec) -> Vec<String> {
     };
     match &s.target {
         Target::Output(name) => push("-w", name.clone()),
-        Target::Area(r) => {
-            push("-w", "region".into());
-            push("-region", format!("{}x{}+{}+{}", r.w, r.h, r.x, r.y));
-        }
+        // gsr 6.1 takes an area as the capture itself (`-region` is deprecated)
+        Target::Area(r) => push("-w", format!("{}x{}+{}+{}", r.w, r.h, r.x, r.y)),
     }
     push("-c", "mp4".into());
-    push("-k", s.codec.clone());
+    if s.cpu {
+        push("-encoder", "cpu".into());
+        push("-k", "h264".into());
+    } else {
+        push("-k", s.codec.clone());
+    }
     push("-q", s.quality.clone());
     push("-f", s.fps.to_string());
     // constant frame rate: what video editors (and Snip's own) expect
@@ -97,6 +103,12 @@ pub fn gsr_args(s: &Spec) -> Vec<String> {
     a
 }
 
+/// Whether NVENC can encode a `w`×`h` (physical px) video (measured with gsr
+/// 6.1 on an RTX 4080: H.264 needs 146 px wide and pads below 128 px tall).
+pub fn gpu_can_encode(w: u32, h: u32) -> bool {
+    w >= 160 && h >= 128
+}
+
 /// A selection (physical px of an output whose layout position is `origin`,
 /// at `scale`) as the area gsr records: global logical px, whole, at least
 /// 2×2. gsr can only take whole logical px, so the recording may be up to a
@@ -115,7 +127,7 @@ mod tests {
     use super::*;
 
     fn spec(target: Target, audio: Audio) -> Spec {
-        Spec { target, fps: 60, cursor: true, audio, codec: "auto".into(), quality: "very_high".into(), max_size: None, file: "/run/rec/take.mp4".into(), ipc: "/run/rec/gsr.sock".into() }
+        Spec { target, fps: 60, cursor: true, audio, codec: "auto".into(), quality: "very_high".into(), max_size: None, cpu: false, file: "/run/rec/take.mp4".into(), ipc: "/run/rec/gsr.sock".into() }
     }
 
     fn pairs(a: &[String]) -> Vec<(String, String)> {
@@ -126,7 +138,7 @@ mod tests {
     fn an_area_with_both_sounds_mixed() {
         let a = gsr_args(&spec(Target::Area(Rect::new(100, 50, 800, 600)), Audio { mic: Some("default_input".into()), system: true, separate: false }));
         let p = pairs(&a);
-        assert_eq!(&p[..2], &[("-w".into(), "region".into()), ("-region".into(), "800x600+100+50".into())]);
+        assert_eq!(p[0], ("-w".into(), "800x600+100+50".into()), "an area is the capture itself");
         assert!(p.contains(&("-a".into(), "default_output|default_input".into())) && p.contains(&("-ac".into(), "aac".into())), "{a:?}");
         assert!(p.contains(&("-fm".into(), "cfr".into())) && p.contains(&("-write-first-frame-ts".into(), "yes".into())));
         assert_eq!(p.last().unwrap(), &("-o".into(), "/run/rec/take.mp4".into()), "the output goes last");
@@ -147,6 +159,11 @@ mod tests {
         s.cursor = false;
         let p = pairs(&gsr_args(&s));
         assert!(p.contains(&("-s".into(), "1920x1080".into())) && p.contains(&("-cursor".into(), "no".into())));
+        // a small area: the CPU's H.264
+        s.cpu = true;
+        let p = pairs(&gsr_args(&s));
+        assert!(p.contains(&("-encoder".into(), "cpu".into())) && p.contains(&("-k".into(), "h264".into())));
+        assert!(!gpu_can_encode(140, 300) && !gpu_can_encode(400, 100) && gpu_can_encode(160, 128));
     }
 
     #[test]
