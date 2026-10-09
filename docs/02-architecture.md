@@ -366,7 +366,7 @@ Full detail and measurements: [research/processing-pipelines.md](research/proces
 - **Installed files:**
   - `/usr/bin/snip`
   - `/usr/lib/systemd/user/snip.service`
-  - `/usr/share/snip/hypr/snip.lua`, a module the user `require`s. It contains the binds (`hl.dsp.global`), layer rules (`no_anim` for `^snip-`) and window rules (by xdg tag).
+  - `/usr/share/snip/hypr/snip.lua`, a module the user `require`s. It contains the binds (`hl.dsp.global`), layer rules (`no_anim` for `^snip-`) and window rules (by window title: Hyprland 0.56 patterns match the whole title, and a rule matching class and title together never matches). snipd also applies the rules at runtime, at start and on every config reload.
   - `.desktop` files and MIME handlers
   - sounds
 - **Onboarding** (first run) offers to:
