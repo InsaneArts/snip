@@ -26,14 +26,6 @@ public:
   QSize frameSize() const { return m_frameSize; }
   bool hasFrame() const { return !m_frameSize.isEmpty(); }
 
-  // Physical pixels per logical pixel (the frame's, else the window's).
-  Q_INVOKABLE qreal pixelScale() const;
-  // Logical item rect -> physical frame rect, edges rounded independently
-  // (like Hyprland's CBox::round) so adjacent selections tile exactly.
-  Q_INVOKABLE QRect toPhysical(const QRectF& logical) const;
-  // Physical rect -> logical item rect (for drawing exactly what is captured).
-  Q_INVOKABLE QRectF toLogical(const QRect& physical) const;
-
 Q_SIGNALS:
   void outputChanged();
   void epochChanged();

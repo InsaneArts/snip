@@ -51,9 +51,6 @@ pub mod qobject {
         #[qinvokable]
         fn start(self: Pin<&mut Engine>, mode: QString);
 
-        #[qinvokable]
-        fn capture(self: Pin<&mut Engine>, mode: QString);
-
         /// Selection done: physical px of `output`; kind = area | window | monitor
         #[qinvokable]
         fn finish_area(self: Pin<&mut Engine>, output: QString, x: i32, y: i32, w: i32, h: i32, kind: QString, skip_preset: bool);
@@ -276,10 +273,8 @@ pub mod qobject {
         fn record_discard(self: Pin<&mut Engine>);
         #[qinvokable]
         fn record_cancel(self: Pin<&mut Engine>);
-        /// The video editor: open a recording; export what's kept (JSON),
-        /// replacing it or as a new capture
-        #[qinvokable]
-        fn video_open(self: Pin<&mut Engine>, id: QString);
+        /// The video editor: export what's kept (JSON), replacing the
+        /// recording or as a new capture
         #[qinvokable]
         fn video_export(self: Pin<&mut Engine>, id: QString, spec: QString, replace: bool);
 
@@ -312,9 +307,6 @@ pub mod qobject {
 
         #[qinvokable]
         fn extract_text(self: Pin<&mut Engine>, id: QString);
-        /// Open Snip's editor on a capture (ANN-19).
-        #[qinvokable]
-        fn edit(self: Pin<&mut Engine>, id: QString);
 
         /// Write an editor's render (handed over by `Platform.grabExact` under
         /// `token`) and its objects back to the capture (ANN-15), then do
@@ -608,12 +600,6 @@ impl qobject::Engine {
                 std::thread::sleep(std::time::Duration::from_secs(3600));
             })
             .ok();
-    }
-
-    fn capture(self: Pin<&mut Self>, mode: QString) {
-        if let Some(i) = self.inner() {
-            i.begin(&mode.to_string(), None, None, None, 0, None);
-        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1051,11 +1037,6 @@ impl qobject::Engine {
         }
     }
 
-    fn video_open(self: Pin<&mut Self>, id: QString) {
-        if let Some(i) = self.inner() {
-            i.video_open(&id.to_string());
-        }
-    }
 
     fn video_export(self: Pin<&mut Self>, id: QString, spec: QString, replace: bool) {
         if let Some(i) = self.inner() {
@@ -1132,11 +1113,6 @@ impl qobject::Engine {
         }
     }
 
-    fn edit(self: Pin<&mut Self>, id: QString) {
-        if let Some(i) = self.inner() {
-            i.edit(&id.to_string());
-        }
-    }
 
     fn restore_card(self: Pin<&mut Self>, id: QString) {
         if let Some(i) = self.inner() {

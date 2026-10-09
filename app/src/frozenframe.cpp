@@ -4,7 +4,6 @@
 #include <QQuickWindow>
 #include <QSGGeometryNode>
 #include <QSGTextureMaterial>
-#include <cmath>
 
 #include "snip_bridge/src/bridge.cxxqt.h"
 
@@ -64,35 +63,6 @@ FrozenFrame::setEpoch(int e)
   }
   Q_EMIT epochChanged();
   update();
-}
-
-qreal
-FrozenFrame::pixelScale() const
-{
-  if (!m_frameSize.isEmpty() && width() > 0)
-    return m_frameSize.width() / width();
-  return window() ? window()->devicePixelRatio() : 1.0;
-}
-
-QRect
-FrozenFrame::toPhysical(const QRectF& l) const
-{
-  const double s = pixelScale();
-  const int x0 = int(std::lround(l.left() * s));
-  const int y0 = int(std::lround(l.top() * s));
-  const int x1 = int(std::lround(l.right() * s));
-  const int y1 = int(std::lround(l.bottom() * s));
-  QRect r(x0, y0, std::max(0, x1 - x0), std::max(0, y1 - y0));
-  if (!m_frameSize.isEmpty())
-    r = r.intersected(QRect(QPoint(0, 0), m_frameSize));
-  return r;
-}
-
-QRectF
-FrozenFrame::toLogical(const QRect& p) const
-{
-  const double s = pixelScale();
-  return QRectF(p.x() / s, p.y() / s, p.width() / s, p.height() / s);
 }
 
 QSGNode*
