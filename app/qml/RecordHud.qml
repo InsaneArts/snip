@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Window
 import QtQuick.Effects
+import QtMultimedia
 import org.kde.layershell as LayerShell
 import Snip.Core
 
@@ -8,7 +9,9 @@ import Snip.Core
 // around it, the screen dimmed outside it (REC-04), and the toolbar beside
 // it: Video or GIF, the microphone, system audio, Record (Enter) and Cancel
 // (Esc). Then a 3-2-1 countdown (REC-03), and while it records, the controls:
-// stop with the time, pause, restart, discard (REC-05).
+// stop with the time, pause, restart, discard (REC-05). The camera (REC-08) is
+// a bubble inside the area, there to be recorded: dragged anywhere, before
+// and while recording; a click fills the area with it, another brings it back.
 //
 // gpu-screen-recorder records whatever is on screen in the area, Snip's own
 // layers included, so this layer never draws inside it: the frame and the
@@ -34,6 +37,14 @@ Window {
     property real since: 0                          // Date.now() when elapsedBase was right
     property real elapsed: 0                        // ms, shown
     property bool micsOpen: false
+    property string camera: ""                      // the camera's name ("" none)
+    property string cameraShape: "circle"           // circle | square | rectangle | vertical
+    property string cameraSize: "medium"            // small | medium | large | huge
+    property bool cameraMirror: true
+    property bool fakeCamera: false                 // tests: a test card is a camera
+    property bool camerasOpen: false
+    property bool cameraFull: false                 // filling the area
+    property point cameraAt: Qt.point(-1, -1)       // its corner from the area's (-1: not moved)
 
     flags: Qt.FramelessWindowHint
     color: "transparent"
@@ -55,6 +66,14 @@ Window {
         mic = s.mic || ""
         system = !!s.system
         dim = s.dim !== false
+        camera = s.camera || ""
+        cameraShape = s.cameraShape || "circle"
+        cameraSize = s.cameraSize || "medium"
+        cameraMirror = s.cameraMirror !== false
+        fakeCamera = !!s.fakeCamera
+        camerasOpen = false
+        cameraFull = false
+        cameraAt = Qt.point(-1, -1)
         // `snip record area|fullscreen`: recording at once, no toolbar
         phase = s.now ? "starting" : "ready"
         micsOpen = false
@@ -94,6 +113,43 @@ Window {
         system = on
         Engine.setSetting("recording.system_audio", JSON.stringify(on))
     }
+    // the cameras there are (by name); a test card stands in for one in tests
+    MediaDevices { id: mediaDevices }
+    readonly property var cameras: (fakeCamera ? [{ name: "Test camera", device: null }] : [])
+                                   .concat(mediaDevices.videoInputs.map(d => ({ name: d.description, device: d })))
+    readonly property var cameraEntry: cameras.find(c => c.name === camera) || null
+    function setCamera(name) {
+        camera = name
+        camerasOpen = false
+        cameraFull = false
+        Engine.setSetting("recording.camera", JSON.stringify(name))
+        Qt.callLater(fitInput)
+    }
+    function setCameraLook(key, value) {
+        if (key === "shape") cameraShape = value
+        else if (key === "size") cameraSize = value
+        else if (key === "mirror") cameraMirror = value
+        Engine.setSetting("recording.camera_" + key, JSON.stringify(value))
+        Qt.callLater(fitInput)
+    }
+    // CleanShot's sizes, for the area recorded (Omarchy's three are 18, 25
+    // and 33.75 % of its height); shapes: square, 16:9 or 9:16
+    readonly property real cameraMargin: Math.min(40, area.width / 10, area.height / 10)
+    readonly property size cameraBox: {
+        const base = area.height * ({ small: 0.18, medium: 0.25, large: 0.3375, huge: 0.45 }[cameraSize] || 0.25)
+        let w = base, h = base
+        if (cameraShape === "rectangle") w = base * 16 / 9
+        else if (cameraShape === "vertical") { h = base * 1.4; w = h * 9 / 16 }
+        // a narrow area: smaller, its margins kept
+        const k = Math.min(1, (area.width - 2 * cameraMargin) / w, (area.height - 2 * cameraMargin) / h)
+        return Qt.size(Math.max(24, Math.round(w * k)), Math.max(24, Math.round(h * k)))
+    }
+    // where it is: at the bottom right to start, then where it was dragged (kept inside)
+    readonly property real cameraX: Math.round(area.x + Math.max(0, Math.min(area.width - cameraBox.width,
+                                     cameraAt.x < 0 ? area.width - cameraMargin - cameraBox.width : cameraAt.x)))
+    readonly property real cameraY: Math.round(area.y + Math.max(0, Math.min(area.height - cameraBox.height,
+                                     cameraAt.y < 0 ? area.height - cameraMargin - cameraBox.height : cameraAt.y)))
+
     readonly property string micLabel: {
         if (mic === "") return "No microphone"
         const m = mics.find(x => x.id === mic)
@@ -109,10 +165,13 @@ Window {
         const r = []
         if (toolbar.visible) r.push(Qt.rect(toolbar.x, toolbar.y, toolbar.width, toolbar.height))
         if (micList.visible) r.push(Qt.rect(micList.x, micList.y, micList.width, micList.height))
+        if (cameraList.visible) r.push(Qt.rect(cameraList.x, cameraList.y, cameraList.width, cameraList.height))
+        if (bubble.visible) r.push(Qt.rect(bubble.x, bubble.y, bubble.width, bubble.height))
         if (controls.visible) r.push(Qt.rect(controls.x, controls.y, controls.width, controls.height))
         Platform.setInputRects(hud, r)
     }
-    onMicsOpenChanged: Qt.callLater(fitInput)
+    onMicsOpenChanged: { if (micsOpen) camerasOpen = false; Qt.callLater(fitInput) }
+    onCamerasOpenChanged: { if (camerasOpen) micsOpen = false; Qt.callLater(fitInput) }
 
     // the countdown, one second a step; at zero it's gone before recording starts
     Timer {
@@ -172,6 +231,48 @@ Window {
         return height - h - 24
     }
     function placeX(w) { return Math.max(8, Math.min(width - w - 8, area.x + area.width / 2 - w / 2)) }
+
+    // ---------------------------------------------------------------- the camera (REC-08)
+    CameraBubble {
+        id: bubble
+        objectName: "record-camera"
+        visible: hud.cameraEntry !== null && hud.phase !== "closed" && hud.phase !== "finishing"
+        running: visible
+        device: hud.cameraEntry ? hud.cameraEntry.device : null
+        fake: hud.cameraEntry !== null && hud.cameraEntry.device === null
+        shape: hud.cameraFull ? "full" : hud.cameraShape
+        mirror: hud.cameraMirror
+        x: hud.cameraFull ? hud.area.x : hud.cameraX
+        y: hud.cameraFull ? hud.area.y : hud.cameraY
+        width: hud.cameraFull ? hud.area.width : hud.cameraBox.width
+        height: hud.cameraFull ? hud.area.height : hud.cameraBox.height
+        onXChanged: hud.fitInput()
+        onYChanged: hud.fitInput()
+        onWidthChanged: hud.fitInput()
+        onHeightChanged: hud.fitInput()
+        onVisibleChanged: hud.fitInput()
+        // dragged anywhere in the area; a click fills the area, another brings it back
+        MouseArea {
+            anchors.fill: parent
+            property bool dragged: false
+            cursorShape: pressed && dragged ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+            drag.target: hud.cameraFull ? null : bubble
+            drag.threshold: 4
+            drag.minimumX: hud.area.x
+            drag.maximumX: hud.area.x + hud.area.width - bubble.width
+            drag.minimumY: hud.area.y
+            drag.maximumY: hud.area.y + hud.area.height - bubble.height
+            onPressed: dragged = false
+            onPositionChanged: if (drag.active) dragged = true
+            onReleased: {
+                if (!dragged) { hud.cameraFull = !hud.cameraFull; return }
+                hud.cameraAt = Qt.point(bubble.x - hud.area.x, bubble.y - hud.area.y)
+                // the drag set x and y: bound again
+                bubble.x = Qt.binding(() => hud.cameraFull ? hud.area.x : hud.cameraX)
+                bubble.y = Qt.binding(() => hud.cameraFull ? hud.area.y : hud.cameraY)
+            }
+        }
+    }
 
     // ---------------------------------------------------------------- the countdown (REC-03)
     Rectangle {
@@ -293,6 +394,33 @@ Window {
                 TapHandler { enabled: !hud.gif; onTapped: hud.setSystem(!hud.system) }
                 Tip { text: hud.system ? "Recording what the computer plays" : "Record what the computer plays" }
             }
+            // the camera (REC-08)
+            Rectangle {
+                objectName: "record-camera-button"
+                anchors.verticalCenter: parent.verticalCenter
+                width: camRow.implicitWidth + 20
+                height: 30
+                radius: 15
+                color: hud.cameraEntry ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22)
+                                       : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, camHover.hovered ? 0.12 : 0.06)
+                Row {
+                    id: camRow
+                    anchors.centerIn: parent
+                    spacing: 6
+                    Icon { anchors.verticalCenter: parent.verticalCenter; name: "webcam"; size: 14; color: Theme.text }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: Math.min(implicitWidth, 140)
+                        elide: Text.ElideRight
+                        text: hud.cameraEntry ? hud.cameraEntry.name : "No camera"
+                        color: Theme.text
+                        font.family: Theme.fontUi
+                        font.pixelSize: 12
+                    }
+                }
+                HoverHandler { id: camHover; cursorShape: Qt.PointingHandCursor }
+                TapHandler { onTapped: hud.camerasOpen = !hud.camerasOpen }
+            }
             Rectangle { width: 1; height: 22; anchors.verticalCenter: parent.verticalCenter; color: Theme.hairline }
             TextButton { objectName: "record-cancel"; anchors.verticalCenter: parent.verticalCenter; text: "Cancel"; tip: "Esc"; onClicked: Engine.recordCancel() }
             TextButton {
@@ -349,6 +477,130 @@ Window {
                     HoverHandler { id: micItemHover; cursorShape: Qt.PointingHandCursor }
                     TapHandler { onTapped: hud.setMic(parent.modelData.id) }
                 }
+            }
+        }
+    }
+
+    // the cameras, and how the camera looks: CleanShot's sizes and shapes
+    Rectangle {
+        id: cameraList
+        objectName: "record-cameras"
+        visible: hud.camerasOpen && hud.phase === "ready"
+        width: 330
+        height: camCol.implicitHeight + 12
+        radius: Math.min(Theme.radius, 12)
+        x: Math.max(8, Math.min(hud.width - width - 8, toolbar.x + toolbar.width - width))
+        y: toolbar.y - height - 8 >= 8 ? toolbar.y - height - 8 : toolbar.y + toolbar.height + 8
+        color: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.98)
+        border.width: 1
+        border.color: Theme.hairline
+        onVisibleChanged: hud.fitInput()
+        onHeightChanged: hud.fitInput()
+        Column {
+            id: camCol
+            x: 6
+            y: 6
+            width: parent.width - 12
+            spacing: 2
+            Repeater {
+                model: [{ name: "" }].concat(hud.cameras)
+                Rectangle {
+                    required property var modelData
+                    required property int index
+                    objectName: "record-camera:" + index
+                    width: camCol.width
+                    height: 30
+                    radius: 6
+                    color: camItemHover.hovered ? Theme.controlHover : "transparent"
+                    Text {
+                        x: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: parent.width - 36
+                        elide: Text.ElideRight
+                        text: parent.modelData.name === "" ? (hud.cameras.length ? "No camera" : "No camera (none connected)") : parent.modelData.name
+                        color: Theme.text
+                        font.family: Theme.fontUi
+                        font.pixelSize: 13
+                    }
+                    Icon {
+                        visible: parent.modelData.name === "" ? !hud.cameraEntry : hud.camera === parent.modelData.name
+                        anchors.right: parent.right
+                        anchors.rightMargin: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: "check"
+                        size: 13
+                        color: Theme.accent
+                    }
+                    HoverHandler { id: camItemHover; cursorShape: Qt.PointingHandCursor }
+                    TapHandler { onTapped: hud.setCamera(parent.modelData.name) }
+                }
+            }
+            Rectangle { visible: hud.cameraEntry !== null; width: camCol.width; height: 1; color: Theme.hairline }
+            Row {
+                visible: hud.cameraEntry !== null
+                x: 4
+                height: 34
+                spacing: 4
+                Repeater {
+                    model: [["small", "Small"], ["medium", "Medium"], ["large", "Large"], ["huge", "Huge"]]
+                    Rectangle {
+                        required property var modelData
+                        readonly property bool on: hud.cameraSize === modelData[0]
+                        objectName: "record-camera-size=" + modelData[0]
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: sizeText.implicitWidth + 18
+                        height: 26
+                        radius: 13
+                        color: on ? Theme.accent : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, sizeHover.hovered ? 0.12 : 0.06)
+                        Text { id: sizeText; anchors.centerIn: parent; text: parent.modelData[1]; color: parent.on ? Theme.onAccent : Theme.text; font.family: Theme.fontUi; font.pixelSize: 12 }
+                        HoverHandler { id: sizeHover; cursorShape: Qt.PointingHandCursor }
+                        TapHandler { onTapped: hud.setCameraLook("size", parent.modelData[0]) }
+                    }
+                }
+            }
+            Row {
+                visible: hud.cameraEntry !== null
+                x: 4
+                height: 34
+                spacing: 4
+                Repeater {
+                    model: [["circle", "Circle"], ["square", "Square"], ["rectangle", "Rectangle"], ["vertical", "Vertical"]]
+                    Rectangle {
+                        required property var modelData
+                        readonly property bool on: hud.cameraShape === modelData[0]
+                        objectName: "record-camera-shape=" + modelData[0]
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: shapeText.implicitWidth + 18
+                        height: 26
+                        radius: 13
+                        color: on ? Theme.accent : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, shapeHover.hovered ? 0.12 : 0.06)
+                        Text { id: shapeText; anchors.centerIn: parent; text: parent.modelData[1]; color: parent.on ? Theme.onAccent : Theme.text; font.family: Theme.fontUi; font.pixelSize: 12 }
+                        HoverHandler { id: shapeHover; cursorShape: Qt.PointingHandCursor }
+                        TapHandler { onTapped: hud.setCameraLook("shape", parent.modelData[0]) }
+                    }
+                }
+            }
+            Rectangle {
+                visible: hud.cameraEntry !== null
+                objectName: "record-camera-mirror"
+                width: camCol.width
+                height: 30
+                radius: 6
+                color: mirrorHover.hovered ? Theme.controlHover : "transparent"
+                Text { x: 10; anchors.verticalCenter: parent.verticalCenter; text: "Mirror"; color: Theme.text; font.family: Theme.fontUi; font.pixelSize: 13 }
+                Icon { visible: hud.cameraMirror; anchors.right: parent.right; anchors.rightMargin: 10; anchors.verticalCenter: parent.verticalCenter; name: "check"; size: 13; color: Theme.accent }
+                HoverHandler { id: mirrorHover; cursorShape: Qt.PointingHandCursor }
+                TapHandler { onTapped: hud.setCameraLook("mirror", !hud.cameraMirror) }
+            }
+            Text {
+                visible: hud.cameraEntry !== null
+                x: 10
+                height: 26
+                verticalAlignment: Text.AlignVCenter
+                text: "Drag the camera anywhere. A click fills the area."
+                color: Theme.textSecondary
+                font.family: Theme.fontUi
+                font.pixelSize: 11
             }
         }
     }
@@ -433,7 +685,11 @@ Window {
             Engine.log("record_hud", JSON.stringify({ open: visible, phase: phase, gif: gif, mic: mic, system: system, whole: whole,
                                                     time: hud.clock(elapsed), area: [area.x, area.y, area.width, area.height],
                                                     toolbar: toolbar.visible ? [toolbar.x, toolbar.y, toolbar.width, toolbar.height] : null,
-                                                    controls: controls.visible ? [controls.x, controls.y, controls.width, controls.height] : null }).slice(1, -1))
+                                                    controls: controls.visible ? [controls.x, controls.y, controls.width, controls.height] : null,
+                                                    camera: bubble.visible ? [bubble.x, bubble.y, bubble.width, bubble.height] : null,
+                                                    cameraName: camera, cameraShape: cameraShape, cameraSize: cameraSize, cameraMirror: cameraMirror,
+                                                    cameraFull: cameraFull, cameraReady: bubble.ready, cameras: cameras.map(c => c.name),
+                                                    camerasOpen: cameraList.visible }).slice(1, -1))
             break
         }
     }

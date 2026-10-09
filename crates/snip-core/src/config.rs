@@ -172,6 +172,14 @@ pub struct Recording {
     pub gif_width: u32,
     /// REC-02: the last kind chosen in the toolbar: "video" or "gif"
     pub kind: String,
+    /// REC-08: the camera shown in the recording, by its name ("" none)
+    pub camera: String,
+    /// REC-08: "circle", "square", "rectangle" or "vertical"
+    pub camera_shape: String,
+    /// REC-08: "small", "medium", "large" or "huge", for the recorded area
+    pub camera_size: String,
+    /// REC-08: shown as in a mirror
+    pub camera_mirror: bool,
 }
 
 impl Default for Recording {
@@ -191,6 +199,10 @@ impl Default for Recording {
             gif_fps: 15,
             gif_width: 800,
             kind: "video".into(),
+            camera: String::new(),
+            camera_shape: "circle".into(),
+            camera_size: "medium".into(),
+            camera_mirror: true,
         }
     }
 }
