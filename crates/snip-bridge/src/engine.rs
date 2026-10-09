@@ -338,8 +338,13 @@ impl Inner {
             "record" => self.record_toggle(false, None),
             "record-gif" => self.record_toggle(true, None),
             "record-pause" => {
-                let paused = self.record_state()["state"] == "paused";
-                self.record_pause(!paused);
+                // gsr is asked off this thread: a key comes on the Wayland
+                // loop, the bar's menu on the UI thread (as the HUD's button)
+                let me = self.clone();
+                std::thread::spawn(move || {
+                    let paused = me.record_state()["state"] == "paused";
+                    me.record_pause(!paused);
+                });
             }
             "timer-area" | "timer-fullscreen" => {
                 let delay = self.cfg().capture.timer_seconds;
