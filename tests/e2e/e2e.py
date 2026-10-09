@@ -1703,28 +1703,44 @@ def record_click(s, name):
     s.move(b["x"], b["y"]); time.sleep(0.1); s.click()
 
 
+def record_panel(s):
+    """Record Screen: the panel, at once (D49)."""
+    p = s.bg("record")
+    assert wait_for(lambda: record_hud(s)["phase"] == "ready", 3), record_hud(s)
+    time.sleep(0.3)                                  # the layer takes input a frame after it shows
+    return p
+
+
 @case
 def record_with_the_hud(s, env):
-    """REC-01…05: Record Screen chooses an area over the live screen, then the toolbar sits
-    beside it (never inside); Record counts down, then the controls (outside the area)
-    pause, resume and stop it, and the card is the recording."""
+    """REC-01…05, D49: Record Screen shows CleanShot's panel at once, centred on the screen;
+    a drag picks an area instead, and the panel moves into its middle. Record Video counts
+    down, the panel gone first; then the controls (outside the area) pause, resume and stop
+    it, and the card is the recording. Esc on the panel records nothing."""
     s.cli("close-all"); time.sleep(0.3)
-    p = s.bg("record")
-    time.sleep(0.6)
+    m = env.monitor()
+    W, H = round(m["width"] / m["scale"]), round(m["height"] / m["scale"])
+    p = record_panel(s)
+    h = record_hud(s)
+    assert h["whole"] and h["area"] == [0, 0, W, H], h
+    x, y, w, hh = h["panel"]
+    assert abs(x + w / 2 - W / 2) <= 1 and abs(y + hh / 2 - H / 2) <= 1, ("centred on the screen", h["panel"])
     s.drag(300, 200, 700, 500)
-    assert wait_for(lambda: record_hud(s)["phase"] == "ready", 3), record_hud(s)
+    assert wait_for(lambda: record_hud(s)["area"] == [300, 200, 400, 300], 3), record_hud(s)
     h = record_hud(s)
     ax, ay, aw, ah = h["area"]
-    assert (ax, ay, aw, ah) == (300, 200, 400, 300), h["area"]
+    x, y, w, hh = h["panel"]
+    assert not h["whole"] and (x + w / 2, y + hh / 2) == (500, 350), ("in the area's middle", h["panel"])
 
     def outside(r):
         x, y, w, hh = r
         return x + w <= ax - 2 or x >= ax + aw + 2 or y + hh <= ay - 2 or y >= ay + ah + 2
 
-    assert outside(h["toolbar"]), ("the toolbar is never in the recording", h["toolbar"], h["area"])
-    record_click(s, "record-go")
+    record_click(s, "record-video")
     assert wait_for(lambda: record_hud(s)["phase"] == "countdown", 2), "a countdown first"
+    assert record_hud(s)["panel"] is None, "the panel is gone before anything is recorded"
     assert wait_for(lambda: record_hud(s)["phase"] == "recording", 4), record_hud(s)
+    assert record_state(s)["area"] == [300, 200, 400, 300], ("the area chosen on the panel", record_state(s))
     h = record_hud(s)
     assert h["controls"] and outside(h["controls"]), ("the controls are never in the recording", h["controls"])
     time.sleep(1.2)
@@ -1742,12 +1758,9 @@ def record_with_the_hud(s, env):
     assert wait_for(lambda: not record_hud(s)["open"], 2), "the HUD goes"
     s.cli("close-all")
 
-    # Cancel in the toolbar records nothing
-    p = s.bg("record")
-    time.sleep(0.6)
-    s.drag(300, 200, 700, 500)
-    assert wait_for(lambda: record_hud(s)["phase"] == "ready", 3)
-    record_click(s, "record-cancel")
+    # Esc on the panel records nothing
+    p = record_panel(s)
+    s.debug("ui", "record", "keys", "{Escape}")
     r, code = finish(p, timeout=5)
     assert code != 0 or not r.get("ok"), r
     assert wait_for(lambda: not record_hud(s)["open"], 2)
@@ -1755,25 +1768,78 @@ def record_with_the_hud(s, env):
 
 @case
 def record_gif_by_alt_enter(s, env):
-    """REC-02: in the toolbar, Alt+Enter records a GIF whatever is chosen (CleanShot's ⌥↩):
-    the session binds it while the toolbar is up, and it's gone after."""
+    """REC-02, D49: on the panel, Alt+Enter records a GIF (CleanShot's ⌥↩). The panel has
+    the keyboard while it's up, so Snip adds no binds to Hyprland for it."""
     import re
     s.cli("close-all"); time.sleep(0.3)
-    p = s.bg("record")
-    time.sleep(0.6)
-    s.drag(300, 200, 700, 500)
-    assert wait_for(lambda: record_hud(s)["phase"] == "ready", 3), record_hud(s)
-    assert not record_hud(s)["gif"], "Video is chosen"
     alt_enter = lambda: re.search(r"modmask: 8\n\tsubmap: [^\n]*\n\tkey: Return\n", sh("hyprctl", "binds").stdout)
-    assert alt_enter(), "Alt+Enter is bound while the toolbar is up"
-    hypr_eval('hl.dispatch(hl.dsp.global("snip-e2e:record-gif-go"))')   # what the bind runs
+    p = record_panel(s)
+    s.drag(300, 200, 700, 500)
+    assert wait_for(lambda: record_hud(s)["area"] == [300, 200, 400, 300], 3), record_hud(s)
+    assert not record_hud(s)["gif"] and not alt_enter(), "a video by default, and no bind of Snip's"
+    s.debug("ui", "record", "keys", "{alt+Return}")
     assert wait_for(lambda: (record_state(s) or {}).get("gif") is True, 3), record_state(s)
     assert wait_for(lambda: record_hud(s)["phase"] == "recording", 5), record_hud(s)
     time.sleep(0.8)
     s.json("record", "stop")
     r, code = finish(p, timeout=30)
     assert code == 0 and r["result"]["media"] == "gif", r
-    assert not alt_enter(), "and not after"
+
+
+@case
+def record_panel_chooses_the_area(s, env):
+    """D49: on the panel, the area is the whole screen until a drag draws one; its handles
+    resize it, a drag inside moves it, W × H sets its size around its middle, ⤢ toggles the
+    whole screen, Select area draws a new one (inside the old one too), and Space then a
+    click picks a window. A small area has the panel beside it, not over it. The Record key
+    again closes the panel (SEL-09)."""
+    s.cli("close-all"); time.sleep(0.3)
+    m = env.monitor()
+    W, H = round(m["width"] / m["scale"]), round(m["height"] / m["scale"])
+    area = lambda: record_hud(s)["area"]
+    p = record_panel(s)
+    assert record_hud(s)["hint"].startswith("Drag to record an area"), record_hud(s)
+    record_click(s, "record-full")                   # ⤢: back to an area (the middle 60 %)
+    assert wait_for(lambda: area() == [round(W * 0.2), round(H * 0.2), round(W * 0.6), round(H * 0.6)], 2), area()
+    record_click(s, "record-full")
+    assert wait_for(lambda: record_hud(s)["whole"], 2), area()
+    s.drag(200, 150, 800, 550)
+    assert wait_for(lambda: area() == [200, 150, 600, 400], 2), area()
+    time.sleep(0.2)
+    n = len(s.traces("record_where"))
+    s.debug("ui", "record", "where", "record-handle-br")
+    assert wait_for(lambda: len(s.traces("record_where")) > n, 2)
+    b = s.traces("record_where")[-1]
+    assert (b["x"], b["y"]) == (803, 553), ("on the frame, just outside the corner", b)
+    s.drag(803, 553, 903, 603)
+    assert wait_for(lambda: area() == [200, 150, 700, 450], 2), ("the corner's handle resizes it", area())
+    s.drag(250, 200, 300, 230)
+    assert wait_for(lambda: area() == [250, 180, 700, 450], 2), ("a drag inside moves it", area())
+    record_click(s, "record-w")
+    time.sleep(0.2)
+    s.debug("ui", "record", "keys", "{ctrl+a}480{Return}")
+    assert wait_for(lambda: area() == [360, 180, 480, 450], 2), ("480 wide, around its middle", area())
+    record_click(s, "record-crop")
+    assert wait_for(lambda: record_hud(s)["drawing"], 2)
+    s.drag(400, 220, 520, 300)
+    assert wait_for(lambda: area() == [400, 220, 120, 80], 2), ("drawn anew inside the old one", area())
+    h = record_hud(s)
+    assert not h["drawing"] and h["panel"][1] >= 220 + 80 + 2, ("a small area: the panel under it", h["panel"])
+    # Space, then a click: the window under the pointer
+    s.debug("ui", "record", "keys", "{Space}")
+    assert wait_for(lambda: record_hud(s)["picking"], 2)
+    h = record_hud(s)
+    assert h["panel"] is None and h["hint"].startswith("Click a window") and h["windows"] >= 1, h
+    c = next(c for c in hypr_json("clients") if c["class"] == "snip-e2e-target")
+    lx, ly = c["at"][0] - m["x"], c["at"][1] - m["y"]
+    s.move(lx + c["size"][0] / 2 + 1, ly + c["size"][1] / 2); s.move(lx + c["size"][0] / 2, ly + c["size"][1] / 2)
+    time.sleep(0.1); s.click()
+    assert wait_for(lambda: area() == [lx, ly, c["size"][0], c["size"][1]], 2), ("the window's", area(), c["at"], c["size"])
+    assert not record_hud(s)["picking"]
+    s.cli("record", check=False)                     # SEL-09: the Record key again closes it
+    r, code = finish(p, timeout=5)
+    assert code != 0 or not r.get("ok"), r
+    assert wait_for(lambda: not record_hud(s)["open"], 2), "the panel is gone"
 
 
 @case
@@ -1835,7 +1901,7 @@ def record_controls_ask_first(s, env):
 
 @case
 def record_camera(s, env):
-    """REC-08: the camera, as CleanShot shows it: chosen in the toolbar, a bubble inside the
+    """REC-08: the camera, as CleanShot shows it: chosen on the panel, a bubble inside the
     area (so it is recorded) at the bottom right; Small to Huge and four shapes from its menu;
     dragged anywhere in the area; a click fills the area with it and another brings it back;
     it stays while recording. (A test card stands in for a camera: there is none here.)"""
@@ -1853,10 +1919,9 @@ def record_camera(s, env):
         r, g, b = px
         return r < 90 and g > 90 and b > 120
 
-    p = s.bg("record")
-    time.sleep(0.6)
+    p = record_panel(s)
     s.drag(300, 200, 1100, 650)
-    assert wait_for(lambda: record_hud(s)["phase"] == "ready", 3), record_hud(s)
+    assert wait_for(lambda: record_hud(s)["area"] == [300, 200, 800, 450], 3), record_hud(s)
     h = record_hud(s)
     assert "Test camera" in h["cameras"] and h["camera"] is None, h
     record_click(s, "record-camera-button")
@@ -1896,10 +1961,10 @@ def record_camera(s, env):
     time.sleep(0.3)
     px = shot()
     assert card(px(ax + 6, ay + 6)) and card(px(ax + aw - 6, ay + ah - 6)), "the card fills the area, corners too"
-    record_click(s, "record-camera")
+    s.move(ax + 30, ay + 30); time.sleep(0.1); s.click()   # (the panel is over its middle)
     assert wait_for(lambda: record_hud(s)["camera"][:2] == [ax, ay] and not record_hud(s)["cameraFull"], 2), record_hud(s)
-    # it stays while recording, inside the area (the controls stay outside)
-    record_click(s, "record-go")
+    # it stays while recording, inside the area (the controls stay outside); Enter records
+    s.debug("ui", "record", "keys", "{Return}")
     assert wait_for(lambda: record_hud(s)["phase"] == "recording", 5), record_hud(s)
     assert record_hud(s)["camera"] is not None, "the camera is recorded"
     s.json("record", "stop")
@@ -1912,23 +1977,22 @@ def record_camera(s, env):
 
 @case
 def record_clicks_and_keys(s, env):
-    """REC-09/10: Highlight Clicks and Show Keystrokes, from the toolbar. While it records,
+    """REC-09/10: Highlight Clicks and Show Keystrokes, from the panel. While it records,
     Hyprland's own hooks report each click (a ring where it is, in the area) and the command
     keys (Ctrl+C, pressed again: ×2); nothing of them is left when the recording ends. (A
     real keyboard can't type into the nested Hyprland: the keys come as the hook sends them,
     the hook itself is checked against a mock of Hyprland's Lua.)"""
     s.cli("close-all"); time.sleep(0.3)
     binds = lambda: sh("hyprctl", "binds").stdout
-    p = s.bg("record")
-    time.sleep(0.6)
+    p = record_panel(s)
     s.drag(300, 200, 1100, 650)
-    assert wait_for(lambda: record_hud(s)["phase"] == "ready", 3), record_hud(s)
+    assert wait_for(lambda: record_hud(s)["area"] == [300, 200, 800, 450], 3), record_hud(s)
     record_click(s, "record-clicks")
     assert wait_for(lambda: record_hud(s)["clicks"], 2), "Highlight clicks is on"
     record_click(s, "record-keys")
     assert wait_for(lambda: record_hud(s)["keys"], 2), "Show keystrokes is on"
     n = len(s.traces("record_hooks"))
-    record_click(s, "record-go")
+    record_click(s, "record-video")
     assert wait_for(lambda: record_hud(s)["phase"] == "recording", 5), record_hud(s)
     assert wait_for(lambda: len(s.traces("record_hooks")) > n, 3), "the hooks are in"
     sid = s.traces("record_hooks")[-1]["sid"]

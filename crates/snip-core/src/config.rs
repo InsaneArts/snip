@@ -181,7 +181,8 @@ pub struct Recording {
     /// REC-13: a GIF's frames per second and width (height follows)
     pub gif_fps: u32,
     pub gif_width: u32,
-    /// REC-02: the last kind chosen in the toolbar: "video" or "gif"
+    /// No longer used (D49: Record Video and Record GIF are two buttons);
+    /// kept so config files that have it still load
     pub kind: String,
     /// REC-08: the camera shown in the recording, by its name ("" none)
     pub camera: String,

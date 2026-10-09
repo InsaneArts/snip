@@ -5,23 +5,28 @@ import QtMultimedia
 import org.kde.layershell as LayerShell
 import Snip.Core
 
-// Screen recording (REC-01…05), CleanShot's: once the area is chosen, a frame
-// around it, the screen dimmed outside it (REC-04), and the toolbar beside
-// it: Video or GIF, the microphone, system audio, Record (Enter) and Cancel
-// (Esc). Then a 3-2-1 countdown (REC-03), and while it records, the controls:
-// stop with the time, pause, restart, discard (REC-05). The camera (REC-08) is
+// Screen recording (REC-01…05), CleanShot's (D49): Record Screen shows its
+// panel at once, over the whole screen: the size, Full screen and Select
+// area, the microphone, the computer's sound, the camera, clicks and keys,
+// then Record GIF (Alt+Enter) and Record Video (Enter). Drag anywhere to
+// record an area instead (its handles resize it, a drag inside moves it, the
+// screen is dimmed outside it, REC-04), Space for a window, or type its size.
+// Then a 3-2-1 countdown (REC-03), and while it records, the controls: stop
+// with the time, pause, restart, discard (REC-05). The camera (REC-08) is
 // a bubble inside the area, there to be recorded: dragged anywhere, before
 // and while recording; a click fills the area with it, another brings it back.
 // While recording it can also show a ring where the pointer clicks (REC-09)
 // and the command keys pressed (REC-10), from Hyprland's own hooks.
 //
 // gpu-screen-recorder records whatever is on screen in the area, Snip's own
-// layers included, so this layer never draws inside it: the frame and the
-// dimming keep a 2 px margin, and the countdown is gone before the first
-// frame. When the whole monitor is recorded the controls would be in the
-// video, so there are none: the Record key, `snip record stop` or the bar
-// stops it. A full-output layer that takes input only on the toolbar or the
-// controls.
+// layers included: once it records, this layer draws nothing inside the area
+// but what's meant to be in the video (the camera, clicks, keys); the frame
+// and the dimming keep a 2 px margin, and the panel and the countdown are
+// gone before the first frame. When the whole monitor is recorded the
+// controls would be in the video, so there are none: the Record key, `snip
+// record stop` or the bar stops it. While choosing, this full-output layer
+// takes the pointer and the keyboard; while recording, only the controls and
+// the camera take the pointer.
 Window {
     id: hud
     property var controller: null
@@ -57,6 +62,12 @@ Window {
     property bool comboShown: false
     property int ringsShown: 0                      // tests: rings drawn so far
     property string asking: ""                      // "restart" | "discard": the controls ask first
+    property size screenSize: Qt.size(0, 0)         // the output's, logical px
+    property var windows: []                        // [{x, y, w, h, title}] on this output, front-most first
+    property bool picking: false                    // Space: a window is chosen
+    property bool drawing: false                    // Select area: the next drag draws one
+    property int hoveredWindow: -1
+    property rect lastArea: Qt.rect(0, 0, 0, 0)     // what Full screen goes back to
 
     flags: Qt.FramelessWindowHint
     color: "transparent"
@@ -67,13 +78,20 @@ Window {
     LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorBottom
                                | LayerShell.Window.AnchorLeft | LayerShell.Window.AnchorRight
     LayerShell.Window.exclusionZone: -1
-    LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityNone
+    // the keyboard while choosing (Enter, Esc, Space, the size), none while recording
+    LayerShell.Window.keyboardInteractivity: phase === "ready" || phase === "countdown" ? LayerShell.Window.KeyboardInteractivityExclusive
+                                                                                       : LayerShell.Window.KeyboardInteractivityNone
 
     function open(s) {
         output = s.output
-        area = Qt.rect(s.x, s.y, s.w, s.h)
+        screenSize = Qt.size(s.ow || s.w, s.oh || s.h)
+        lastArea = Qt.rect(0, 0, 0, 0)
+        setArea(Qt.rect(s.x, s.y, s.w, s.h))
+        windows = s.windows || []
+        picking = false
+        drawing = false
+        hoveredWindow = -1
         scale = s.scale || 1
-        whole = !!s.whole
         gif = !!s.gif
         mics = s.mics || []
         mic = s.mic || ""
@@ -94,11 +112,12 @@ Window {
         combo = ""
         comboShown = false
         asking = ""
-        // `snip record area|fullscreen`: recording at once, no toolbar
+        // `snip record area|fullscreen`: recording at once, no panel
         phase = s.now ? "starting" : "ready"
         micsOpen = false
         elapsed = 0
         visible = true
+        keyboard.forceActiveFocus()
         Qt.callLater(fitInput)
     }
     function status(s) {
@@ -120,11 +139,94 @@ Window {
         visible = false
     }
     // REC-06: Snip's bar icon is red while it records
-    onPhaseChanged: Platform.setTrayRecording(["launching", "recording", "paused"].includes(phase))
-    function record() {
+    onPhaseChanged: {
+        Platform.setTrayRecording(["launching", "recording", "paused"].includes(phase))
+        Qt.callLater(fitInput)
+    }
+    // Record Video, or GIF: what's chosen is recorded
+    function record(asGif) {
         if (phase !== "ready") return
-        Engine.setSetting("recording.kind", JSON.stringify(gif ? "gif" : "video"))
-        Engine.recordStart(gif ? 1 : 0)
+        micsOpen = false
+        camerasOpen = false
+        picking = false
+        gif = asGif
+        Engine.recordStart(asGif ? 1 : 0, area.x, area.y, area.width, area.height)
+    }
+
+    // ---------------------------------------------------------------- the area (D49)
+    function setArea(r) {
+        area = Qt.rect(r.x, r.y, r.width, r.height)
+        whole = r.x <= 0 && r.y <= 0 && r.width >= screenSize.width && r.height >= screenSize.height
+        if (!whole) lastArea = area
+    }
+    function spanned(x0, y0, x1, y1) {
+        const cx = v => Math.max(0, Math.min(screenSize.width, v)), cy = v => Math.max(0, Math.min(screenSize.height, v))
+        const a = cx(Math.min(x0, x1)), b = cy(Math.min(y0, y1)), c = cx(Math.max(x0, x1)), d = cy(Math.max(y0, y1))
+        return Qt.rect(Math.round(a), Math.round(b), Math.round(c - a), Math.round(d - b))
+    }
+    function moved(r, dx, dy) {
+        return Qt.rect(Math.round(Math.max(0, Math.min(screenSize.width - r.width, r.x + dx))),
+                       Math.round(Math.max(0, Math.min(screenSize.height - r.height, r.y + dy))), r.width, r.height)
+    }
+    // a handle dragged: its edges move, at least 16 px apart
+    function resized(r, edge, dx, dy) {
+        let x1 = r.x, y1 = r.y, x2 = r.x + r.width, y2 = r.y + r.height
+        if (edge.includes("l")) x1 = Math.min(x2 - 16, Math.max(0, x1 + dx))
+        if (edge.includes("r")) x2 = Math.max(x1 + 16, Math.min(screenSize.width, x2 + dx))
+        if (edge.includes("t")) y1 = Math.min(y2 - 16, Math.max(0, y1 + dy))
+        if (edge.includes("b")) y2 = Math.max(y1 + 16, Math.min(screenSize.height, y2 + dy))
+        return Qt.rect(Math.round(x1), Math.round(y1), Math.round(x2 - x1), Math.round(y2 - y1))
+    }
+    function inArea(x, y) { return x >= area.x && y >= area.y && x < area.x + area.width && y < area.y + area.height }
+    function windowAt(x, y) {
+        for (let i = 0; i < windows.length; i++) {
+            const w = windows[i]
+            if (x >= w.x && y >= w.y && x < w.x + w.w && y < w.y + w.h) return i
+        }
+        return -1
+    }
+    // a typed size, around the area's centre
+    function setSize(w, h) {
+        w = Math.max(16, Math.min(screenSize.width, w))
+        h = Math.max(16, Math.min(screenSize.height, h))
+        const cx = area.x + area.width / 2, cy = area.y + area.height / 2
+        setArea(Qt.rect(Math.round(Math.max(0, Math.min(screenSize.width - w, cx - w / 2))),
+                        Math.round(Math.max(0, Math.min(screenSize.height - h, cy - h / 2))), w, h))
+    }
+    // Full screen, and back to the area there was
+    function toggleFull() {
+        if (!whole) return setArea(Qt.rect(0, 0, screenSize.width, screenSize.height))
+        const s = screenSize
+        setArea(lastArea.width > 0 ? lastArea : Qt.rect(Math.round(s.width * 0.2), Math.round(s.height * 0.2), Math.round(s.width * 0.6), Math.round(s.height * 0.6)))
+    }
+    function key(e) {
+        if (phase === "countdown") {
+            if (e.key === Qt.Key_Escape) { Engine.recordCancel(); e.accepted = true }
+            return
+        }
+        if (phase !== "ready") return
+        const step = e.modifiers & Qt.ShiftModifier ? 10 : 1
+        switch (e.key) {
+        case Qt.Key_Return:
+        case Qt.Key_Enter: record(e.modifiers & Qt.AltModifier ? true : gif); break
+        case Qt.Key_Escape:
+            if (micsOpen || camerasOpen) { micsOpen = false; camerasOpen = false }
+            else if (picking || drawing) { picking = false; drawing = false }
+            else Engine.recordCancel()
+            break
+        case Qt.Key_Space: picking = !picking; drawing = false; hoveredWindow = -1; break
+        case Qt.Key_Left: if (!whole) setArea(moved(area, -step, 0)); break
+        case Qt.Key_Right: if (!whole) setArea(moved(area, step, 0)); break
+        case Qt.Key_Up: if (!whole) setArea(moved(area, 0, -step)); break
+        case Qt.Key_Down: if (!whole) setArea(moved(area, 0, step)); break
+        default: return
+        }
+        e.accepted = true
+    }
+    Item {
+        id: keyboard
+        focus: true
+        Keys.onPressed: (e) => hud.key(e)
     }
     function setMic(id) {
         mic = id
@@ -222,10 +324,11 @@ Window {
         return m + ":" + String(s).padStart(2, "0")
     }
 
-    // only the toolbar (or the controls) take the pointer
+    // while choosing, all of it takes the pointer; while recording, only the
+    // controls and the camera
     function fitInput() {
+        if (phase === "ready") return Platform.setInputRects(hud, [Qt.rect(0, 0, width, height)])
         const r = []
-        if (toolbar.visible) r.push(Qt.rect(toolbar.x, toolbar.y, toolbar.width, toolbar.height))
         if (micList.visible) r.push(Qt.rect(micList.x, micList.y, micList.width, micList.height))
         if (cameraList.visible) r.push(Qt.rect(cameraList.x, cameraList.y, cameraList.width, cameraList.height))
         if (bubble.visible) r.push(Qt.rect(bubble.x, bubble.y, bubble.width, bubble.height))
@@ -264,7 +367,7 @@ Window {
     // ---------------------------------------------------------------- outside the area
     readonly property real margin: 2
     readonly property rect hole: Qt.rect(area.x - margin, area.y - margin, area.width + 2 * margin, area.height + 2 * margin)
-    readonly property bool showDim: dim && !whole && phase !== "closed"
+    readonly property bool showDim: dim && !whole && !picking && phase !== "closed"
     readonly property color shade: Qt.rgba(0, 0, 0, 0.42)
     Rectangle { visible: hud.showDim; x: 0; y: 0; width: hud.width; height: Math.max(0, hud.hole.y); color: hud.shade }
     Rectangle { visible: hud.showDim; x: 0; y: hud.hole.y + hud.hole.height; width: hud.width; height: Math.max(0, hud.height - y); color: hud.shade }
@@ -272,7 +375,7 @@ Window {
     Rectangle { visible: hud.showDim; x: hud.hole.x + hud.hole.width; y: hud.hole.y; width: Math.max(0, hud.width - x); height: hud.hole.height; color: hud.shade }
     // the frame, just outside the area (red while recording)
     Rectangle {
-        visible: !hud.whole && hud.phase !== "closed"
+        visible: !hud.whole && !hud.picking && hud.phase !== "closed"
         x: hud.hole.x - 2
         y: hud.hole.y - 2
         width: hud.hole.width + 4
@@ -281,6 +384,99 @@ Window {
         radius: 3
         border.width: 2
         border.color: hud.phase === "recording" ? Theme.danger : hud.phase === "paused" ? Theme.warning : Theme.accent
+    }
+
+    // ---------------------------------------------------------------- choosing what to record (D49)
+    // a drag outside the area draws a new one, inside it moves it; Space: a window
+    MouseArea {
+        id: selector
+        anchors.fill: parent
+        enabled: hud.phase === "ready"
+        hoverEnabled: true
+        property real sx: 0
+        property real sy: 0
+        property rect from: Qt.rect(0, 0, 0, 0)
+        property string mode: ""
+        readonly property bool overArea: !hud.whole && !hud.drawing && hud.inArea(mouseX, mouseY)
+        cursorShape: hud.picking ? Qt.PointingHandCursor : overArea ? Qt.SizeAllCursor : Qt.CrossCursor
+        onPressed: (m) => {
+            hud.micsOpen = false
+            hud.camerasOpen = false
+            keyboard.forceActiveFocus()
+            if (hud.picking) return
+            sx = m.x
+            sy = m.y
+            from = hud.area
+            mode = overArea ? "move" : "draw"
+        }
+        onPositionChanged: (m) => {
+            if (hud.picking) { hud.hoveredWindow = hud.windowAt(m.x, m.y); return }
+            if (!pressed || mode === "") return
+            hud.setArea(mode === "move" ? hud.moved(from, m.x - sx, m.y - sy) : hud.spanned(sx, sy, m.x, m.y))
+        }
+        onReleased: (m) => {
+            if (hud.picking) {
+                const i = hud.windowAt(m.x, m.y)
+                if (i < 0) return
+                const w = hud.windows[i]
+                hud.picking = false
+                hud.setArea(hud.spanned(w.x, w.y, w.x + w.w, w.y + w.h))
+                return
+            }
+            if (mode === "draw") {
+                const r = hud.spanned(sx, sy, m.x, m.y)
+                // a click draws nothing
+                if (r.width >= 16 && r.height >= 16) { hud.drawing = false; hud.setArea(r) }
+                else hud.setArea(from)
+            }
+            mode = ""
+        }
+    }
+    // the window under the pointer, in window mode
+    Rectangle {
+        objectName: "record-window"
+        readonly property var w: hud.hoveredWindow >= 0 ? hud.windows[hud.hoveredWindow] : null
+        visible: hud.phase === "ready" && hud.picking && w !== null
+        x: w ? w.x : 0
+        y: w ? w.y : 0
+        width: w ? w.w : 0
+        height: w ? w.h : 0
+        color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.14)
+        border.width: 2
+        border.color: Theme.accent
+    }
+    // the handles, on the frame: the area's corners and edges resize it
+    Repeater {
+        model: ["tl", "t", "tr", "r", "br", "b", "bl", "l"]
+        Rectangle {
+            required property string modelData
+            objectName: "record-handle-" + modelData
+            visible: hud.phase === "ready" && !hud.whole && !hud.picking
+            width: 10
+            height: 10
+            radius: 5
+            color: "white"
+            border.width: 2
+            border.color: Theme.accent
+            readonly property real out: hud.margin + 1
+            x: (modelData.includes("l") ? hud.area.x - out : modelData.includes("r") ? hud.area.x + hud.area.width + out : hud.area.x + hud.area.width / 2) - width / 2
+            y: (modelData.includes("t") ? hud.area.y - out : modelData.includes("b") ? hud.area.y + hud.area.height + out : hud.area.y + hud.area.height / 2) - height / 2
+            MouseArea {
+                anchors.fill: parent
+                anchors.margins: -6
+                property point start
+                property rect from: Qt.rect(0, 0, 0, 0)
+                cursorShape: parent.modelData === "t" || parent.modelData === "b" ? Qt.SizeVerCursor
+                           : parent.modelData === "l" || parent.modelData === "r" ? Qt.SizeHorCursor
+                           : parent.modelData === "tl" || parent.modelData === "br" ? Qt.SizeFDiagCursor : Qt.SizeBDiagCursor
+                onPressed: (m) => { from = hud.area; start = mapToItem(hud.contentItem, m.x, m.y) }
+                onPositionChanged: (m) => {
+                    if (!pressed) return
+                    const p = mapToItem(hud.contentItem, m.x, m.y)
+                    hud.setArea(hud.resized(from, parent.modelData, p.x - start.x, p.y - start.y))
+                }
+            }
+        }
     }
 
     // where a bar goes: under the area, else over it, else inside its bottom
@@ -400,167 +596,229 @@ Window {
         }
     }
 
-    // ---------------------------------------------------------------- the toolbar (REC-02)
+    // ---------------------------------------------------------------- the panel (REC-02), CleanShot's
+    // what to do, in the screen's (or the area's) middle
     Rectangle {
-        id: toolbar
-        objectName: "record-toolbar"
-        visible: hud.phase === "ready"
-        width: tools.implicitWidth + 16
-        height: 44
-        radius: 22
-        x: hud.placeX(width)
-        y: hud.placeY(height)
+        id: hint
+        objectName: "record-hint"
+        visible: hud.phase === "ready" && (hud.whole || hud.picking || hud.drawing) && !selector.pressed
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: 24
+        height: 32
+        width: hintText.implicitWidth + 28
+        radius: 16
         color: Theme.pillBg
         border.width: 1
         border.color: Theme.hairline
-        onXChanged: hud.fitInput()
-        onYChanged: hud.fitInput()
-        onWidthChanged: hud.fitInput()
-        onVisibleChanged: hud.fitInput()
-        layer.enabled: true
-        layer.effect: MultiEffect { shadowEnabled: true; shadowColor: Theme.shadow; shadowBlur: 0.6; shadowVerticalOffset: 6 }
-
-        Row {
-            id: tools
+        Text {
+            id: hintText
             anchors.centerIn: parent
-            spacing: 6
-            // Video | GIF
+            text: hud.picking ? "Click a window to record it · Space: back"
+                : hud.drawing ? "Drag to choose the area to record"
+                : "Drag to record an area · Space: a window · Enter: the whole screen"
+            color: Theme.text
+            font.family: Theme.fontUi
+            font.pixelSize: 13
+            font.weight: Font.DemiBold
+        }
+    }
+    readonly property color cardColor: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.96)
+    Item {
+        id: panel
+        objectName: "record-panel"
+        visible: hud.phase === "ready" && !hud.picking && !selector.pressed
+        width: 268
+        height: recordCard.y + recordCard.height
+        // in the area if it fits, else beside it
+        readonly property bool inside: hud.area.width >= width + 40 && hud.area.height >= height + 40
+        x: inside ? Math.round(hud.area.x + hud.area.width / 2 - width / 2) : hud.placeX(width)
+        y: inside ? Math.round(hud.area.y + hud.area.height / 2 - height / 2) : hud.placeY(height)
+        RectangularShadow { anchors.fill: setupCard; radius: setupCard.radius; offset.y: 8; blur: 28; color: Theme.shadow }
+        RectangularShadow { anchors.fill: recordCard; radius: recordCard.radius; offset.y: 8; blur: 28; color: Theme.shadow }
+
+        // the size, Full screen, Select area / the sources and what's shown
+        Rectangle {
+            id: setupCard
+            width: parent.width
+            height: 89
+            radius: 14
+            color: hud.cardColor
+            border.width: 1
+            border.color: Theme.hairline
+            // a click on the panel isn't a drag on the screen
+            MouseArea { anchors.fill: parent; cursorShape: Qt.ArrowCursor }
+            Rectangle { y: 44; width: parent.width; height: 1; color: Theme.hairline }
+            Rectangle { x: 44; width: 1; height: 44; color: Theme.hairline }
+            Rectangle { x: parent.width - 45; width: 1; height: 44; color: Theme.hairline }
+            PanelCell {
+                objectName: "record-settings"
+                toggle: false
+                icon: "sliders"
+                tip: "Recording settings"
+                onTapped: { Engine.recordCancel(); hud.controller.openSettings("recording") }
+            }
             Row {
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 2
+                x: 45
+                width: setupCard.width - 90
+                height: 44
+                spacing: 6
+                leftPadding: (width - implicitWidth) / 2
                 Repeater {
-                    model: [[false, "Video", "video"], [true, "GIF", "image"]]
-                    Rectangle {
-                        required property var modelData
-                        readonly property bool on: hud.gif === modelData[0]
-                        objectName: modelData[0] ? "record-kind-gif" : "record-kind-video"
-                        width: kindRow.implicitWidth + 20
-                        height: 30
-                        radius: 15
-                        color: on ? Theme.accent : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, kindHover.hovered ? 0.12 : 0.06)
-                        Row {
-                            id: kindRow
-                            anchors.centerIn: parent
-                            spacing: 6
-                            Icon { anchors.verticalCenter: parent.verticalCenter; name: parent.parent.modelData[2]; size: 14; color: parent.parent.on ? Theme.onAccent : Theme.text }
-                            Text {
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: parent.parent.modelData[1]
-                                color: parent.parent.on ? Theme.onAccent : Theme.text
+                    model: ["w", "h"]
+                    Row {
+                        id: sizeRow
+                        required property string modelData
+                        required property int index
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 6
+                        Text { visible: sizeRow.index === 1; anchors.verticalCenter: parent.verticalCenter; text: "×"; color: Theme.textSecondary; font.family: Theme.fontUi; font.pixelSize: 13 }
+                        Rectangle {
+                            width: 52
+                            height: 26
+                            radius: 6
+                            color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
+                            TextInput {
+                                objectName: "record-" + sizeRow.modelData
+                                anchors.fill: parent
+                                horizontalAlignment: TextInput.AlignHCenter
+                                verticalAlignment: TextInput.AlignVCenter
+                                readonly property int px: Math.round(sizeRow.modelData === "w" ? hud.area.width : hud.area.height)
+                                text: px
+                                validator: IntValidator { bottom: 16; top: 99999 }
+                                color: Theme.text
+                                selectionColor: Theme.accent
+                                selectedTextColor: Theme.onAccent
                                 font.family: Theme.fontUi
-                                font.pixelSize: 12
-                                font.weight: Font.DemiBold
+                                font.pixelSize: 13
+                                font.features: { "tnum": 1 }
+                                selectByMouse: true
+                                onAccepted: {
+                                    const n = Number(text)
+                                    if (sizeRow.modelData === "w") hud.setSize(n, Math.round(hud.area.height))
+                                    else hud.setSize(Math.round(hud.area.width), n)
+                                    keyboard.forceActiveFocus()
+                                }
+                                onActiveFocusChanged: if (!activeFocus) text = Qt.binding(() => px)
+                                Keys.onEscapePressed: keyboard.forceActiveFocus()
                             }
                         }
-                        HoverHandler { id: kindHover; cursorShape: Qt.PointingHandCursor }
-                        TapHandler { onTapped: hud.gif = parent.modelData[0] }
                     }
                 }
-            }
-            Rectangle { width: 1; height: 22; anchors.verticalCenter: parent.verticalCenter; color: Theme.hairline }
-            // the microphone (a GIF has no sound)
-            Rectangle {
-                objectName: "record-mic"
-                anchors.verticalCenter: parent.verticalCenter
-                width: micRow.implicitWidth + 20
-                height: 30
-                radius: 15
-                opacity: hud.gif ? 0.4 : 1
-                color: hud.micMuted && !hud.gif ? Qt.rgba(Theme.warning.r, Theme.warning.g, Theme.warning.b, 0.3)
-                     : hud.mic !== "" && !hud.gif ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22)
-                     : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, micHover.hovered ? 0.12 : 0.06)
-                Row {
-                    id: micRow
-                    anchors.centerIn: parent
-                    spacing: 6
-                    Icon { anchors.verticalCenter: parent.verticalCenter; name: "mic"; size: 14; color: Theme.text }
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: Math.min(implicitWidth, 160)
-                        elide: Text.ElideRight
-                        text: hud.micLabel
-                        color: Theme.text
-                        font.family: Theme.fontUi
-                        font.pixelSize: 12
-                    }
-                }
-                HoverHandler { id: micHover; cursorShape: Qt.PointingHandCursor }
-                TapHandler { enabled: !hud.gif; onTapped: hud.micsOpen = !hud.micsOpen }
-            }
-            // system audio
-            Rectangle {
-                objectName: "record-system"
-                anchors.verticalCenter: parent.verticalCenter
-                width: 30
-                height: 30
-                radius: 15
-                opacity: hud.gif ? 0.4 : 1
-                color: hud.system && !hud.gif ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22)
-                                              : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, sysHover.hovered ? 0.12 : 0.06)
-                Icon { anchors.centerIn: parent; name: "volume"; size: 15; color: hud.system && !hud.gif ? Theme.accent : Theme.textSecondary }
-                HoverHandler { id: sysHover; cursorShape: Qt.PointingHandCursor }
-                TapHandler { enabled: !hud.gif; onTapped: hud.setSystem(!hud.system) }
-                Tip { text: hud.system ? "Recording what the computer plays" : "Record what the computer plays" }
-            }
-            // the camera (REC-08)
-            Rectangle {
-                objectName: "record-camera-button"
-                anchors.verticalCenter: parent.verticalCenter
-                width: camRow.implicitWidth + 20
-                height: 30
-                radius: 15
-                color: hud.cameraEntry ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22)
-                                       : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, camHover.hovered ? 0.12 : 0.06)
-                Row {
-                    id: camRow
-                    anchors.centerIn: parent
-                    spacing: 6
-                    Icon { anchors.verticalCenter: parent.verticalCenter; name: "webcam"; size: 14; color: Theme.text }
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: Math.min(implicitWidth, 140)
-                        elide: Text.ElideRight
-                        text: hud.cameraEntry ? hud.cameraEntry.name : "No camera"
-                        color: Theme.text
-                        font.family: Theme.fontUi
-                        font.pixelSize: 12
-                    }
-                }
-                HoverHandler { id: camHover; cursorShape: Qt.PointingHandCursor }
-                TapHandler { onTapped: hud.camerasOpen = !hud.camerasOpen }
-            }
-            // clicks and keys (REC-09/10)
-            Repeater {
-                model: [["highlight_clicks", "pointer", "Highlight clicks", "record-clicks"], ["show_keystrokes", "keyboard", "Show keystrokes", "record-keys"]]
-                Rectangle {
-                    required property var modelData
-                    readonly property bool on: modelData[0] === "highlight_clicks" ? hud.clicks : hud.keys
-                    objectName: modelData[3]
+                PanelCell {
+                    objectName: "record-full"
                     anchors.verticalCenter: parent.verticalCenter
-                    width: 30
-                    height: 30
-                    radius: 15
-                    color: on ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22)
-                              : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, showHover.hovered ? 0.12 : 0.06)
-                    Icon { anchors.centerIn: parent; name: parent.modelData[1]; size: 15; color: parent.on ? Theme.accent : Theme.textSecondary }
-                    HoverHandler { id: showHover; cursorShape: Qt.PointingHandCursor }
-                    TapHandler { onTapped: hud.setShown(parent.modelData[0], !parent.on) }
-                    Tip { text: parent.modelData[2] + (parent.modelData[0] === "show_keystrokes" ? " (command keys only)" : "") }
+                    width: 26
+                    height: 26
+                    inset: 0
+                    toggle: false
+                    icon: "expand"
+                    iconSize: 14
+                    iconColor: hud.whole ? Theme.accent : Theme.textSecondary
+                    tint: hud.whole ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22) : "transparent"
+                    tip: "Full screen"
+                    onTapped: hud.toggleFull()
                 }
             }
-            Rectangle { width: 1; height: 22; anchors.verticalCenter: parent.verticalCenter; color: Theme.hairline }
-            TextButton { objectName: "record-cancel"; anchors.verticalCenter: parent.verticalCenter; text: "Cancel"; tip: "Esc"; onClicked: Engine.recordCancel() }
-            TextButton {
-                objectName: "record-go"
-                anchors.verticalCenter: parent.verticalCenter
-                primary: true
-                text: hud.gif ? "Record GIF" : "Record"
-                tip: "Enter (a GIF: Alt+Enter)"
-                onClicked: hud.record()
+            PanelCell {
+                objectName: "record-crop"
+                x: setupCard.width - 44
+                on: hud.drawing
+                icon: "crop"
+                tip: "Select an area"
+                onTapped: { hud.drawing = !hud.drawing; hud.picking = false }
+            }
+            Row {
+                y: 45
+                Repeater {
+                    // [name, icon, tip, on]
+                    model: [["record-mic", "mic", hud.micMuted ? "The microphone is muted" : hud.micLabel, hud.mic !== "" && !hud.gif],
+                            ["record-system", "volume", "Record what the computer plays", hud.system && !hud.gif],
+                            ["record-camera-button", "webcam", hud.cameraEntry ? hud.cameraEntry.name : "No camera", hud.cameraEntry !== null],
+                            ["record-clicks", "click", "Highlight clicks", hud.clicks],
+                            ["record-keys", "command", "Show keystrokes (command keys only)", hud.keys]]
+                    PanelCell {
+                        required property var modelData
+                        objectName: modelData[0]
+                        width: setupCard.width / 5
+                        icon: modelData[1]
+                        tip: modelData[2]
+                        on: modelData[3]
+                        // a GIF has no sound
+                        opacity: hud.gif && (modelData[0] === "record-mic" || modelData[0] === "record-system") ? 0.4 : 1
+                        tint: modelData[0] === "record-mic" && hud.micMuted && !hud.gif ? Qt.rgba(Theme.warning.r, Theme.warning.g, Theme.warning.b, 0.3) : "transparent"
+                        onTapped: {
+                            switch (modelData[0]) {
+                            case "record-mic": if (!hud.gif) hud.micsOpen = !hud.micsOpen; break
+                            case "record-system": if (!hud.gif) hud.setSystem(!hud.system); break
+                            case "record-camera-button": hud.camerasOpen = !hud.camerasOpen; break
+                            case "record-clicks": hud.setShown("highlight_clicks", !hud.clicks); break
+                            case "record-keys": hud.setShown("show_keystrokes", !hud.keys); break
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Record GIF / Record Video
+        Rectangle {
+            id: recordCard
+            y: setupCard.height + 8
+            width: parent.width
+            height: 89
+            radius: 14
+            color: hud.cardColor
+            border.width: 1
+            border.color: Theme.hairline
+            MouseArea { anchors.fill: parent; cursorShape: Qt.ArrowCursor }
+            Rectangle { y: 44; x: 12; width: parent.width - 24; height: 1; color: Theme.hairline }
+            Repeater {
+                model: [["record-gif", true, "Record GIF", "Alt ↵"], ["record-video", false, "Record Video", "↵"]]
+                Item {
+                    id: recRow
+                    required property var modelData
+                    required property int index
+                    objectName: modelData[0]
+                    y: index * 45
+                    width: recordCard.width
+                    height: 44
+                    Rectangle { anchors.fill: parent; anchors.margins: 4; radius: 10; color: recHover.hovered ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08) : "transparent" }
+                    Rectangle {
+                        visible: recRow.modelData[1]
+                        x: 16
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 30
+                        height: 18
+                        radius: 4
+                        color: Theme.text
+                        Text { anchors.centerIn: parent; text: "GIF"; color: Theme.surface; font.family: Theme.fontUi; font.pixelSize: 10; font.weight: Font.Bold }
+                    }
+                    Icon { visible: !recRow.modelData[1]; x: 21; anchors.verticalCenter: parent.verticalCenter; name: "video"; size: 20; color: Theme.text }
+                    Text {
+                        x: 58
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: recRow.modelData[2]
+                        color: Theme.text
+                        font.family: Theme.fontUi
+                        font.pixelSize: 15
+                        font.weight: Font.DemiBold
+                    }
+                    Text {
+                        anchors.right: parent.right
+                        anchors.rightMargin: 16
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: recRow.modelData[3]
+                        color: Theme.textSecondary
+                        font.family: Theme.fontUi
+                        font.pixelSize: 13
+                    }
+                    HoverHandler { id: recHover; cursorShape: Qt.PointingHandCursor }
+                    TapHandler { onTapped: hud.record(recRow.modelData[1]) }
+                }
             }
         }
     }
-    // the microphones, over (or under) the toolbar
+    // the microphones, under (or over) the panel
     Rectangle {
         id: micList
         objectName: "record-mics"
@@ -568,13 +826,14 @@ Window {
         width: 280
         height: micCol.implicitHeight + 12
         radius: Math.min(Theme.radius, 12)
-        x: Math.max(8, Math.min(hud.width - width - 8, toolbar.x))
-        y: toolbar.y - height - 8 >= 8 ? toolbar.y - height - 8 : toolbar.y + toolbar.height + 8
+        x: Math.max(8, Math.min(hud.width - width - 8, panel.x + panel.width / 2 - width / 2))
+        y: panel.y + panel.height + 8 + height <= hud.height - 8 ? panel.y + panel.height + 8 : Math.max(8, panel.y - height - 8)
         color: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.98)
         border.width: 1
         border.color: Theme.hairline
         onVisibleChanged: hud.fitInput()
         onHeightChanged: hud.fitInput()
+        MouseArea { anchors.fill: parent; cursorShape: Qt.ArrowCursor }
         Column {
             id: micCol
             x: 6
@@ -616,13 +875,14 @@ Window {
         width: 330
         height: camCol.implicitHeight + 12
         radius: Math.min(Theme.radius, 12)
-        x: Math.max(8, Math.min(hud.width - width - 8, toolbar.x + toolbar.width - width))
-        y: toolbar.y - height - 8 >= 8 ? toolbar.y - height - 8 : toolbar.y + toolbar.height + 8
+        x: Math.max(8, Math.min(hud.width - width - 8, panel.x + panel.width / 2 - width / 2))
+        y: panel.y + panel.height + 8 + height <= hud.height - 8 ? panel.y + panel.height + 8 : Math.max(8, panel.y - height - 8)
         color: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.98)
         border.width: 1
         border.color: Theme.hairline
         onVisibleChanged: hud.fitInput()
         onHeightChanged: hud.fitInput()
+        MouseArea { anchors.fill: parent; cursorShape: Qt.ArrowCursor }
         Column {
             id: camCol
             x: 6
@@ -840,10 +1100,12 @@ Window {
             Engine.log("record_where", JSON.stringify({ name: a[1], x: p ? p.x : -1, y: p ? p.y : -1 }).slice(1, -1))
             break
         }
+        case "keys": Platform.sendKeys(hud, a.slice(1).join(" ")); break
         case "state":
             Engine.log("record_hud", JSON.stringify({ open: visible, phase: phase, gif: gif, mic: mic, system: system, whole: whole,
                                                     time: hud.clock(elapsed), area: [area.x, area.y, area.width, area.height],
-                                                    toolbar: toolbar.visible ? [toolbar.x, toolbar.y, toolbar.width, toolbar.height] : null,
+                                                    panel: panel.visible ? [panel.x, panel.y, panel.width, panel.height] : null,
+                                                    picking: picking, drawing: drawing, windows: windows.length, hint: hint.visible ? hintText.text : "",
                                                     controls: controls.visible ? [controls.x, controls.y, controls.width, controls.height] : null,
                                                     camera: bubble.visible ? [bubble.x, bubble.y, bubble.width, bubble.height] : null,
                                                     cameraName: camera, cameraShape: cameraShape, cameraSize: cameraSize, cameraMirror: cameraMirror,
