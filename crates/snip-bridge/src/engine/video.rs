@@ -7,7 +7,8 @@ use std::time::Instant;
 
 use serde_json::{json, Value};
 use snip_core::history::Media;
-use snip_core::media::{self, Edit};
+use snip_core::encode;
+use snip_core::media::{self, Backdrop, Edit};
 use snip_core::store::{CaptureMeta, Store};
 use snip_core::trace::{self, js};
 use snip_core::paths;
@@ -33,7 +34,8 @@ impl Inner {
                 "id": id, "path": rec.source, "poster": Store::poster(&rec), "title": rec.title.clone().unwrap_or_else(|| "Recording".into()),
                 "duration": p.duration_ms, "fps": if p.fps > 0.0 { p.fps } else { 30.0 }, "width": p.width, "height": p.height,
                 "tracks": p.audio_tracks, "bytes": rec.source.metadata().map_or(0, |m| m.len()),
-                "output": me.cursor_output(),
+                // pixels per point: a background's sizes are in points
+                "scale": rec.scale, "output": me.cursor_output(),
             })
             .to_string();
             trace::trace("video_open", &format!("\"id\":\"{id}\",\"tracks\":{}", p.audio_tracks));
@@ -48,8 +50,10 @@ impl Inner {
     }
 
     /// Export what the editor kept ({keep: [[a, b], …] s, tracks: [volume…],
-    /// mono, height, quality, gif: {fps, width} | null}): `replace` the
-    /// recording, else a new capture with its card.
+    /// mono, height, quality, gif: {fps, width} | null, background: {token,
+    /// video: [x, y, w, h]} | null}): `replace` the recording, else a new
+    /// capture with its card. A background (D50) is the editor's grab
+    /// `token`: around the video, with a hole where it shows.
     pub fn video_export(self: &Arc<Self>, id: &str, spec: &str, replace: bool) {
         let (me, id) = (self.clone(), id.to_string());
         let spec: Value = serde_json::from_str(spec).unwrap_or(Value::Null);
@@ -64,6 +68,24 @@ impl Inner {
                 return status(json!({ "done": true, "ok": false, "error": "nothing is kept" }));
             }
             let gif = spec["gif"].as_object().map(|g| (g.get("fps").and_then(Value::as_u64).unwrap_or(15) as u32, g.get("width").and_then(Value::as_u64).unwrap_or(800) as u32));
+            let dir = paths::runtime_dir().join("export");
+            let _ = paths::ensure_private_dir(&dir);
+            let stamp = chrono::Local::now().format("%H%M%S%3f").to_string();
+            let backdrop = match spec["background"].as_object() {
+                None => None,
+                Some(b) => {
+                    let Some(r) = b.get("token").and_then(Value::as_u64).and_then(|t| crate::edits::take(t as u32)) else {
+                        return status(json!({ "done": true, "ok": false, "error": "the background wasn't drawn" }));
+                    };
+                    let cover = dir.join(format!("{id}-{stamp}-cover.png"));
+                    if let Err(e) = std::fs::write(&cover, encode::encode_png(&r.rgba, r.width, r.height, true)) {
+                        return status(json!({ "done": true, "ok": false, "error": e.to_string() }));
+                    }
+                    let at = |i: usize| b.get("video").and_then(|v| v[i].as_u64()).unwrap_or(0) as u32;
+                    Some(Backdrop { cover, size: (r.width, r.height), video: (at(0), at(1), at(2), at(3)) })
+                }
+            };
+            let cover = backdrop.as_ref().map(|b| b.cover.clone());
             let mut edit = Edit {
                 keep,
                 tracks: spec["tracks"].as_array().map(|a| a.iter().map(|v| v.as_f64().unwrap_or(1.0)).collect()).unwrap_or_default(),
@@ -73,10 +95,9 @@ impl Inner {
                 gif,
                 encoder: "h264_nvenc".into(),
                 fps: media::probe(&rec.source).map_or(0.0, |p| p.fps),
+                backdrop,
             };
-            let dir = paths::runtime_dir().join("export");
-            let _ = paths::ensure_private_dir(&dir);
-            let out = dir.join(format!("{id}-{}.{}", chrono::Local::now().format("%H%M%S%3f"), if gif.is_some() { "gif" } else { "mp4" }));
+            let out = dir.join(format!("{id}-{stamp}.{}", if gif.is_some() { "gif" } else { "mp4" }));
             let t0 = Instant::now();
             let mut last = Instant::now();
             let mut report = |f: f64| {
@@ -90,6 +111,9 @@ impl Inner {
                 // no NVENC (or it refused): x264 on the CPU
                 edit.encoder = "libx264".into();
                 done = media::export(&rec.source, &out, &edit, &mut report);
+            }
+            if let Some(c) = cover {
+                let _ = std::fs::remove_file(c);
             }
             if let Err(e) = done {
                 let _ = std::fs::remove_file(&out);

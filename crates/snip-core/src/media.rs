@@ -3,7 +3,7 @@
 //! libav* out of Snip's binary (architecture §1, "GIF / video post").
 
 use std::io::{Read, Seek, SeekFrom};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 /// What `probe` reads from a video or GIF.
@@ -89,6 +89,41 @@ pub struct Edit {
     pub encoder: String,
     /// the video's frame rate: cuts land on its frames
     pub fps: f64,
+    /// a background around it (D50), or none
+    pub backdrop: Option<Backdrop>,
+}
+
+/// A background around the video (D50): an image the size of the result,
+/// the background with its shadow and inset, and a hole where the video
+/// shows through, its corners rounded. The editor draws it as the Background
+/// tool draws a screenshot's.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Backdrop {
+    pub cover: PathBuf,
+    /// the result's size
+    pub size: (u32, u32),
+    /// where the video goes in it: x, y, width, height
+    pub video: (u32, u32, u32, u32),
+}
+
+/// `[vc]` in its background, as `[vb]`: padded to the background's size
+/// (in 4:4:4, so the hole is exact to the pixel), the cover (input 1) on
+/// top. The size is made even, as 4:2:0 needs.
+fn backdrop_graph(b: &Backdrop) -> String {
+    let (w, h) = (b.size.0 & !1, b.size.1 & !1);
+    let (vw, vh) = (b.video.2.clamp(2, w), b.video.3.clamp(2, h));
+    let (x, y) = (b.video.0.min(w - vw), b.video.1.min(h - vh));
+    format!(";[vc]scale={vw}:{vh}:flags=lanczos,format=yuv444p,pad={w}:{h}:{x}:{y}[vp];[vp][1:v]overlay=0:0:format=yuv444[vb]")
+}
+
+/// The joined video's label: `vb` in a background, else `vc`.
+fn video_label(edit: &Edit) -> &'static str {
+    if edit.backdrop.is_some() { "vb" } else { "vc" }
+}
+
+/// The inputs after the video: the cover, if any.
+fn cover_input(edit: &Edit) -> Vec<String> {
+    edit.backdrop.as_ref().map_or(vec![], |b| vec!["-i".into(), b.cover.to_string_lossy().into_owned()])
 }
 
 /// The parts kept, joined into `[vc]` (and `[ac]`, the tracks mixed, when
@@ -124,18 +159,22 @@ fn cut_graph(edit: &Edit, sound: bool) -> String {
     g.join(";")
 }
 
-/// A GIF's frames from `[vc]`: its rate, at most `width` wide (never wider).
-fn gif_frames(fps: u32, width: u32) -> String {
-    format!("[vc]fps={fps},scale='min({width},iw)':-1:flags=lanczos")
+/// A GIF's frames from the joined video: its rate, at most `width` wide
+/// (never wider).
+fn gif_frames(edit: &Edit, fps: u32, width: u32) -> String {
+    format!("[{}]fps={fps},scale='min({width},iw)':-1:flags=lanczos", video_label(edit))
 }
 
 /// ffmpeg's arguments for a GIF's palette (the first of its two passes: in
 /// one, ffmpeg held every frame in memory, 1.5 GB for a minute of 1080p).
 fn palette_args(src: &Path, palette: &Path, edit: &Edit) -> Vec<String> {
     let (fps, width) = edit.gif.unwrap_or((15, 800));
-    let graph = format!("{};{},palettegen=stats_mode=diff[p]", cut_graph(edit, false), gif_frames(fps, width));
+    let back = edit.backdrop.as_ref().map_or(String::new(), backdrop_graph);
+    let graph = format!("{}{back};{},palettegen=stats_mode=diff[p]", cut_graph(edit, false), gif_frames(edit, fps, width));
     let mut a: Vec<String> = ["-v", "error", "-y", "-i"].map(String::from).to_vec();
-    a.extend([src.to_string_lossy().into_owned(), "-filter_complex".into(), graph, "-map".into(), "[p]".into(), "-update".into(), "1".into()]);
+    a.push(src.to_string_lossy().into_owned());
+    a.extend(cover_input(edit));
+    a.extend(["-filter_complex".into(), graph, "-map".into(), "[p]".into(), "-update".into(), "1".into()]);
     a.push(palette.to_string_lossy().into_owned());
     a
 }
@@ -144,19 +183,22 @@ fn palette_args(src: &Path, palette: &Path, edit: &Edit) -> Vec<String> {
 /// stdout. A GIF takes the palette `palette_args` made, beside `dst`.
 pub fn export_args(src: &Path, dst: &Path, edit: &Edit) -> Vec<String> {
     let sound = edit.gif.is_none() && edit.tracks.iter().any(|&v| v > 0.0);
+    let back = edit.backdrop.as_ref().map_or(String::new(), backdrop_graph);
     let graph = match edit.gif {
         Some((fps, width)) => format!(
-            "{};{}[x];[x][1:v]paletteuse=dither=sierra2_4a:diff_mode=rectangle[v]",
+            "{}{back};{}[x];[x][{}:v]paletteuse=dither=sierra2_4a:diff_mode=rectangle[v]",
             cut_graph(edit, false),
-            gif_frames(fps, width)
+            gif_frames(edit, fps, width),
+            1 + edit.backdrop.is_some() as usize
         ),
         None => {
             let scale = edit.height.map_or(String::new(), |h| format!(",scale=-2:'min({h},ih)':flags=lanczos"));
-            format!("{};[vc]format=yuv420p{scale}[v]", cut_graph(edit, sound))
+            format!("{}{back};[{}]format=yuv420p{scale}[v]", cut_graph(edit, sound), video_label(edit))
         }
     };
     let mut a: Vec<String> = ["-v", "error", "-nostats", "-progress", "pipe:1", "-y", "-i"].map(String::from).to_vec();
     a.push(src.to_string_lossy().into_owned());
+    a.extend(cover_input(edit));
     if edit.gif.is_some() {
         a.extend(["-i".into(), palette_for(dst).to_string_lossy().into_owned()]);
     }
@@ -251,7 +293,7 @@ pub fn thumbnails(src: &Path, duration_ms: u64, n: u32, height: u32, dir: &Path)
 /// "GIF / video post").
 pub fn gif(src: &Path, dst: &Path, fps: u32, width: u32) -> Result<(), String> {
     let p = probe(src)?;
-    let whole = Edit { keep: vec![(0.0, p.duration_ms as f64 / 1000.0)], tracks: vec![], mono: false, height: None, quality: 0, gif: Some((fps, width)), encoder: String::new(), fps: p.fps };
+    let whole = Edit { keep: vec![(0.0, p.duration_ms as f64 / 1000.0)], tracks: vec![], mono: false, height: None, quality: 0, gif: Some((fps, width)), encoder: String::new(), fps: p.fps, backdrop: None };
     export(src, dst, &whole, |_| {})
 }
 
@@ -316,7 +358,7 @@ mod tests {
     use super::*;
 
     fn edit(keep: Vec<(f64, f64)>, tracks: Vec<f64>) -> Edit {
-        Edit { keep, tracks, mono: false, height: None, quality: 23, gif: None, encoder: "libx264".into(), fps: 30.0 }
+        Edit { keep, tracks, mono: false, height: None, quality: 23, gif: None, encoder: "libx264".into(), fps: 30.0, backdrop: None }
     }
 
     #[test]
@@ -346,6 +388,75 @@ mod tests {
         let a = export_args(Path::new("in.mp4"), Path::new("/x/out.gif"), &g);
         assert!(a.windows(2).any(|w| w == ["-i", "/x/out.palette.png"]) && !a.iter().any(|x| x == "[ac]"), "{a:?}");
         assert!(graph_of(&a).ends_with("[vc]fps=15,scale='min(800,iw)':-1:flags=lanczos[x];[x][1:v]paletteuse=dither=sierra2_4a:diff_mode=rectangle[v]"), "{a:?}");
+    }
+
+    #[test]
+    fn export_puts_the_video_in_its_background() {
+        let graph_of = |a: &[String]| a[a.iter().position(|x| x == "-filter_complex").unwrap() + 1].clone();
+        let mut e = edit(vec![(0.0, 1.0)], vec![1.0]);
+        e.backdrop = Some(Backdrop { cover: "/x/cover.png".into(), size: (769, 489), video: (64, 64, 640, 360) });
+        let a = export_args(Path::new("in.mp4"), Path::new("out.mp4"), &e);
+        assert!(a.windows(2).any(|w| w == ["-i", "/x/cover.png"]), "{a:?}");
+        let graph = graph_of(&a);
+        assert!(
+            graph.ends_with("[vc]scale=640:360:flags=lanczos,format=yuv444p,pad=768:488:64:64[vp];[vp][1:v]overlay=0:0:format=yuv444[vb];[vb]format=yuv420p[v]"),
+            "padded to an even size, the cover on top: {graph}"
+        );
+        // a GIF: the palette is input 2, after the cover; its first pass sees the background too
+        e.gif = Some((15, 800));
+        let graph = graph_of(&export_args(Path::new("in.mp4"), Path::new("/x/out.gif"), &e));
+        assert!(graph.ends_with("[vb]fps=15,scale='min(800,iw)':-1:flags=lanczos[x];[x][2:v]paletteuse=dither=sierra2_4a:diff_mode=rectangle[v]"), "{graph}");
+        let p = palette_args(Path::new("in.mp4"), Path::new("/x/p.png"), &e);
+        assert!(p.windows(2).any(|w| w == ["-i", "/x/cover.png"]) && graph_of(&p).contains("[vp][1:v]overlay"), "{p:?}");
+    }
+
+    /// A background around a real clip (D50): the result is the background's
+    /// size, the cover around the video, the video in its hole.
+    #[test]
+    fn a_real_clip_exports_in_its_background() {
+        let dir = std::env::temp_dir().join(format!("snip-backdrop-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let clip = dir.join("blue.mp4");
+        let made = Command::new("ffmpeg")
+            .args(["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=blue:size=320x200:rate=30:duration=1", "-c:v", "libx264", "-pix_fmt", "yuv420p"])
+            .arg(&clip)
+            .status()
+            .is_ok_and(|s| s.success());
+        if !made {
+            eprintln!("ffmpeg with libx264 isn't available: skipped");
+            return;
+        }
+        // red, with a hole for the video at (40, 30)
+        let (w, h) = (400u32, 260u32);
+        let mut rgba = vec![0u8; (w * h * 4) as usize];
+        for y in 0..h {
+            for x in 0..w {
+                let hole = (40..360).contains(&x) && (30..230).contains(&y);
+                let i = ((y * w + x) * 4) as usize;
+                rgba[i..i + 4].copy_from_slice(if hole { &[0, 0, 0, 0] } else { &[255, 0, 0, 255] });
+            }
+        }
+        let cover = dir.join("cover.png");
+        std::fs::write(&cover, crate::encode::encode_png(&rgba, w, h, true)).unwrap();
+        let mut e = edit(vec![(0.0, 1.0)], vec![]);
+        e.backdrop = Some(Backdrop { cover, size: (w, h), video: (40, 30, 320, 200) });
+        for name in ["out.mp4", "out.gif"] {
+            e.gif = name.ends_with(".gif").then_some((10, 800));
+            let out = dir.join(name);
+            export(&clip, &out, &e, |_| {}).unwrap();
+            let p = probe(&out).unwrap();
+            assert_eq!((p.width, p.height), (w, h), "{name}: the background's size");
+            let (px, pw, _, alpha) = crate::encode::decode_png(&poster(&out).unwrap()).unwrap();
+            let at = |x: u32, y: u32| {
+                let i = ((y * pw + x) * if alpha { 4 } else { 3 }) as usize;
+                (px[i], px[i + 1], px[i + 2])
+            };
+            let (r, g, b) = at(10, 10);
+            assert!(r > 200 && g < 60 && b < 60, "{name}: the background around it: {:?}", (r, g, b));
+            let (r, g, b) = at(200, 130);
+            assert!(r < 60 && g < 60 && b > 200, "{name}: the video in its hole: {:?}", (r, g, b));
+        }
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
