@@ -2,6 +2,7 @@
 //! frame as a poster (ffmpeg). Both run as child processes, which keeps
 //! libav* out of Snip's binary (architecture §1, "GIF / video post").
 
+use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -199,6 +200,38 @@ pub fn gif(src: &Path, dst: &Path, fps: u32, width: u32) -> Result<(), String> {
     run_ffmpeg(&["-v", "error", "-y", "-i", &src.to_string_lossy(), "-filter_complex", &filter, "-loop", "0", &dst.to_string_lossy()])
 }
 
+/// Whether an MP4 was never finished: its recorder died while writing
+/// fragments (a stopped gsr turns them into a plain MP4).
+pub fn fragmented(path: &Path) -> bool {
+    let Ok(mut f) = std::fs::File::open(path) else { return false };
+    let (mut at, mut head) = (0u64, [0u8; 16]);
+    // the top-level boxes: a `moof` is a fragment
+    while f.seek(SeekFrom::Start(at)).is_ok() && f.read_exact(&mut head[..8]).is_ok() {
+        if &head[4..8] == b"moof" {
+            return true;
+        }
+        let size = match u32::from_be_bytes([head[0], head[1], head[2], head[3]]) {
+            1 if f.read_exact(&mut head[8..]).is_ok() => u64::from_be_bytes(head[8..].try_into().unwrap()),
+            n if n >= 8 => n as u64,
+            // to the end of the file, or broken
+            _ => return false,
+        };
+        at += size;
+    }
+    false
+}
+
+/// What a recording cut short holds, as a plain MP4 (REC-14). The edit list
+/// gsr writes up front would hide the first fragment, so it's ignored.
+pub fn recover(src: &Path, dst: &Path) -> Result<Probe, String> {
+    let ran = run_ffmpeg(&["-v", "error", "-y", "-ignore_editlist", "1", "-i", &src.to_string_lossy(), "-c", "copy", "-movflags", "+faststart", &dst.to_string_lossy()]);
+    // a cut-off last fragment is an error, though what came before is kept
+    match probe(dst) {
+        Ok(p) if p.duration_ms > 0 => Ok(p),
+        _ => Err(ran.err().unwrap_or_else(|| "nothing to recover".into())),
+    }
+}
+
 /// Tests' stand-in for a recording (SNIP_RECORDER=fake): ffmpeg's test
 /// pattern, `w`×`h` for `ms`, with a tone when `audio`.
 pub fn test_clip(dst: &Path, w: u32, h: u32, ms: u64, audio: bool) -> Result<(), String> {
@@ -242,6 +275,27 @@ mod tests {
         let a = export_args(Path::new("in.mp4"), Path::new("out.mp4"), &edit(vec![(0.0, 1.0)], vec![0.0, 1.0]));
         let graph = &a[a.iter().position(|x| x == "-filter_complex").unwrap() + 1];
         assert!(graph.contains("[0:a:1]volume=1.000[t1];[t1]aselect") && !graph.contains("amix") && !graph.contains("[0:a:0]"), "{graph}");
+    }
+
+    #[test]
+    fn a_recording_cut_short_is_recovered_from_its_fragments() {
+        let dir = std::env::temp_dir().join(format!("snip-recover-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let whole = dir.join("whole.mp4");
+        test_clip(&whole, 160, 120, 2000, true).unwrap();
+        assert!(!fragmented(&whole), "a finished recording is a plain MP4");
+        // a recorder killed while it wrote fragments: three quarters of a file
+        let cut = dir.join("cut.mp4");
+        let (w, c) = (whole.to_string_lossy(), cut.to_string_lossy());
+        run_ffmpeg(&["-v", "error", "-y", "-i", &w, "-c", "copy", "-movflags", "+empty_moov+default_base_moof", "-frag_duration", "250000", &c]).unwrap();
+        let bytes = std::fs::read(&cut).unwrap();
+        std::fs::write(&cut, &bytes[..bytes.len() * 3 / 4]).unwrap();
+        assert!(fragmented(&cut));
+        let back = dir.join("back.mp4");
+        let p = recover(&cut, &back).unwrap();
+        assert!((500..1900).contains(&p.duration_ms) && p.audio_tracks == 1, "most of it: {p:?}");
+        assert!(!fragmented(&back) && recover(&dir.join("none.mp4"), &dir.join("x.mp4")).is_err());
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

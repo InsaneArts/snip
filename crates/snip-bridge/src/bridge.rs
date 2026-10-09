@@ -562,11 +562,14 @@ impl qobject::Engine {
         let _ = snip_hypr::install_runtime_rules();
         inner.apply_shortcuts(&Default::default());
         let h = inner.clone();
-        let _ = snip_hypr::subscribe(move |name, _| {
+        let _ = snip_hypr::subscribe(move |name, data| {
             if name == "configreloaded" {
                 let _ = snip_hypr::install_runtime_rules();
                 h.apply_shortcuts(&Default::default());
                 h.push_theme();
+            }
+            if name == "monitorremoved" {
+                h.record_output_removed(data);
             }
             // CAP-12: the covers follow fullscreen windows and workspaces
             if h.desktop_is_hidden() && matches!(name, "fullscreen" | "workspacev2" | "monitoraddedv2" | "monitorremoved") {
@@ -575,6 +578,7 @@ impl qobject::Engine {
             true
         });
         inner.start_indexer();
+        inner.record_recover();
         let s = inner.clone();
         std::thread::Builder::new()
             .name("snip-sweep".into())

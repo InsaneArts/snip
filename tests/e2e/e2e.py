@@ -1745,6 +1745,46 @@ def record_with_the_hud(s, env):
     assert wait_for(lambda: not record_hud(s)["open"], 2)
 
 
+@case
+def recording_safety(s, env):
+    """REC-14: takes left behind when Snip stopped mid-recording are recovered at its next
+    start (a finished one as it is, one cut short from its fragments), each with its card;
+    a recording stops by itself, and is kept, when the disk is almost full."""
+    s.cli("close-all"); time.sleep(0.3)
+    before = {r["id"] for r in s.json("list", "-n", "200")["result"]}
+    n = len(s.traces("record_recovered"))
+    s.cli("quit")
+    assert wait_for(lambda: s.cli("ping", check=False).returncode != 0, 5), "Snip has quit"
+    stage = s.tmp / "data/snip/recording"
+    stage.mkdir(parents=True, exist_ok=True)
+    make_clip(stage / "20261009-010000000.mp4", seconds=2, size="320x240")
+    # a recorder killed while it wrote fragments: three quarters of a file
+    whole = s.tmp / "whole.mp4"
+    make_clip(whole, seconds=2, size="320x240")
+    cut = stage / "20261009-010100000.mp4"
+    sh("ffmpeg", "-v", "error", "-y", "-i", str(whole), "-c", "copy", "-movflags", "+empty_moov+default_base_moof", "-frag_duration", "250000", str(cut))
+    cut.write_bytes(cut.read_bytes()[: cut.stat().st_size * 3 // 4])
+    s.env["SNIP_RECORD_MIN_FREE"] = str(1 << 60)                    # every disk is "almost full"
+    s.start()
+    try:
+        assert wait_for(lambda: len(s.traces("record_recovered")) >= n + 2, 10), "both takes are recovered"
+        new = [r for r in s.json("list", "-n", "200")["result"] if r["id"] not in before]
+        lengths = sorted(r["duration_ms"] for r in new)
+        assert len(new) == 2 and 500 <= lengths[0] < 1900 and lengths[1] >= 1900, ("most of the cut one, all of the other", lengths)
+        assert not list(stage.iterdir()), list(stage.iterdir())
+        assert wait_for(lambda: all(r["id"] in s.status()["cards"] for r in new), 3), "each with its card"
+        s.cli("close-all"); time.sleep(0.3)
+        p = s.bg("record", "area", "--x", "100", "--y", "80", "--w", "400", "--h", "300", "--monitor", OUT)
+        r, code = finish(p, timeout=15)
+        assert code == 0 and r["result"]["media"] == "video", ("it stops by itself, and is kept", r)
+        assert s.traces("record_disk_low") and record_state(s) is None
+    finally:
+        s.cli("quit", check=False)
+        wait_for(lambda: s.cli("ping", check=False).returncode != 0, 5)
+        del s.env["SNIP_RECORD_MIN_FREE"]
+        s.start()
+
+
 def video_editor_window():
     return next((c for c in hypr_json("clients") if c["class"] == "snip-e2e" and c["title"].startswith("Snip Video Editor")), None)
 
