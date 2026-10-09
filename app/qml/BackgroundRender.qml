@@ -13,7 +13,6 @@ import "editor.js" as Ed
 Window {
     id: r
     required property var capture              // a card's JSON, its output's scale, bg in points
-    required property int token
     signal done()
 
     flags: Qt.FramelessWindowHint
@@ -86,15 +85,14 @@ Window {
         visible = true
         Platform.setInputRects(r, [])
     }
-    Timer { id: go; interval: 60; onTriggered: Platform.grabExact(scene, Math.round(r.rect.w), Math.round(r.rect.h), r.token) }
-    Connections {
-        target: Platform
-        function onGrabbed(token, ok) {
-            if (token !== r.token) return
-            Engine.editorCommit(r.capture.id, ok ? r.token : -1,
+    Timer {
+        id: go
+        interval: 60
+        onTriggered: Platform.grabExact(scene, Math.round(r.rect.w), Math.round(r.rect.h), (token, ok) => {
+            Engine.editorCommit(r.capture.id, ok ? token : -1,
                                 JSON.stringify({ v: 1, items: [], crop: null, counterStart: 1, bg: r.bg }), "auto-bg")
             r.visible = false
             r.done()
-        }
+        })
     }
 }

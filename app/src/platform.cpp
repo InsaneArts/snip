@@ -144,12 +144,25 @@ Platform::hex(const QColor& c) const
   return c.name(QColor::HexRgb).toUpper();
 }
 
-void
-Platform::grabExact(QQuickItem* item, int width, int height, int token)
+// An answer, back to the JS function that asked (a request answers once).
+static void
+answer(QJSValue done, const QJSValueList& args)
 {
+  if (!done.isCallable())
+    return;
+  const QJSValue r = done.call(args);
+  if (r.isError())
+    qWarning("snip: an answer's callback failed: %s", qPrintable(r.toString()));
+}
+
+void
+Platform::grabExact(QQuickItem* item, int width, int height, const QJSValue& done)
+{
+  // the engine finds the pixels by it; Snip's own count, so a token is never reused
+  const int token = ++m_grabs;
   QQuickWindow* win = item ? item->window() : nullptr;
   if (!win || width < 1 || height < 1) {
-    Q_EMIT grabbed(token, false);
+    answer(done, { QJSValue(token), QJSValue(false) });
     return;
   }
   // Qt renders a grab of logical size s into round(s * dpr) texels, mapping
@@ -167,13 +180,13 @@ Platform::grabExact(QQuickItem* item, int width, int height, int token)
   item->setSize(QSizeF(texels));
   QSharedPointer<QQuickItemGrabResult> result = item->grabToImage(logical);
   if (!result) {
-    Q_EMIT grabbed(token, false);
+    answer(done, { QJSValue(token), QJSValue(false) });
     return;
   }
-  connect(result.data(), &QQuickItemGrabResult::ready, this, [this, result, width, height, token]() {
+  connect(result.data(), &QQuickItemGrabResult::ready, this, [result, width, height, token, done]() {
     QImage img = result->image();
     if (img.width() < width || img.height() < height) {
-      Q_EMIT grabbed(token, false);
+      answer(done, { QJSValue(token), QJSValue(false) });
       return;
     }
     img = img.copy(0, 0, width, height).convertToFormat(QImage::Format_RGBA8888);
@@ -182,7 +195,7 @@ Platform::grabExact(QQuickItem* item, int width, int height, int token)
                    uint32_t(width),
                    uint32_t(height),
                    uint32_t(img.bytesPerLine()));
-    Q_EMIT grabbed(token, true);
+    answer(done, { QJSValue(token), QJSValue(true) });
   });
 }
 
@@ -224,15 +237,16 @@ Platform::sendKeys(QWindow* w, const QString& keys)
 }
 
 static void
-portalFileRequest(Platform* self, int token, const QString& method, const QString& title, const QVariantMap& extra)
+portalFileRequest(Platform* self, const QString& method, const QString& title, const QVariantMap& extra, const QJSValue& done)
 {
   if (qEnvironmentVariableIsSet("SNIP_NO_PORTALS")) {
-    QMetaObject::invokeMethod(self, [self, token] { Q_EMIT self->fileChosen(token, QString()); }, Qt::QueuedConnection);
+    QMetaObject::invokeMethod(self, [done] { answer(done, { QJSValue(QString()) }); }, Qt::QueuedConnection);
     return;
   }
+  static int requests = 0;
   QDBusConnection bus = QDBusConnection::sessionBus();
   const QString service = QStringLiteral("org.freedesktop.portal.Desktop");
-  const QString handle = QStringLiteral("snip%1").arg(token);
+  const QString handle = QStringLiteral("snip%1").arg(++requests);
   // Listen on the request path before asking, so the answer can't be missed.
   QString sender = bus.baseService().mid(1);
   sender.replace(QLatin1Char('.'), QLatin1Char('_'));
@@ -240,11 +254,11 @@ portalFileRequest(Platform* self, int token, const QString& method, const QStrin
   req->path = QStringLiteral("/org/freedesktop/portal/desktop/request/%1/%2").arg(sender, handle);
   bus.connect(service, req->path, QStringLiteral("org.freedesktop.portal.Request"), QStringLiteral("Response"), req,
               SLOT(response(uint, QVariantMap)));
-  QObject::connect(req, &PortalRequest::done, self, [self, req, token](uint code, const QVariantMap& results) {
+  QObject::connect(req, &PortalRequest::done, self, [req, done](uint code, const QVariantMap& results) {
     const QStringList uris = results.value(QStringLiteral("uris")).toStringList();
     const QString path = code == 0 && !uris.isEmpty() ? QUrl(uris.first()).toLocalFile() : QString();
     req->deleteLater();
-    Q_EMIT self->fileChosen(token, path);
+    answer(done, { QJSValue(path) });
   });
 
   QVariantMap opts = extra;
@@ -256,19 +270,19 @@ portalFileRequest(Platform* self, int token, const QString& method, const QStrin
   const QDBusMessage reply = bus.call(call, QDBus::Block, 5000);
   if (reply.type() == QDBusMessage::ErrorMessage) {
     req->deleteLater();
-    Q_EMIT self->fileChosen(token, QString());
+    answer(done, { QJSValue(QString()) });
   }
 }
 
 void
-Platform::saveFileDialog(int token, const QString& title, const QString& name, const QString& folder)
+Platform::saveFileDialog(const QString& title, const QString& name, const QString& folder, const QJSValue& done)
 {
   QVariantMap opts;
   opts[QStringLiteral("current_name")] = name;
   QByteArray dir = QFile::encodeName(folder);
   dir.append('\0');
   opts[QStringLiteral("current_folder")] = dir;
-  portalFileRequest(this, token, QStringLiteral("SaveFile"), title, opts);
+  portalFileRequest(this, QStringLiteral("SaveFile"), title, opts, done);
 }
 
 // The image on one page: as large as fits, but never past 144 dpi (about its
@@ -382,22 +396,22 @@ Platform::openWith(const QString& path)
 }
 
 void
-Platform::openImageDialog(int token, const QString& title)
+Platform::openImageDialog(const QString& title, const QJSValue& done)
 {
   QVariantMap opts;
   opts[QStringLiteral("multiple")] = false;
-  portalFileRequest(this, token, QStringLiteral("OpenFile"), title, opts);
+  portalFileRequest(this, QStringLiteral("OpenFile"), title, opts, done);
 }
 
 void
-Platform::openFolderDialog(int token, const QString& title, const QString& folder)
+Platform::openFolderDialog(const QString& title, const QString& folder, const QJSValue& done)
 {
   QVariantMap opts;
   opts[QStringLiteral("directory")] = true;
   QByteArray dir = QFile::encodeName(folder);
   dir.append('\0');
   opts[QStringLiteral("current_folder")] = dir;
-  portalFileRequest(this, token, QStringLiteral("OpenFile"), title, opts);
+  portalFileRequest(this, QStringLiteral("OpenFile"), title, opts, done);
 }
 
 QSize

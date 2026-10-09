@@ -149,7 +149,6 @@ Window {
         if (!bgLive) return send(replace, null)
         // the background first, as the export draws it: a grab, then ffmpeg
         coverReplace = replace
-        coverToken = controller.nextToken()
         cover.active = true
     }
     function send(replace, background) {
@@ -159,19 +158,13 @@ Window {
             gif: gif ? { fps: cfg ? cfg.gif_fps : 15, width: cfg ? cfg.gif_width : 800 } : null, background: background
         }), replace)
     }
-    property int coverToken: -1
     property bool coverReplace: false
-    Connections {
-        target: Platform
-        function onGrabbed(token, ok) {
-            if (token !== ve.coverToken) return
-            ve.coverToken = -1
-            cover.active = false
-            if (ok) return ve.send(ve.coverReplace, { token: token, video: [-ve.outer.x, -ve.outer.y, ve.inner.w, ve.inner.h] })
-            ve.progress = -1
-            ve.error = "The background couldn't be drawn"
-            ve.exportOpen = true
-        }
+    function coverDrawn(token, ok) {
+        cover.active = false
+        if (ok) return send(coverReplace, { token: token, video: [-outer.x, -outer.y, inner.w, inner.h] })
+        progress = -1
+        error = "The background couldn't be drawn"
+        exportOpen = true
     }
     function exportStatus(s) {
         if (s.done) {
@@ -503,7 +496,7 @@ Window {
                 Rectangle { x: -coverScene.r.x; y: -coverScene.r.y; width: ve.inner.w; height: ve.inner.h; radius: ve.bgLive ? ve.bgLive.radius : 0; color: "white" }
             }
             // a frame for the wallpaper to load, as the screenshot's does
-            Timer { interval: 60; running: true; onTriggered: Platform.grabExact(coverScene, coverScene.r.w, coverScene.r.h, ve.coverToken) }
+            Timer { interval: 60; running: true; onTriggered: Platform.grabExact(coverScene, coverScene.r.w, coverScene.r.h, (token, ok) => ve.coverDrawn(token, ok)) }
         }
     }
 

@@ -46,9 +46,6 @@ Window {
         ["desktop-toggle", tray.controller && tray.controller.quickAccess.clutterHidden ? "Show Desktop Clutter" : "Hide Desktop Clutter"], null,
         ["settings", "Settings…"], ["about", "About Snip"], ["quit", "Quit Snip"]
     ])
-    // Open… and Pin to the Screen… ask for an image first
-    property string picking: ""
-    property int pickToken: 0
 
     function toggle() { if (visible) close(); else open() }
     function open() {
@@ -82,15 +79,12 @@ Window {
             if (a === "quit") Qt.quit()
             else if (a === "about") tray.controller.openSettings("about")
             else if (a === "open" || a === "pin") {
-                tray.picking = a
-                tray.pickToken = tray.controller.nextToken()
-                Platform.openImageDialog(tray.pickToken, a === "open" ? "Open" : "Pin to the Screen")
+                Platform.openImageDialog(a === "open" ? "Open" : "Pin to the Screen", (path) => {
+                    if (path === "") return
+                    if (a === "open") Engine.editFile(path)
+                    else Engine.pinFile(path)
+                })
             } else Engine.runAction(a)
-        }
-        function onFileChosen(token, path) {
-            if (token !== tray.pickToken || path === "") return
-            if (tray.picking === "open") Engine.editFile(path)
-            else Engine.pinFile(path)
         }
     }
 

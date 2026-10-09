@@ -14,14 +14,6 @@ Window {
     property string tab: "general"
     property bool confirmClear: false
     property real historyBytes: 0
-    property int folderToken: 0                 // the Export location chooser that's open
-
-    Connections {
-        target: Platform
-        function onFileChosen(token, path) {
-            if (token === win.folderToken && path) win.set("general.export_dir", path)
-        }
-    }
 
     readonly property var tabs: [
         { id: "general", label: "General", icon: "settings" },
@@ -275,10 +267,9 @@ Window {
                         TextButton {
                             text: "Choose…"
                             implicitHeight: 26
-                            onClicked: {
-                                win.folderToken = controller.nextToken()
-                                Platform.openFolderDialog(win.folderToken, "Export location", win.value("general.export_dir") || "")
-                            }
+                            onClicked: Platform.openFolderDialog("Export location", win.value("general.export_dir") || "", (path) => {
+                                if (path) win.set("general.export_dir", path)
+                            })
                         }
                     }
                     Note { text: "Where Save writes. ~ is your home folder." }
