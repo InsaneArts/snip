@@ -128,10 +128,11 @@ fn gsr_path() -> PathBuf {
 }
 
 /// One request on gsr's control socket: JSON lines, each answered (its man
-/// page, "IPC"). `stop` is answered once the file is saved.
+/// page, "IPC"). `stop` is answered once the file is saved (it may take a
+/// while: no less than 30 s); others at once.
 fn gsr_request(sock: &Path, name: &str, data: Value) -> Result<Value, String> {
     let mut s = UnixStream::connect(sock).map_err(|e| format!("gsr: {e}"))?;
-    s.set_read_timeout(Some(Duration::from_secs(30))).ok();
+    s.set_read_timeout(Some(Duration::from_secs(if name == "stop" { 30 } else { 3 }))).ok();
     writeln!(s, "{}", json!({ "id": 1, "name": name, "data": data })).map_err(|e| format!("gsr: {e}"))?;
     let mut line = String::new();
     BufReader::new(s).read_line(&mut line).map_err(|e| format!("gsr: {e}"))?;
@@ -159,6 +160,19 @@ fn parse_mutes(text: &str) -> std::collections::HashMap<String, bool> {
 
 fn pactl(args: &[&str]) -> String {
     Command::new("pactl").args(args).env("LC_ALL", "C").stdin(Stdio::null()).stderr(Stdio::null()).output().map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default()
+}
+
+/// Why gsr stopped before recording anything, for a person: its exit code
+/// says (its own last line is often a device name), else that last line.
+fn gsr_failure(code: Option<i32>, log: &str) -> String {
+    match code {
+        Some(50) => "the microphone isn't connected: choose another".into(),
+        Some(51) => "this display can't be recorded".into(),
+        Some(52..=54) => "the graphics card can't encode it".into(),
+        // exit 0 too: the capture never started (a virtual display, say)
+        _ if log.contains("gsr_capture_start failed") => "this display can't be recorded".into(),
+        _ => log.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("gpu-screen-recorder stopped").trim().to_string(),
+    }
 }
 
 /// Wait for a child to exit, then kill it if it takes longer than `limit`.
@@ -375,8 +389,7 @@ impl Inner {
                 if saved && announced {
                     self.record_finish(true);
                 } else {
-                    let why = err.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("gpu-screen-recorder stopped").trim().to_string();
-                    self.toast(format!("Can't record: {why}"));
+                    self.toast(format!("Can't record: {}", gsr_failure(status.code(), err)));
                     self.record_finish(false);
                 }
                 return;
@@ -384,23 +397,27 @@ impl Inner {
         }
     }
 
-    /// Pause or resume (REC-05).
+    /// Pause or resume (REC-05). gsr is asked outside the lock: the
+    /// Hyprland event thread takes it for each click and key.
     pub fn record_pause(&self, pause: bool) {
-        let mut r = self.recording.lock().unwrap();
-        let Some(rec) = r.as_mut().filter(|r| matches!(r.state, State::Recording | State::Paused)) else { return };
-        if (rec.state == State::Paused) == pause {
-            return;
-        }
-        let Some(run) = rec.run.as_mut() else { return };
-        if run.child.is_some() {
-            if let Err(e) = gsr_request(&run.ipc, "set-paused", json!(pause)) {
+        let (ipc, hooks) = {
+            let r = self.recording.lock().unwrap();
+            let Some(rec) = r.as_ref().filter(|r| matches!(r.state, State::Recording | State::Paused)) else { return };
+            let Some(run) = rec.run.as_ref().filter(|_| (rec.state == State::Paused) != pause) else { return };
+            (run.child.is_some().then(|| run.ipc.clone()), run.hooks.is_some())
+        };
+        if let Some(ipc) = ipc {
+            if let Err(e) = gsr_request(&ipc, "set-paused", json!(pause)) {
                 trace::warn("gsr_pause", &format!("\"msg\":{}", js(&e)));
                 return;
             }
         }
-        if run.hooks.is_some() {
+        if hooks {
             let _ = snip_hypr::eval(&snip_hypr::keys::recording_mute_lua(pause));
         }
+        let mut r = self.recording.lock().unwrap();
+        let Some(rec) = r.as_mut() else { return };
+        let Some(run) = rec.run.as_mut() else { return };
         if pause {
             run.paused_at = Some(Instant::now());
         } else if let Some(at) = run.paused_at.take() {
@@ -749,6 +766,14 @@ impl Inner {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gsr_failures_read_as_reasons() {
+        assert_eq!(gsr_failure(Some(50), "alsa_output.x.monitor|Monitor of HDMI"), "the microphone isn't connected: choose another");
+        assert_eq!(gsr_failure(Some(0), "gsr error: no monitor\ngsr_capture_start failed\n"), "this display can't be recorded");
+        assert_eq!(gsr_failure(Some(54), ""), "the graphics card can't encode it");
+        assert_eq!(gsr_failure(Some(1), "first\nthe last line\n\n"), "the last line");
+    }
 
     #[test]
     fn muted_sources_are_read_from_pactl() {
