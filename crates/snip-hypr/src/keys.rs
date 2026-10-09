@@ -56,9 +56,11 @@ pub fn session_lua(app_id: &str, on: bool, prefix: &str) -> String {
         return OFF.into();
     }
     format!(
+        // the timer ends only its own session: a later session's keys stay
         r#"if not SNIP_SESSION_KEYS then
-  SNIP_SESSION_KEYS = {{ hl.bind("Return", hl.dsp.global("{app_id}:{prefix}-go")), hl.bind("Escape", hl.dsp.global("{app_id}:{prefix}-cancel")) }}
-  hl.timer(function() {OFF} end, {{ timeout = 900000, type = "oneshot" }})
+  local keys = {{ hl.bind("Return", hl.dsp.global("{app_id}:{prefix}-go")), hl.bind("Escape", hl.dsp.global("{app_id}:{prefix}-cancel")) }}
+  SNIP_SESSION_KEYS = keys
+  hl.timer(function() if SNIP_SESSION_KEYS == keys then {OFF} end end, {{ timeout = 900000, type = "oneshot" }})
 end"#
     )
 }
@@ -328,7 +330,7 @@ bind\n\tmodmask: 0\n\tsubmap: snip-record\n\tkey: Escape\n\tkeycode: 0\n\tcatcha
         assert!(on.contains(r#"hl.bind("Return", hl.dsp.global("snip:scroll-go"))"#), "{on}");
         let off = session_lua("", false, "");
         assert!(off.find("SNIP_SESSION_KEYS = nil").unwrap() < off.find("b:remove()").unwrap(), "cleared before the handles go: {off}");
-        assert!(on.contains(&off), "the timer unbinds the same way");
+        assert!(on.contains(&format!("if SNIP_SESSION_KEYS == keys then {off} end")), "the timer unbinds its own session's keys, the same way: {on}");
     }
 
     #[test]

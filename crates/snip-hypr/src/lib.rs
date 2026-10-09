@@ -19,12 +19,15 @@ pub fn available() -> bool {
     socket_dir().is_some_and(|d| d.join(".socket.sock").exists())
 }
 
-/// Raw request, e.g. "j/clients", "eval <lua>".
+/// Raw request, e.g. "j/clients", "/eval <lua>".
 pub fn request(cmd: &str) -> std::io::Result<String> {
     let dir = socket_dir().ok_or_else(|| std::io::Error::other("not running under Hyprland"))?;
     let mut s = UnixStream::connect(dir.join(".socket.sock"))?;
     s.set_read_timeout(Some(std::time::Duration::from_secs(2)))?;
     s.write_all(cmd.as_bytes())?;
+    // Hyprland reads 1023 bytes at a time until a short read: a request of
+    // exactly n×1023 bytes would block its main thread until we gave up
+    s.shutdown(std::net::Shutdown::Write)?;
     let mut out = String::new();
     s.read_to_string(&mut out)?;
     Ok(out)
@@ -178,7 +181,8 @@ pub fn option_float(name: &str) -> Option<f64> {
 
 /// Run Lua in Hyprland (0.56+ config API). Returns the reply ("ok" on success).
 pub fn eval(lua: &str) -> std::io::Result<String> {
-    request(&format!("eval {lua}"))
+    // the leading "/": no flags (hyprctl's form)
+    request(&format!("/eval {lua}"))
 }
 
 /// Runtime rules Snip needs whatever the user's config says: overlays must
