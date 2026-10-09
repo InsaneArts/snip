@@ -2035,7 +2035,8 @@ def video_editor(s, env):
     assert len(colours) > 3, ("the first frame shows before playing", colours)
     assert any(t.rstrip("*") == "snip-video-editor" for t in w["tags"]) and w["floating"], (w["tags"], w["floating"])
     st = video_state(s)
-    assert (st["thumbs"], st["tracks"]) == (12, 1) and 3900 <= st["duration"] <= 4100, st
+    assert st["tracks"] == 1 and 3900 <= st["duration"] <= 4100, st
+    assert wait_for(lambda: video_state(s)["thumbs"] == 12, 5), "its frames come along the timeline"
     orig = st["id"]
     # split at 1 s and 2.5 s, by the button at the playhead
     for ms in (1000, 2500):

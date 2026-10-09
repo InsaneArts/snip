@@ -12,7 +12,8 @@ import Snip.Core
 // Playback skips what's cut, so you see the result.
 Window {
     id: ve
-    property var info: ({})                 // {id, path, duration, fps, width, height, tracks, thumbs, bytes, title, output}
+    property var info: ({})                 // {id, path, duration, fps, width, height, tracks, bytes, title, output}
+    property var thumbs: []                 // the timeline's frames: they come a moment after it opens
     property var controller: null
     signal finished()
 
@@ -303,10 +304,10 @@ Window {
             anchors.fill: parent
             clip: true
             Repeater {
-                model: ve.info.thumbs || []
+                model: ve.thumbs
                 Image {
                     required property string modelData
-                    width: timeline.width / Math.max(1, (ve.info.thumbs || []).length)
+                    width: timeline.width / Math.max(1, ve.thumbs.length)
                     height: timeline.height
                     source: "file://" + modelData
                     fillMode: Image.PreserveAspectCrop
@@ -518,7 +519,7 @@ Window {
             Engine.log("video_state", JSON.stringify({ id: info.id, duration: duration, cuts: cuts, cut: parts.filter(p => p.cut).map(p => [p.a, p.b]),
                                                      in: inMs, out: outMs, kept: kept, keptMs: keptMs, selected: selected, volumes: volumes,
                                                      playing: player.playbackState === MediaPlayer.PlayingState, position: headMs,
-                                                     progress: progress, error: error, estimate: Math.round(estimate), thumbs: (info.thumbs || []).length,
+                                                     progress: progress, error: error, estimate: Math.round(estimate), thumbs: thumbs.length,
                                                      tracks: info.tracks || 0, gif: gif }).slice(1, -1))
             break
         }

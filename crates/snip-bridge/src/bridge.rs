@@ -433,10 +433,13 @@ pub mod qobject {
         #[qsignal]
         fn record_input(self: Pin<&mut Engine>, json: &QString);
         /// The video editor (VED): a recording to edit ({id, path, duration,
-        /// fps, width, height, tracks, thumbs, bytes, title, output}), and an
-        /// export's {progress} or {done, ok, error, id}
+        /// fps, width, height, tracks, bytes, title, output}), its timeline's
+        /// frames (a list of files) a moment later, and an export's {progress}
+        /// or {done, ok, error, id}
         #[qsignal]
         fn video_editor_open(self: Pin<&mut Engine>, json: &QString);
+        #[qsignal]
+        fn video_thumbs(self: Pin<&mut Engine>, id: &QString, json: &QString);
         #[qsignal]
         fn video_export_status(self: Pin<&mut Engine>, id: &QString, json: &QString);
 
