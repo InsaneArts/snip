@@ -1917,6 +1917,35 @@ def record_panel_chooses_the_area(s, env):
 
 
 @case
+def record_panel_shows_what_is_on(s, env):
+    """D49: on the panel, a toggle that's on has a soft accent square behind its icon (the
+    icon never moves); a source that's off is crossed out: no microphone, no computer
+    audio, no camera. Clicks and keys go grey. (A microphone is only chosen here: nothing
+    records.)"""
+    s.cli("close-all"); time.sleep(0.3)
+    s.write_config("")                               # all off, as by default
+    time.sleep(0.6)
+    p = record_panel(s)
+    icons = lambda: record_hud(s)["icons"]
+    assert icons() == ["mic-off", "volume-x", "webcam-off", "click", "command"], icons()
+    record_click(s, "record-mic")
+    assert wait_for(lambda: record_hud(s)["micsOpen"], 2), "its menu opens"
+    time.sleep(0.3)                                  # the menu takes input a frame after it shows
+    record_click(s, "record-mic:1")
+    record_click(s, "record-system")
+    record_click(s, "record-camera-button")
+    assert wait_for(lambda: record_hud(s)["camerasOpen"], 2)
+    time.sleep(0.3)
+    record_click(s, "record-camera:1")
+    record_click(s, "record-clicks")
+    assert wait_for(lambda: icons() == ["+mic", "+volume", "+webcam", "+click", "command"], 2), icons()
+    s.debug("ui", "record", "keys", "{Escape}")
+    r, code = finish(p, timeout=5)
+    assert code != 0 or not r.get("ok"), r
+    s.write_config("")
+
+
+@case
 def recording_keeps_out_cards_and_clutter(s, env):
     """Principle 8, CAP-12: Snip's cards are never in a recording (they step aside while it
     records), and with Hide Desktop Clutter on, a recording covers the bars with the

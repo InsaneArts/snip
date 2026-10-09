@@ -710,11 +710,9 @@ Window {
                     width: 26
                     height: 26
                     inset: 0
-                    toggle: false
                     icon: "expand"
                     iconSize: 14
-                    iconColor: hud.whole ? Theme.accent : Theme.textSecondary
-                    tint: hud.whole ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22) : "transparent"
+                    on: hud.whole
                     tip: "Full screen"
                     onTapped: hud.toggleFull()
                 }
@@ -730,22 +728,23 @@ Window {
             Row {
                 y: 45
                 Repeater {
-                    // [name, icon, tip, on]
-                    model: [["record-mic", "mic", hud.micMuted ? "The microphone is muted" : hud.micLabel, hud.mic !== "" && !hud.gif],
-                            ["record-system", "volume", "Record what the computer plays", hud.system && !hud.gif],
-                            ["record-camera-button", "webcam", hud.cameraEntry ? hud.cameraEntry.name : "No camera", hud.cameraEntry !== null],
-                            ["record-clicks", "click", "Highlight clicks", hud.clicks],
-                            ["record-keys", "command", "Show keystrokes (command keys only)", hud.keys]]
+                    // [name, icon, its icon when off, tip, on]
+                    model: [["record-mic", "mic", "mic-off", hud.micMuted ? "The microphone is muted" : hud.micLabel, hud.mic !== "" && !hud.gif],
+                            ["record-system", "volume", "volume-x", "Record what the computer plays", hud.system && !hud.gif],
+                            ["record-camera-button", "webcam", "webcam-off", hud.cameraEntry ? hud.cameraEntry.name : "No camera", hud.cameraEntry !== null],
+                            ["record-clicks", "click", "", "Highlight clicks", hud.clicks],
+                            ["record-keys", "command", "", "Show keystrokes (command keys only)", hud.keys]]
                     PanelCell {
                         required property var modelData
                         objectName: modelData[0]
                         width: setupCard.width / 5
                         icon: modelData[1]
-                        tip: modelData[2]
-                        on: modelData[3]
+                        offIcon: modelData[2]
+                        tip: modelData[3]
+                        on: modelData[4]
                         // a GIF has no sound
                         opacity: hud.gif && (modelData[0] === "record-mic" || modelData[0] === "record-system") ? 0.4 : 1
-                        tint: modelData[0] === "record-mic" && hud.micMuted && !hud.gif ? Qt.rgba(Theme.warning.r, Theme.warning.g, Theme.warning.b, 0.3) : "transparent"
+                        warn: modelData[0] === "record-mic" && hud.micMuted && !hud.gif ? Qt.rgba(Theme.warning.r, Theme.warning.g, Theme.warning.b, 0.3) : "transparent"
                         onTapped: {
                             switch (modelData[0]) {
                             case "record-mic": if (!hud.gif) hud.micsOpen = !hud.micsOpen; break
@@ -1106,11 +1105,13 @@ Window {
                                                     time: hud.clock(elapsed), area: [area.x, area.y, area.width, area.height],
                                                     panel: panel.visible ? [panel.x, panel.y, panel.width, panel.height] : null,
                                                     picking: picking, drawing: drawing, windows: windows.length, hint: hint.visible ? hintText.text : "",
+                                                    icons: ["record-mic", "record-system", "record-camera-button", "record-clicks", "record-keys"]
+                                                           .map(n => { const c = find(contentItem, n); return c ? (c.lit ? "+" : "") + c.shownIcon : "" }),
                                                     controls: controls.visible ? [controls.x, controls.y, controls.width, controls.height] : null,
                                                     camera: bubble.visible ? [bubble.x, bubble.y, bubble.width, bubble.height] : null,
                                                     cameraName: camera, cameraShape: cameraShape, cameraSize: cameraSize, cameraMirror: cameraMirror,
                                                     cameraFull: cameraFull, cameraReady: bubble.ready, cameras: cameras.map(c => c.name),
-                                                    camerasOpen: cameraList.visible, clicks: clicks, keys: keys, rings: ringsShown,
+                                                    camerasOpen: cameraList.visible, micsOpen: micList.visible, clicks: clicks, keys: keys, rings: ringsShown,
                                                     keystrokes: keyPill.visible ? keyText : "", asking: asking,
                                                     cardsAway: !!(controller && controller.quickAccess.capturing) }).slice(1, -1))
             break
