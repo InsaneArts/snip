@@ -232,8 +232,9 @@ Recording came first after all (D43). Then:
 | Safety (REC-14 part) | ✅ | Recovery of takes cut short, at the next start; stops and keeps below 1 GB free or when the display is unplugged |
 | Camera bubble (REC-08) | ✅ | The toolbar's Camera menu: the cameras, Small to Huge, Circle, Square, Rectangle, Vertical, Mirror. A bubble inside the area (so it's recorded), dragged anywhere, before and while recording; a click fills the area. A real camera is untested: none here |
 | Click highlights, keystrokes (REC-09/10) | ✅ | Two toolbar toggles; Hyprland's own hooks (a key event and a non-consuming click bind) send them while recording, with a heartbeat. Command keys only (never plain typing), silent in password managers and the polkit prompt. Real typing is untested in e2e |
-| Controls and bar (REC-05, REC-06) | ⏳ | Restart and Delete ask first; a level meter; Alt+Return for a GIF; the time in Snip's menu icon |
-| Mic warnings, staying awake, lock (REC-14) | ⏳ | |
+| Controls (REC-05, REC-02) | ✅ | Restart and Delete ask first, in the pill (the recording goes on meanwhile); Alt+Enter in the toolbar records a GIF |
+| Bar (REC-06) and a level meter (REC-05) | ⏳ | Snip's menu icon with the time; the microphone's level in the pill |
+| Staying awake, lock, muted microphone (REC-14) | ✅ | An idle inhibitor on a 1×1 layer while recording; the recording pauses when the session locks (untested: the nested Hyprland can't lock); the toolbar flags a muted microphone. A microphone unplugged mid-recording and the Bluetooth headset warning are still to do |
 | Privacy-safe mode (REC-15) | ⏭ | Later |
 | **To check on real hardware** | | A long recording at 3440×1440@60 (spike S7), a real microphone and system audio, a camera |
 
