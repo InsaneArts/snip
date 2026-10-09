@@ -580,6 +580,10 @@ impl qobject::Engine {
             if name == "custom" {
                 h.record_input(data);
             }
+            // REC-14: the focus goes nowhere when the session locks
+            if name == "activewindowv2" && data.trim_matches(',').is_empty() {
+                h.record_check_lock();
+            }
             // CAP-12: the covers follow fullscreen windows and workspaces
             if h.desktop_is_hidden() && matches!(name, "fullscreen" | "workspacev2" | "monitoraddedv2" | "monitorremoved") {
                 h.push_desktop();

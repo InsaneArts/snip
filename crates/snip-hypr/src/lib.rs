@@ -76,6 +76,16 @@ pub fn parse_address(s: &str) -> Option<u64> {
     u64::from_str_radix(s.trim_start_matches("0x"), 16).ok()
 }
 
+/// Whether the session is locked. Hyprland says so only through its
+/// monitors: a lock screen blocks solitary rendering ("LOCK").
+pub fn locked() -> bool {
+    locked_in(&json("j/monitors"))
+}
+
+fn locked_in(monitors: &serde_json::Value) -> bool {
+    monitors.as_array().is_some_and(|a| a.iter().any(|m| m["solitaryBlockedBy"].as_array().is_some_and(|b| b.iter().any(|r| r == "LOCK"))))
+}
+
 pub fn monitors() -> Vec<Monitor> {
     json("j/monitors")
         .as_array()
@@ -223,5 +233,12 @@ mod tests {
     fn address_parsing() {
         assert_eq!(super::parse_address("0x5a73050505e0"), Some(0x5a73050505e0));
         assert_eq!(super::parse_address("zz"), None);
+    }
+
+    #[test]
+    fn a_lock_screen_blocks_solitary_rendering() {
+        let unlocked = serde_json::json!([{ "name": "DP-2", "solitaryBlockedBy": ["WINDOWED", "CANDIDATE"] }]);
+        let locked = serde_json::json!([{ "name": "DP-2", "solitaryBlockedBy": ["LOCK", "WINDOWED"] }]);
+        assert!(!super::locked_in(&unlocked) && super::locked_in(&locked) && !super::locked_in(&serde_json::Value::Null));
     }
 }
