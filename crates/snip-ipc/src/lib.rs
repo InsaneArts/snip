@@ -59,6 +59,22 @@ pub enum Request {
     Pins { action: String },
     /// Hide desktop clutter (CAP-12): "hide", "show" or "toggle"
     Desktop { action: String },
+    /// Screen recording (REC): "toggle" (choose an area, or stop the
+    /// recording that runs), "stop", "pause", "resume", "restart",
+    /// "discard", "status". With `rect` (logical px on `monitor`) or
+    /// `whole`, "start" records that at once. A start is answered when the
+    /// recording is kept (its card) or thrown away.
+    Record {
+        action: String,
+        #[serde(default)]
+        gif: bool,
+        #[serde(default)]
+        monitor: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        rect: Option<[i32; 4]>,
+        #[serde(default)]
+        whole: bool,
+    },
     /// Add an image file as a capture with a Quick Access card
     Open { path: String },
     /// Add an image file as a capture and open it in Snip's editor (ANN-19;

@@ -29,25 +29,35 @@ pub const ACTIONS: &[(&str, &str)] = &[
     ("pins-toggle", "Hide or show all pins"),
     ("pins-close", "Close all pins"),
     ("desktop-toggle", "Hide or show desktop clutter"),
+    ("record", "Record screen (again: stop)"),
+    ("record-gif", "Record a GIF"),
+    ("record-pause", "Pause or resume recording"),
     ("pins-unlock", "Unlock all pins"),
     ("settings", "Open Snip's settings"),
 ];
 
 /// Shortcuts a session binds for its length (Enter, Esc), not set in Settings.
-pub const SESSION_KEYS: &[(&str, &str)] = &[("scroll-go", "Scrolling capture: start or finish"), ("scroll-cancel", "Scrolling capture: cancel")];
+pub const SESSION_KEYS: &[(&str, &str)] = &[
+    ("scroll-go", "Scrolling capture: start or finish"),
+    ("scroll-cancel", "Scrolling capture: cancel"),
+    ("record-go", "Recording: start"),
+    ("record-cancel", "Recording: cancel"),
+];
 
 /// Lua binding Enter and Esc to a scrolling capture while it runs, or
 /// unbinding them. A bind handle is removed exactly once (removing one twice
 /// crashes Hyprland 0.56): the table is cleared before its handles go. A
 /// timer unbinds them if Snip never does.
-pub fn session_lua(app_id: &str, on: bool) -> String {
+/// Enter and Esc for a session (`prefix`: "scroll" or "record"), bound in
+/// Hyprland while it lasts: the page under it keeps the keyboard.
+pub fn session_lua(app_id: &str, on: bool, prefix: &str) -> String {
     const OFF: &str = "if SNIP_SESSION_KEYS then local k = SNIP_SESSION_KEYS; SNIP_SESSION_KEYS = nil; for _, b in ipairs(k) do b:remove() end end";
     if !on {
         return OFF.into();
     }
     format!(
         r#"if not SNIP_SESSION_KEYS then
-  SNIP_SESSION_KEYS = {{ hl.bind("Return", hl.dsp.global("{app_id}:scroll-go")), hl.bind("Escape", hl.dsp.global("{app_id}:scroll-cancel")) }}
+  SNIP_SESSION_KEYS = {{ hl.bind("Return", hl.dsp.global("{app_id}:{prefix}-go")), hl.bind("Escape", hl.dsp.global("{app_id}:{prefix}-cancel")) }}
   hl.timer(function() {OFF} end, {{ timeout = 900000, type = "oneshot" }})
 end"#
     )
@@ -313,10 +323,10 @@ bind\n\tmodmask: 0\n\tsubmap: snip-record\n\tkey: Escape\n\tkeycode: 0\n\tcatcha
 
     #[test]
     fn session_keys_are_removed_once() {
-        let on = session_lua("snip", true);
+        let on = session_lua("snip", true, "scroll");
         assert!(on.starts_with("if not SNIP_SESSION_KEYS then"), "never bound twice");
         assert!(on.contains(r#"hl.bind("Return", hl.dsp.global("snip:scroll-go"))"#), "{on}");
-        let off = session_lua("", false);
+        let off = session_lua("", false, "");
         assert!(off.find("SNIP_SESSION_KEYS = nil").unwrap() < off.find("b:remove()").unwrap(), "cleared before the handles go: {off}");
         assert!(on.contains(&off), "the timer unbinds the same way");
     }

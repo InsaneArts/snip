@@ -113,7 +113,9 @@ class Snip:
             SNIP_OUTPUTS=OUT,         # overlays only on the test output
             SNIP_TRACE="1",
             SNIP_NO_PORTALS="1",      # no portal dialog may open on the user's screen
-            SNIP_NO_TRAY="1",         # no second Snip icon in the user's bar (D-Bus is shared)
+            SNIP_NO_TRAY="1",
+            # KMS capture can't see the nested Hyprland: ffmpeg's test pattern stands in for gsr
+            SNIP_RECORDER="fake",         # no second Snip icon in the user's bar (D-Bus is shared)
             QT_FORCE_STDERR_LOGGING="1",
         )
         (self.tmp / "cfg/snip").mkdir(parents=True)
@@ -128,7 +130,7 @@ class Snip:
         # editor_object_shadows turns them on
         (self.tmp / "cfg/snip/config.toml").write_text(
             f'[general]\nexport_dir = "{self.export}"\nsounds = false\n{extra}\n[annotate]\nobject_shadows = false\n'
-            f'[recording]\nexport_dir = "{self.export}"\n'
+            f'[recording]\nexport_dir = "{self.export}"\ncountdown = 1\n'
         )
 
     def start(self):
@@ -1615,6 +1617,132 @@ def recordings_in_history(s, env):
     s.click()                                                      # any click closes the preview
     assert wait_for(lambda: not layer_mapped("snip-preview"), 3)
     s.cli("close-all")
+
+
+def record_state(s):
+    return s.json("record", "status").get("result")
+
+
+@case
+def record_by_command(s, env):
+    """REC-01, REC-05, REC-12, REC-13, API-01: `snip record area` records at once; pause,
+    resume and stop come by command, the paused time isn't in the video, and the card is
+    the recording. A GIF is made after; discard throws a take away; restart starts over.
+    (gsr can't record the nested Hyprland: ffmpeg's test pattern stands in, so this checks
+    Snip's side: sizes, timing, the flow.)"""
+    s.cli("close-all"); time.sleep(0.3)
+    sc = env.monitor()["scale"]
+
+    def start(*extra):
+        p = s.bg("record", "area", "--x", "100", "--y", "80", "--w", "400", "--h", "300", "--monitor", OUT, *extra)
+        assert wait_for(lambda: (record_state(s) or {}).get("state") == "recording", 5), record_state(s)
+        return p
+
+    p = start()
+    assert record_state(s)["area"] == [100, 80, 400, 300], record_state(s)
+    time.sleep(1.2)
+    assert s.json("record", "pause")["result"]["state"] == "paused"
+    time.sleep(0.8)
+    s.json("record", "resume")
+    time.sleep(0.8)
+    s.json("record", "stop")
+    r, code = finish(p, timeout=20)
+    assert code == 0, r
+    rec = r["result"]
+    assert (rec["media"], rec["width"], rec["height"]) == ("video", round(400 * sc), round(300 * sc) & ~1), rec
+    assert 1700 <= rec["duration"] <= 2600, ("the paused time is left out", rec["duration"])
+    assert wait_for(lambda: rec["id"] in s.status()["cards"], 3), "its card"
+    assert record_state(s) is None, "nothing left open"
+
+    p = start("--gif")
+    time.sleep(1.0)
+    s.json("record", "stop")
+    r, code = finish(p, timeout=30)
+    assert code == 0 and r["result"]["media"] == "gif", r
+    assert r["result"]["width"] == round(400 * sc), "narrower than 800: kept"
+
+    p = start()
+    time.sleep(0.5)
+    s.json("record", "discard")
+    r, code = finish(p, timeout=10)
+    assert code != 0 or not r.get("ok"), ("a discarded take is no capture", r)
+    assert record_state(s) is None
+
+    p = start()
+    time.sleep(1.5)
+    s.json("record", "restart")
+    assert wait_for(lambda: (record_state(s) or {}).get("state") == "recording", 5)
+    time.sleep(0.6)
+    s.json("record", "stop")
+    r, code = finish(p, timeout=20)
+    assert code == 0 and r["result"]["duration"] < 1300, ("restart starts over", r["result"]["duration"])
+    s.cli("close-all")
+
+
+def record_hud(s):
+    n = len(s.traces("record_hud"))
+    s.debug("ui", "record", "state")
+    assert wait_for(lambda: len(s.traces("record_hud")) > n, 2), "no record_hud"
+    return s.traces("record_hud")[-1]
+
+
+def record_click(s, name):
+    n = len(s.traces("record_where"))
+    s.debug("ui", "record", "where", name)
+    assert wait_for(lambda: len(s.traces("record_where")) > n, 2)
+    b = s.traces("record_where")[-1]
+    assert b["x"] >= 0, (name, "isn't shown")
+    s.move(b["x"], b["y"]); time.sleep(0.1); s.click()
+
+
+@case
+def record_with_the_hud(s, env):
+    """REC-01…05: Record Screen chooses an area over the live screen, then the toolbar sits
+    beside it (never inside); Record counts down, then the controls (outside the area)
+    pause, resume and stop it, and the card is the recording."""
+    s.cli("close-all"); time.sleep(0.3)
+    p = s.bg("record")
+    time.sleep(0.6)
+    s.drag(300, 200, 700, 500)
+    assert wait_for(lambda: record_hud(s)["phase"] == "ready", 3), record_hud(s)
+    h = record_hud(s)
+    ax, ay, aw, ah = h["area"]
+    assert (ax, ay, aw, ah) == (300, 200, 400, 300), h["area"]
+
+    def outside(r):
+        x, y, w, hh = r
+        return x + w <= ax - 2 or x >= ax + aw + 2 or y + hh <= ay - 2 or y >= ay + ah + 2
+
+    assert outside(h["toolbar"]), ("the toolbar is never in the recording", h["toolbar"], h["area"])
+    record_click(s, "record-go")
+    assert wait_for(lambda: record_hud(s)["phase"] == "countdown", 2), "a countdown first"
+    assert wait_for(lambda: record_hud(s)["phase"] == "recording", 4), record_hud(s)
+    h = record_hud(s)
+    assert h["controls"] and outside(h["controls"]), ("the controls are never in the recording", h["controls"])
+    time.sleep(1.2)
+    record_click(s, "record-pause")
+    assert wait_for(lambda: record_hud(s)["phase"] == "paused", 2)
+    t = record_hud(s)["time"]
+    time.sleep(1.2)
+    assert record_hud(s)["time"] == t, "paused: the time stands still"
+    record_click(s, "record-pause")
+    assert wait_for(lambda: record_hud(s)["phase"] == "recording", 2)
+    time.sleep(0.6)
+    record_click(s, "record-stop")
+    r, code = finish(p, timeout=20)
+    assert code == 0 and r["result"]["media"] == "video", r
+    assert wait_for(lambda: not record_hud(s)["open"], 2), "the HUD goes"
+    s.cli("close-all")
+
+    # Cancel in the toolbar records nothing
+    p = s.bg("record")
+    time.sleep(0.6)
+    s.drag(300, 200, 700, 500)
+    assert wait_for(lambda: record_hud(s)["phase"] == "ready", 3)
+    record_click(s, "record-cancel")
+    r, code = finish(p, timeout=5)
+    assert code != 0 or not r.get("ok"), r
+    assert wait_for(lambda: not record_hud(s)["open"], 2)
 
 
 @case
@@ -3707,6 +3835,7 @@ def main():
                       f"{m['width']}x{m['height']}, reserved {m['reserved']}; restored")
                 env.configure(1.25)
             s.cli("close-all", check=False)
+            s.cli("record", "discard", check=False)              # nor a recording
             s.cli("debug", "ui", "close-editors", check=False)   # a failed case must not leave its editor to the next
             s.cli("debug", "ui", "close-pins", check=False)
             time.sleep(0.2)

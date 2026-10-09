@@ -77,6 +77,7 @@ qt_add_qml_module(snipd
     app/qml/Welcome.qml
     app/qml/LinkPrompt.qml
     app/qml/DesktopCover.qml
+    app/qml/RecordHud.qml
     app/qml/editor.js
   RESOURCES
     app/fonts/Nunito.ttf

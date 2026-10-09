@@ -183,6 +183,10 @@ QtObject {
         function onScrollOpen(json) { root.quickAccess.capturing = true; root.scrollHud.open(JSON.parse(json)) }
         function onScrollStatus(json) { root.scrollHud.status(JSON.parse(json)) }
         function onScrollClose() { root.scrollHud.close(); root.captureFinished() }
+        // screen recording (REC): the HUD around the area
+        function onRecordOpen(json) { root.recordHud.open(JSON.parse(json)) }
+        function onRecordStatus(json) { root.recordHud.status(JSON.parse(json)) }
+        function onRecordClose() { root.recordHud.close() }
         function onBackgroundAuto(json) {
             const r = root.renderComponent.createObject(null, { capture: JSON.parse(json), token: root.nextToken() })
             r.done.connect(() => r.destroy())
@@ -210,6 +214,7 @@ QtObject {
         if (a[0] === "settings") { if (settingsWindow) settingsWindow.debug(a.slice(1)); return }
         if (a[0] === "welcome") { if (welcomeWindow) welcomeWindow.debug(a.slice(1)); return }
         if (a[0] === "scroll") { scrollHud.debug(a.slice(1)); return }
+        if (a[0] === "record") { recordHud.debug(a.slice(1)); return }
         if (a[0] === "tray") { trayMenu.debug(a.slice(1)); return }
         if (a[0] === "link") { linkPrompt.debug(a.slice(1)); return }
         if (a[0] === "desktop") {
@@ -294,6 +299,7 @@ QtObject {
     property Preview preview: Preview {}
     property History history: History { controller: root }
     property ScrollHud scrollHud: ScrollHud { controller: root }
+    property RecordHud recordHud: RecordHud { controller: root }
     property TrayMenu trayMenu: TrayMenu { controller: root }
     // Snip in the bar (OMA-08): a click on its icon opens the menu
     property Connections trayClicks: Connections {
