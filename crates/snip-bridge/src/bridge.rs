@@ -494,7 +494,7 @@ use std::sync::Arc;
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::QString;
 use snip_core::geometry::Rect;
-use snip_core::trace;
+use snip_core::{editor_files, trace};
 
 use crate::engine::Inner;
 use crate::frames;
@@ -506,6 +506,13 @@ pub struct EngineRust {
     settings: QString,
     session: QString,
     inner: Option<Arc<Inner>>,
+}
+
+/// An editor's file that couldn't be written goes to the trace.
+fn file_written(r: Result<(), String>) {
+    if let Err(e) = r {
+        trace::warn("editor_files", &format!("\"msg\":{}", trace::js(&e)));
+    }
 }
 
 impl qobject::Engine {
@@ -674,64 +681,39 @@ impl qobject::Engine {
     }
 
     fn editor_prefs(&self) -> QString {
-        let j = std::fs::read_to_string(snip_core::paths::data_dir().join("editor.json")).unwrap_or_else(|_| "{}".into());
-        QString::from(j.as_str())
+        QString::from(editor_files::read(editor_files::File::Prefs).as_str())
     }
 
     fn set_editor_prefs(&self, json: QString) {
-        let dir = snip_core::paths::data_dir();
-        let _ = std::fs::create_dir_all(&dir);
-        let _ = snip_core::store::atomic_write(&dir.join("editor.json"), json.to_string().as_bytes());
+        file_written(editor_files::write(editor_files::File::Prefs, &json.to_string()));
     }
 
     fn saved_colors(&self) -> QString {
-        let j = std::fs::read_to_string(snip_core::paths::data_dir().join("colors.json")).unwrap_or_else(|_| "[]".into());
-        QString::from(j.as_str())
+        QString::from(editor_files::read(editor_files::File::Colors).as_str())
     }
 
     fn set_saved_colors(&self, json: QString) {
-        let dir = snip_core::paths::data_dir();
-        let _ = std::fs::create_dir_all(&dir);
-        let _ = snip_core::store::atomic_write(&dir.join("colors.json"), json.to_string().as_bytes());
+        file_written(editor_files::write(editor_files::File::Colors, &json.to_string()));
     }
 
     fn backgrounds(&self) -> QString {
-        let j = std::fs::read_to_string(snip_core::paths::data_dir().join("backgrounds.json")).unwrap_or_else(|_| "{}".into());
-        QString::from(j.as_str())
+        QString::from(editor_files::read(editor_files::File::Backgrounds).as_str())
     }
 
     fn set_backgrounds(&self, json: QString) {
-        let dir = snip_core::paths::data_dir();
-        let _ = std::fs::create_dir_all(&dir);
-        let _ = snip_core::store::atomic_write(&dir.join("backgrounds.json"), json.to_string().as_bytes());
+        file_written(editor_files::write(editor_files::File::Backgrounds, &json.to_string()));
     }
 
     fn custom_wallpapers(&self) -> QString {
-        let mut v: Vec<String> = std::fs::read_dir(snip_core::paths::data_dir().join("wallpapers"))
-            .map(|d| d.flatten().map(|e| e.path().to_string_lossy().into_owned()).collect())
-            .unwrap_or_default();
-        v.sort();
-        QString::from(serde_json::to_string(&v).unwrap_or_else(|_| "[]".into()).as_str())
+        QString::from(serde_json::to_string(&editor_files::wallpapers()).unwrap_or_else(|_| "[]".into()).as_str())
     }
 
     fn add_wallpaper(&self, path: QString) -> QString {
-        let src = std::path::PathBuf::from(path.to_string());
-        let image = matches!(src.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).as_deref(), Some("png" | "jpg" | "jpeg" | "webp"));
-        let dir = snip_core::paths::data_dir().join("wallpapers");
-        let name = src.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
-        let dst = dir.join(format!("{ms}-{name}"));
-        if !image || std::fs::create_dir_all(&dir).is_err() || std::fs::copy(&src, &dst).is_err() {
-            return QString::default();
-        }
-        QString::from(dst.to_string_lossy().as_ref())
+        editor_files::add_wallpaper(std::path::Path::new(&path.to_string())).map(|p| QString::from(p.to_string_lossy().as_ref())).unwrap_or_default()
     }
 
     fn remove_wallpaper(&self, path: QString) {
-        let p = std::path::PathBuf::from(path.to_string());
-        if p.parent() == Some(snip_core::paths::data_dir().join("wallpapers").as_path()) {
-            let _ = std::fs::remove_file(p);
-        }
+        editor_files::remove_wallpaper(std::path::Path::new(&path.to_string()));
     }
 
     fn editor_transform(&self, path: QString, op: QString, w: i32, h: i32) -> QString {
@@ -786,21 +768,10 @@ impl qobject::Engine {
     }
 
     fn edge_color(&self, path: QString) -> QString {
-        let c = crate::edits::decoded(&path.to_string()).map(|img| {
-            let (w, h) = (img.width as usize, img.height as usize);
-            let px = |x: usize, y: usize| {
-                let i = (y * w + x) * img.bpp;
-                [img.data[i], img.data[i + 1], img.data[i + 2]]
-            };
-            let mut bins: std::collections::HashMap<[u8; 3], usize> = Default::default();
-            let edge = (0..w).flat_map(|x| [(x, 0), (x, h - 1)]).chain((0..h).flat_map(|y| [(0, y), (w - 1, y)]));
-            for (x, y) in edge {
-                *bins.entry(px(x, y)).or_default() += 1;
-            }
-            let c = bins.into_iter().max_by_key(|(_, n)| *n).map(|(c, _)| c).unwrap_or([255; 3]);
-            format!("#{:02x}{:02x}{:02x}", c[0], c[1], c[2])
-        });
-        QString::from(c.unwrap_or_else(|| "#ffffff".into()).as_str())
+        // the colour most of the image's edge has: its border's, as Auto-balance reads it
+        let c = crate::edits::decoded(&path.to_string()).map(|img| snip_core::balance::border(&img.data, img.width, img.height, img.bpp));
+        let c = c.unwrap_or([255; 3]);
+        QString::from(format!("#{:02x}{:02x}{:02x}", c[0], c[1], c[2]).as_str())
     }
 
     fn content_margins(&self, path: QString, x: i32, y: i32, w: i32, h: i32) -> QString {
