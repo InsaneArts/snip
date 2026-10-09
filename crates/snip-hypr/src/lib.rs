@@ -197,14 +197,15 @@ pub fn eval(lua: &str) -> std::io::Result<String> {
 
 /// Runtime rules Snip needs whatever the user's config says: overlays must
 /// appear instantly (no layer fade), which also keeps fading overlays out of
-/// the first frames of a recording; the editor floats, centred; a pin floats
-/// on every workspace, above fullscreen windows, with its own look. Re-applied
-/// on every `configreloaded`.
+/// the first frames of a recording; the editors and Quick Look float,
+/// centred; a pin floats on every workspace, above fullscreen windows, with
+/// its own look. Re-applied on every `configreloaded`.
 pub fn install_runtime_rules() -> std::io::Result<String> {
     eval(
         r#"SNIP_LAYER_RULE = hl.layer_rule({ match = { namespace = "^snip-" }, no_anim = true, animation = "none" })
 SNIP_EDITOR_RULE = hl.window_rule({ match = { title = "^Snip Editor.*" }, float = true, center = true, opacity = "1 1", tag = "+snip-editor" })
 SNIP_VIDEO_EDITOR_RULE = hl.window_rule({ match = { title = "^Snip Video Editor.*" }, float = true, center = true, opacity = "1 1", tag = "+snip-video-editor" })
+SNIP_QUICKLOOK_RULE = hl.window_rule({ match = { title = "^Snip Quick Look$" }, float = true, center = true, opacity = "1 1", tag = "+snip-quicklook" })
 SNIP_SETTINGS_RULE = hl.window_rule({ match = { title = "^Snip Settings$" }, float = true, center = true, opacity = "1 1", tag = "+snip-settings" })
 SNIP_WELCOME_RULE = hl.window_rule({ match = { title = "^Welcome to Snip$" }, float = true, center = true, opacity = "1 1", tag = "+snip-welcome" })
 SNIP_PIN_RULE = hl.window_rule({ match = { title = "^Snip Pin .*" }, float = true, pin = true, center = true, border_size = 0, no_shadow = true, no_blur = true, no_dim = true, no_anim = true, rounding = 0, opacity = "1 override 1 override", suppress_event = "maximize fullscreen" })"#,

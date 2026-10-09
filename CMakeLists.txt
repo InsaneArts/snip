@@ -81,6 +81,7 @@ qt_add_qml_module(snipd
     app/qml/CameraBubble.qml
     app/qml/PanelCell.qml
     app/qml/VideoEditor.qml
+    app/qml/QuickLook.qml
     app/qml/editor.js
   RESOURCES
     app/fonts/Nunito.ttf

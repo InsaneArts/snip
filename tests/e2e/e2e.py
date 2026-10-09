@@ -1546,7 +1546,7 @@ def make_clip(path, seconds=2, size="320x200", audio=True):
 def recordings_in_history(s, env):
     """REC-12/13, HIS-01: a video or GIF opened in Snip is a capture like a screenshot: its
     card shows its first frame and length, Copy offers the file, Save keeps it as it is,
-    History files it under Videos or GIFs, and Space plays it."""
+    History files it under Videos or GIFs, and Space plays it in Quick Look (D51)."""
     from PIL import Image
     s.cli("close-all"); time.sleep(0.3)
     clip, gif = s.tmp / "clip.mp4", s.tmp / "loop.gif"
@@ -1606,17 +1606,91 @@ def recordings_in_history(s, env):
     assert wait_for(lambda: len(s.traces("qa_where")) > n, 2)
     c = s.traces("qa_where")[-1]
     s.move(c["x"] + 1, c["y"]); s.move(c["x"], c["y"]); time.sleep(0.5)
-    s.debug("ui", "qa-keys", " ")                                  # Space: the preview plays it
-    assert wait_for(lambda: layer_mapped("snip-preview"), 3), "the preview opens"
+    s.debug("ui", "qa-keys", " ")                                  # Space: Quick Look plays it
+    assert wait_for(lambda: quick_look_window(), 3), "Quick Look opens"
+    assert not layer_mapped("snip-preview"), "not the big preview: that's for screenshots"
     time.sleep(1.0)
+    w, mon = quick_look_window(), env.monitor()
     shot = s.tmp / "playing.png"
     sh("grim", "-o", OUT, str(shot))
     im = Image.open(shot).convert("RGB")
-    W, H = im.size
-    colours = {im.getpixel((W // 2 + dx, H // 2 + dy)) for dx in range(-40, 41, 20) for dy in range(-20, 21, 20)}
-    assert len(colours) > 3, ("the video draws in the preview (the test pattern is colourful)", colours)
-    s.click()                                                      # any click closes the preview
-    assert wait_for(lambda: not layer_mapped("snip-preview"), 3)
+    cx, cy = round((w["at"][0] - mon["x"] + w["size"][0] / 2) * mon["scale"]), round((w["at"][1] - mon["y"] + w["size"][1] / 3) * mon["scale"])
+    colours = {im.getpixel((cx + dx, cy + dy)) for dx in range(-90, 91, 30) for dy in range(-20, 21, 20)}
+    assert len(colours) > 3, ("the video draws in Quick Look (the test pattern is colourful)", colours)
+    s.debug("ui", "qa-keys", "{Escape}")                         # the pointer still on the card
+    assert wait_for(lambda: not quick_look_window(), 3), "Esc on the cards closes it"
+    s.cli("close-all")
+
+
+def quick_look_window():
+    return next((c for c in hypr_json("clients") if c["class"] == "snip-e2e" and c["title"] == "Snip Quick Look"), None)
+
+
+def quick_look_state(s):
+    n = len(s.traces("quicklook_state"))
+    s.debug("ui", "quicklook", "state")
+    assert wait_for(lambda: len(s.traces("quicklook_state")) > n, 2), "no quicklook_state"
+    return s.traces("quicklook_state")[-1]
+
+
+@case
+def quick_look_and_open_with(s, env):
+    """D51: a recording's card has CleanShot's Quick Look in its top-right corner: a small
+    window that plays it, floating and centred, at its size (at least 480 px wide); a click
+    or Space pauses and plays it, Esc closes it, and a GIF plays there too (Space on its
+    card closes it again, as on macOS). The bottom-right corner, where CleanShot has its
+    cloud, is Open With…."""
+    s.cli("close-all"); time.sleep(0.3)
+    clip, gif = s.tmp / "ql.mp4", s.tmp / "ql.gif"
+    make_clip(clip, seconds=3, size="640x360")
+    make_clip(gif, seconds=1, size="320x180", audio=False)
+
+    def where(name):
+        n = len(s.traces("qa_where"))
+        s.debug("ui", "qa-where", name)
+        assert wait_for(lambda: len(s.traces("qa_where")) > n, 2)
+        return s.traces("qa_where")[-1]
+
+    def click(card, name):
+        c = where("card:" + card)
+        s.move(c["x"] + 1, c["y"]); s.move(c["x"], c["y"]); time.sleep(0.5)    # its corners show
+        b = where(name)
+        assert b["x"] >= 0, (name, "isn't shown")
+        s.move(b["x"], b["y"]); time.sleep(0.15); s.click()
+
+    vid = s.json("open", str(clip))["result"]
+    time.sleep(0.6)
+    click(vid["id"], "card-quicklook")
+    assert wait_for(lambda: quick_look_window(), 3), "the eye opens Quick Look"
+    w, m = quick_look_window(), env.monitor()
+    assert any(t.rstrip("*") == "snip-quicklook" for t in w["tags"]) and w["floating"], (w["tags"], w["floating"])
+    sw, sh_ = m["width"] / m["scale"], m["height"] / m["scale"]
+    iw, ih = vid["width"] / (vid.get("scale") or 1), vid["height"] / (vid.get("scale") or 1)
+    k = min(sw * 0.6 / iw, sh_ * 0.6 / ih, max(1, 480 / iw))
+    assert all(abs(a - round(b * k)) <= 1 for a, b in zip(w["size"], (iw, ih))), ("its size, fitted", w["size"], iw, ih, k)
+    assert wait_for(lambda: quick_look_state(s)["playing"], 3), quick_look_state(s)
+    # a click on it pauses it, and gives it the keyboard (the cards had it)
+    cx, cy = w["at"][0] - m["x"] + w["size"][0] / 2, w["at"][1] - m["y"] + w["size"][1] / 3
+    s.move(cx + 1, cy); s.move(cx, cy); time.sleep(0.1); s.click()
+    assert wait_for(lambda: not quick_look_state(s)["playing"], 2), "a click pauses it"
+    assert wait_for(lambda: hypr_json("activewindow").get("title") == "Snip Quick Look", 2), hypr_json("activewindow").get("title")
+    s.debug("ui", "quicklook", "keys", "{Space}")
+    assert wait_for(lambda: quick_look_state(s)["playing"], 2), "Space plays it again"
+    s.debug("ui", "quicklook", "keys", "{Escape}")
+    assert wait_for(lambda: not quick_look_window(), 3), "Esc closes it"
+
+    g = s.json("open", str(gif))["result"]
+    time.sleep(0.6)
+    click(g["id"], "card-quicklook")
+    assert wait_for(lambda: quick_look_window() and quick_look_state(s)["gif"], 3), "a GIF in Quick Look"
+    f0 = quick_look_state(s)["position"]
+    assert wait_for(lambda: quick_look_state(s)["position"] != f0, 2), "it plays"
+    s.debug("ui", "qa-keys", " ")                                # Space on its card again: closed
+    assert wait_for(lambda: not quick_look_window(), 3), "Space toggles it, as on macOS"
+
+    n = len(s.traces("open_with"))
+    click(vid["id"], "card-open-with")
+    assert wait_for(lambda: [e for e in s.traces("open_with")[n:] if e["id"] == vid["id"]], 2), "Open With… in the other corner"
     s.cli("close-all")
 
 
