@@ -193,7 +193,7 @@ OpLog        append-only [{seq, op, args, inverse}]  → undo/redo, crash recove
 |---|---|
 | `~/.config/snip/config.toml` | User settings, the single source of truth, inotify live reload |
 | `~/.local/share/snip/history.db` | SQLite (WAL): captures, tags, retention |
-| `~/.local/share/snip/history/<ulid>/` | **The default home of every capture** (product §5.0): `source.png` (original physical pixels), `document.json`, `thumb.webp`. Recordings are written here while they record. Retention per HIS-02. |
+| `~/.local/share/snip/history/<ulid>/` | **The default home of every capture** (product §5.0): `source.png` (original physical pixels), `document.json`, `thumb.webp`. A recording keeps its own file, `source.mp4` or `source.gif`, beside `poster.png` (its first frame, for cards and history; the text index reads it); its length is in the index. Recordings are written here while they record. Retention per HIS-02. |
 | `~/.cache/snip/drag/` | Files offered for DnD and "copy as file" (cleaned after 24 h) |
 | `$XDG_RUNTIME_DIR/snip/` | `ctl.sock`, gsr IPC socket, **working documents** (op log appended on every edit so a crash loses nothing), recording temp files |
 | Export folder | Written **only on Save** (or an auto-save After Capture rule): `$XDG_PICTURES_DIR/Screenshots`, `$XDG_VIDEOS_DIR/Screencasts` (configurable). Save copies out of history; history keeps its copy until retention removes it. |
