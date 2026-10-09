@@ -278,13 +278,11 @@ impl Inner {
                 (rec.app, rec.title) = self.window_meta_at(&rec.output, Rect::new(phys(x), phys(y), phys(rec.local.w), phys(rec.local.h)), s);
                 trace::trace("record_area", &format!("\"area\":[{},{},{},{}]", rec.local.x, rec.local.y, rec.local.w, rec.local.h));
             }
-            rec.state = if seconds > 0 { State::Countdown } else { State::Ready };
+            // with or without a countdown, the HUD calls record_go once its
+            // panel is off screen: the panel is never in the first frame (D49)
+            rec.state = State::Countdown;
         }
-        if seconds > 0 {
-            self.record_status(json!({ "seconds": seconds }));
-        } else {
-            self.record_go();
-        }
+        self.record_status(json!({ "seconds": seconds }));
     }
 
     /// The countdown is over and off screen (QML): record.
