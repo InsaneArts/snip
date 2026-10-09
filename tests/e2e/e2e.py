@@ -2219,6 +2219,12 @@ def record_clicks_and_keys(s, env):
     hypr_eval('hl.dispatch(hl.dsp.event("snip:other:k:9:1"))')
     time.sleep(0.3)
     assert record_hud(s)["keystrokes"] == "", "another recording's keys aren't shown"
+    # a config reload starts Hyprland's Lua over: the hooks go back in
+    m = len(s.traces("hypr_reinstalled"))
+    sh("hyprctl", "reload")
+    env.configure(1.25)                                              # the test output as it was
+    assert wait_for(lambda: len(s.traces("hypr_reinstalled")) > m, 3), "snipd saw the reload"
+    assert wait_for(lambda: "Snip: recording clicks" in binds(), 3), "the hooks are back after a reload"
     s.json("record", "stop")
     r, code = finish(p, timeout=20)
     assert code == 0, r
@@ -2898,6 +2904,13 @@ def scrolling_capture(s, env):
         p = s.bg("scroll"); time.sleep(0.5)                            # Esc cancels
         s.drag(lx + 30, ly + 60, lx + lw - 30, ly + lh - 120)
         assert wait_for(lambda: hud()["open"], 3)
+        # a config reload (Omarchy's theme switch does one) starts Hyprland's Lua over:
+        # Snip binds the session's keys again
+        n = len(s.traces("hypr_reinstalled"))
+        sh("hyprctl", "reload")
+        env.configure(1.25)                                            # the test output as it was
+        assert wait_for(lambda: len(s.traces("hypr_reinstalled")) > n, 3), "snipd saw the reload"
+        assert wait_for(lambda: "Return" in sh("hyprctl", "binds").stdout, 3), "Enter is bound again after a reload"
         hypr_eval('hl.dispatch(hl.dsp.global("snip-e2e:scroll-cancel"))')
         r, code = finish(p)
         assert code == 1 and "Return" not in sh("hyprctl", "binds").stdout, (r, code)

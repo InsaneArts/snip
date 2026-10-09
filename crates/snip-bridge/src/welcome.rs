@@ -41,7 +41,7 @@ pub fn use_keys() -> Result<(), String> {
     let file = hypr_dir().join("hyprland.lua");
     let text = std::fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
     std::fs::write(&file, with_keys(&text, &module)).map_err(|e| e.to_string())?;
-    let _ = snip_hypr::eval(&format!("dofile({:?})", module.to_string_lossy()));
+    crate::engine::hypr("dofile", snip_hypr::dofile(&module));
     Ok(())
 }
 
