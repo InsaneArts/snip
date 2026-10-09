@@ -2517,6 +2517,7 @@ def welcome_click(s, env, name):
     assert p["x"] >= 0, (name, "isn't shown")
     w, mon = welcome_client(), env.monitor()
     s.move(w["at"][0] - mon["x"] + p["x"], w["at"][1] - mon["y"] + p["y"])
+    time.sleep(0.15)
     s.click()
 
 
@@ -2544,6 +2545,7 @@ def welcome_first_run(s, env):
         assert text.startswith("-- my config\n") and text.count("snip.lua") == 1, text
         assert wait_for(lambda: binds_for("Snip: Capture area"), 3), "the keys work at once"
         assert wait_for(lambda: welcome_state(s)["st"]["keysInConfig"] is True, 2), "and it says so"
+        time.sleep(0.3)                               # the page is laid out anew: input lands a frame later
         welcome_click(s, env, "welcome-done")
         assert wait_for(lambda: not welcome_client(), 3) and marker.exists(), "Get Started closes it for good"
         s.cli("welcome")
