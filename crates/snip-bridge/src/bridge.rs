@@ -905,8 +905,11 @@ impl qobject::Engine {
 
     fn tray_icon_dir(&self) -> QString {
         const ICON: &[u8] = include_bytes!("../../../app/icons/snip-tray-symbolic.svg");
+        const RECORDING: &[u8] = include_bytes!("../../../app/icons/snip-tray-recording.svg");
         let dir = snip_core::paths::runtime_dir().join("icons");
-        let _ = std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(dir.join("snip-tray-symbolic.svg"), ICON));
+        let _ = std::fs::create_dir_all(&dir)
+            .and_then(|_| std::fs::write(dir.join("snip-tray-symbolic.svg"), ICON))
+            .and_then(|_| std::fs::write(dir.join("snip-tray-recording.svg"), RECORDING));
         QString::from(dir.to_string_lossy().as_ref())
     }
 

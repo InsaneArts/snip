@@ -39,6 +39,10 @@ Highlight Clicks and Show Keystrokes: the two toggles; while recording, a ring w
 
 ![Clicks and keys](recording-clicks-keys.png)
 
+Snip's icon in the bar while it records (live, on DP-2; the bar is dimmed as everything outside the area is): before, recording, after.
+
+![The bar icon](recording-bar.png)
+
 The video editor: two splits, the middle part cut (dimmed, "1.5 s"), a trim (the orange handles).
 
 ![The video editor](video-editor.png)
@@ -97,7 +101,8 @@ history card ─ Edit Video… ─▶ VideoEditor window ─▶ media::export (f
 | Click highlights and keystrokes | REC-09/10 | ✅ built; real typing into the hook is untested (the nested Hyprland has no keyboard of ours) |
 | Restart and Delete ask first; Alt+Enter records a GIF | REC-05, REC-02 | ✅ built |
 | The screen kept awake; paused when the session locks; a muted microphone flagged | REC-14 | ✅ built; the lock is untested (the nested Hyprland can't lock) |
-| A level meter; Snip's menu icon shows the time; a microphone unplugged mid-recording; the Bluetooth headset warning | REC-05, REC-06, REC-14 | planned |
+| Snip's bar icon turns red while recording (a click opens the menu: Stop Recording) | REC-06 | ✅ built (checked live: the bar's tray follows the icon change) |
+| A level meter; the time in the bar; a microphone unplugged mid-recording; the Bluetooth headset warning | REC-05, REC-06, REC-14 | planned |
 | Editor: a scrubbing proxy, keyframe thumbnails at once, a smooth playhead | VED-01 | planned |
 | Privacy-safe mode; true window capture | REC-15, P2 | later |
 

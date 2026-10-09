@@ -118,6 +118,8 @@ Window {
         phase = "closed"
         visible = false
     }
+    // REC-06: Snip's bar icon is red while it records
+    onPhaseChanged: Platform.setTrayRecording(["launching", "recording", "paused"].includes(phase))
     function record() {
         if (phase !== "ready") return
         Engine.setSetting("recording.kind", JSON.stringify(gif ? "gif" : "video"))
