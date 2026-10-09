@@ -2558,6 +2558,22 @@ def welcome_first_run(s, env):
 
 
 @case
+def config_typo_keeps_the_rest(s, env):
+    """SET-01: a typo in config.toml costs only that key: the rest of the file still
+    counts, and `snip reload` names the key it left out."""
+    themes = lambda: [t["name"] for t in s.traces("theme")]
+    n = len(themes())
+    try:
+        s.write_config('appearance = "light"\nsoundz = false')
+        assert wait_for(lambda: themes()[n:] and themes()[-1] == "snip-light", 3), ("the rest still counts", themes()[n:])
+        r = s.json("reload")
+        assert not r["ok"] and "general.soundz" in r["error"], r
+    finally:
+        s.write_config("")
+        wait_for(lambda: themes()[-1] != "snip-light", 3)
+
+
+@case
 def appearance_own_or_omarchy(s, env):
     """D48: Settings › General › Appearance: Snip takes the Omarchy theme's colours (the
     default), or its own CleanShot-like look in light or dark, at once."""

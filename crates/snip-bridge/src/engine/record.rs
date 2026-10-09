@@ -309,7 +309,7 @@ impl Inner {
             cursor: cfg.show_cursor,
             audio,
             codec: "auto".into(),
-            quality: cfg.quality.clone(),
+            quality: cfg.quality.as_str().into(),
             max_size: cfg.max_box(),
             cpu: false,
             file: file.clone(),

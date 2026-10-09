@@ -1,7 +1,9 @@
 //! `~/.config/snip/config.toml`: the single source of truth for settings
-//! (product SET-01). Unknown keys are ignored with a warning; missing keys use
-//! defaults; edits made by the settings UI go through `toml_edit` so the
-//! user's comments and ordering survive.
+//! (product SET-01). A key that isn't known, or holds the wrong kind of
+//! value, is ignored with a warning, and the rest of the file still counts;
+//! missing keys use defaults; edits made by the settings UI go through
+//! `toml_edit` so the user's comments and ordering survive, and each is
+//! checked strictly (`set_json`).
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -160,10 +162,10 @@ pub struct Recording {
     pub export_dir: String,
     /// REC-12: frames per second
     pub fps: u32,
-    /// REC-12: gpu-screen-recorder's quality: medium, high, very_high, ultra
-    pub quality: String,
-    /// REC-12: the largest video ("" as recorded, or "2160p", "1440p", "1080p", "720p")
-    pub max_size: String,
+    /// REC-12: gpu-screen-recorder's quality
+    pub quality: RecordQuality,
+    /// REC-12: the largest video, or as recorded
+    pub max_size: MaxSize,
     /// CAP-11 for videos: the pointer in recordings
     pub show_cursor: bool,
     /// REC-03: seconds counted down before a recording starts (0: none)
@@ -186,10 +188,10 @@ pub struct Recording {
     pub kind: String,
     /// REC-08: the camera shown in the recording, by its name ("" none)
     pub camera: String,
-    /// REC-08: "circle", "square", "rectangle" or "vertical"
-    pub camera_shape: String,
-    /// REC-08: "small", "medium", "large" or "huge", for the recorded area
-    pub camera_size: String,
+    /// REC-08: the camera's shape
+    pub camera_shape: CameraShape,
+    /// REC-08: the camera's size, for the recorded area
+    pub camera_size: CameraSize,
     /// REC-08: shown as in a mirror
     pub camera_mirror: bool,
     /// REC-09: a ring where the pointer clicks
@@ -203,8 +205,8 @@ impl Default for Recording {
         Self {
             export_dir: crate::paths::default_recording_dir().to_string_lossy().into_owned(),
             fps: 60,
-            quality: "very_high".into(),
-            max_size: String::new(),
+            quality: RecordQuality::VeryHigh,
+            max_size: MaxSize::AsRecorded,
             show_cursor: true,
             countdown: 3,
             dnd: true,
@@ -216,8 +218,8 @@ impl Default for Recording {
             gif_width: 800,
             kind: "video".into(),
             camera: String::new(),
-            camera_shape: "circle".into(),
-            camera_size: "medium".into(),
+            camera_shape: CameraShape::Circle,
+            camera_size: CameraSize::Medium,
             camera_mirror: true,
             highlight_clicks: false,
             show_keystrokes: false,
@@ -228,14 +230,75 @@ impl Default for Recording {
 impl Recording {
     /// gsr's `-s` for `max_size`: a 16:9 box the video is scaled to fit in.
     pub fn max_box(&self) -> Option<(u32, u32)> {
-        match self.max_size.as_str() {
-            "2160p" => Some((3840, 2160)),
-            "1440p" => Some((2560, 1440)),
-            "1080p" => Some((1920, 1080)),
-            "720p" => Some((1280, 720)),
-            _ => None,
+        match self.max_size {
+            MaxSize::P2160 => Some((3840, 2160)),
+            MaxSize::P1440 => Some((2560, 1440)),
+            MaxSize::P1080 => Some((1920, 1080)),
+            MaxSize::P720 => Some((1280, 720)),
+            MaxSize::AsRecorded => None,
         }
     }
+}
+
+/// REC-12: gpu-screen-recorder's quality.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RecordQuality {
+    Medium,
+    High,
+    #[default]
+    VeryHigh,
+    Ultra,
+}
+
+impl RecordQuality {
+    /// gsr's name for it (`-q`)
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Medium => "medium",
+            Self::High => "high",
+            Self::VeryHigh => "very_high",
+            Self::Ultra => "ultra",
+        }
+    }
+}
+
+/// REC-12: the largest video ("" keeps the recorded size).
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub enum MaxSize {
+    #[default]
+    #[serde(rename = "")]
+    AsRecorded,
+    #[serde(rename = "2160p")]
+    P2160,
+    #[serde(rename = "1440p")]
+    P1440,
+    #[serde(rename = "1080p")]
+    P1080,
+    #[serde(rename = "720p")]
+    P720,
+}
+
+/// REC-08: the camera bubble's shape.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum CameraShape {
+    #[default]
+    Circle,
+    Square,
+    Rectangle,
+    Vertical,
+}
+
+/// REC-08: the camera bubble's size, for the recorded area.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum CameraSize {
+    Small,
+    #[default]
+    Medium,
+    Large,
+    Huge,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -447,12 +510,17 @@ impl Config {
         crate::paths::config_dir().join("config.toml")
     }
 
-    /// Parse; on error return defaults plus the error so the UI can show it
-    /// instead of refusing to start.
+    /// Parse a hand-edited file: every good key counts, each bad one (not
+    /// known, or the wrong kind of value) is left out and named in the
+    /// message the UI shows. A file that isn't TOML at all gives defaults.
     pub fn parse(text: &str) -> (Config, Option<String>) {
-        match toml_edit::de::from_str::<Config>(text) {
-            Ok(c) => (c, None),
-            Err(e) => (Config::default(), Some(e.to_string())),
+        match lenient(text) {
+            Ok((c, ignored)) if ignored.is_empty() => (c, None),
+            Ok((c, ignored)) => {
+                let list: Vec<String> = ignored.iter().map(|(k, why)| format!("{k} ({why})")).collect();
+                (c, Some(format!("ignored {}", list.join("; "))))
+            }
+            Err(e) => (Config::default(), Some(e)),
         }
     }
 
@@ -540,10 +608,56 @@ pub fn set_json(text: &str, dotted: &str, value: &serde_json::Value) -> Result<S
         _ => return Err(format!("{dotted}: unsupported value {value}")),
     };
     let out = set_value(text, dotted, item)?;
-    match Config::parse(&out) {
-        (_, Some(e)) => Err(e),
-        _ => Ok(out),
+    // strict: the key must be known and take this value. Keys the file got
+    // wrong by hand elsewhere don't stop a write.
+    let (_, ignored) = lenient(&out)?;
+    match ignored.iter().find(|(k, _)| k == dotted || dotted.starts_with(&format!("{k}."))) {
+        Some((_, why)) => Err(format!("{dotted}: {why}")),
+        None => Ok(out),
     }
+}
+
+/// Deserialize, leaving out (and naming) each key that stops it: a key
+/// that isn't known or a value of the wrong kind. Err: not TOML at all.
+fn lenient(text: &str) -> Result<(Config, Vec<(String, String)>), String> {
+    let mut text = text.to_string();
+    let mut ignored = vec![];
+    loop {
+        let e = match toml_edit::de::from_str::<Config>(&text) {
+            Ok(c) => return Ok((c, ignored)),
+            Err(e) => e,
+        };
+        let Some(path) = e.span().and_then(|s| blame(&text, s.start)) else { return Err(e.to_string()) };
+        let dotted = path.join(".");
+        let without = remove_value(&text, &dotted)?;
+        if without == text || ignored.len() >= 64 {
+            return Err(e.to_string());
+        }
+        ignored.push((dotted, e.message().to_string()));
+        text = without;
+    }
+}
+
+/// The key an error at byte `at` is about: the innermost key whose name or
+/// value covers it (a table's own name for a section that isn't known).
+fn blame(text: &str, at: usize) -> Option<Vec<String>> {
+    fn walk(t: &toml_edit::Table, at: usize, path: &mut Vec<String>) -> bool {
+        let covers = |s: Option<std::ops::Range<usize>>| s.is_some_and(|s| s.contains(&at));
+        for (k, item) in t.iter() {
+            let named = covers(t.key(k).and_then(|k| k.span()));
+            path.push(k.to_string());
+            match item.as_table() {
+                Some(sub) if walk(sub, at, path) || named || covers(sub.span()) => return true,
+                None if named || covers(item.span()) => return true,
+                _ => {}
+            }
+            path.pop();
+        }
+        false
+    }
+    let doc = toml_edit::ImDocument::parse(text).ok()?;
+    let mut path = vec![];
+    walk(doc.as_table(), at, &mut path).then_some(path)
 }
 
 #[cfg(test)]
@@ -583,10 +697,21 @@ mod tests {
     }
 
     #[test]
-    fn bad_file_falls_back_with_error() {
-        let (c, err) = Config::parse("[quick_access]\nposition = 7\n");
-        assert!(err.is_some());
+    fn a_bad_key_is_left_out_and_the_rest_counts() {
+        let text = "[general]\nsounds = false\nbogus = 1\n[quick_access]\nposition = 7\nsize = 320\n[nope]\nx = 1\n\
+                    [recording]\nquality = \"great\"\nfps = 30\ncamera_shape = \"vertical\"\n";
+        let (c, err) = Config::parse(text);
+        assert!(!c.general.sounds && c.quick_access.size == 320 && c.recording.fps == 30, "the good keys count: {c:?}");
+        assert_eq!(c.recording.camera_shape, CameraShape::Vertical);
+        assert_eq!((c.quick_access.position, c.recording.quality), (Config::default().quick_access.position, RecordQuality::VeryHigh));
+        let err = err.expect("the bad keys are named");
+        for k in ["general.bogus", "quick_access.position", "nope", "recording.quality"] {
+            assert!(err.contains(k), "{k} named: {err}");
+        }
+        // not TOML at all: defaults, and why
+        let (c, err) = Config::parse("[general\nsounds = false\n");
         assert_eq!(c, Config::default());
+        assert!(err.is_some());
     }
 
     #[test]
@@ -610,6 +735,13 @@ mod tests {
         assert_eq!(Config::parse(&out).0.quick_access.size, 320);
         assert!(set_json(&out, "quick_access.position", &serde_json::json!("middle")).is_err());
         assert!(set_json(&out, "general.nope", &serde_json::json!(1)).is_err());
+        // the recording's choices are checked too
+        assert!(set_json(&out, "recording.quality", &serde_json::json!("great")).is_err());
+        assert!(set_json(&out, "recording.max_size", &serde_json::json!("4k")).is_err());
+        let out = set_json(&out, "recording.max_size", &serde_json::json!("1080p")).unwrap();
+        assert_eq!(Config::parse(&out).0.recording.max_box(), Some((1920, 1080)));
+        // a key gone bad by hand elsewhere doesn't stop a write
+        assert!(set_json("[general]\nbogus = 1\n", "general.sounds", &serde_json::json!(false)).is_ok());
     }
 
     #[test]
