@@ -67,6 +67,38 @@ pub fn poster(path: &Path) -> Result<Vec<u8>, String> {
     Ok(out.stdout)
 }
 
+/// A recording as a GIF (REC-13): `fps` frames a second, at most `width` px
+/// wide (never enlarged), one palette fitted to the clip (architecture §1,
+/// "GIF / video post").
+pub fn gif(src: &Path, dst: &Path, fps: u32, width: u32) -> Result<(), String> {
+    let filter = format!(
+        "fps={fps},scale='min({width},iw)':-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle"
+    );
+    run_ffmpeg(&["-v", "error", "-y", "-i", &src.to_string_lossy(), "-filter_complex", &filter, "-loop", "0", &dst.to_string_lossy()])
+}
+
+/// Tests' stand-in for a recording (SNIP_RECORDER=fake): ffmpeg's test
+/// pattern, `w`×`h` for `ms`, with a tone when `audio`.
+pub fn test_clip(dst: &Path, w: u32, h: u32, ms: u64, audio: bool) -> Result<(), String> {
+    let secs = format!("{:.3}", ms.max(100) as f64 / 1000.0);
+    let video = format!("testsrc2=size={}x{}:rate=30:duration={secs}", w & !1, h & !1);
+    let mut args: Vec<String> = ["-v", "error", "-y", "-f", "lavfi", "-i", &video].map(String::from).to_vec();
+    if audio {
+        args.extend(["-f", "lavfi", "-i", &format!("sine=duration={secs}"), "-c:a", "aac", "-shortest"].map(String::from));
+    }
+    args.extend(["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", &dst.to_string_lossy()].map(|s| s.to_string()));
+    run_ffmpeg(&args.iter().map(String::as_str).collect::<Vec<_>>())
+}
+
+fn run_ffmpeg(args: &[&str]) -> Result<(), String> {
+    let out = Command::new("ffmpeg").args(args).stdin(Stdio::null()).output().map_err(|e| format!("ffmpeg: {e}"))?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(format!("ffmpeg: {}", String::from_utf8_lossy(&out.stderr).trim()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -106,6 +138,19 @@ mod tests {
         assert!((900..=1100).contains(&p.duration_ms) && (p.fps - 30.0).abs() < 0.01, "{p:?}");
         let png = poster(&clip).unwrap();
         assert_eq!(crate::encode::decode_png(&png).map(|(_, w, h, _)| (w, h)).unwrap(), (320, 200));
+        // as a GIF: narrower than asked is kept as it is; wider is scaled down
+        let g = dir.join("clip.gif");
+        gif(&clip, &g, 10, 800).unwrap();
+        let p = probe(&g).unwrap();
+        assert_eq!((p.width, p.height, p.audio_tracks), (320, 200, 0), "never enlarged");
+        gif(&clip, &g, 10, 160).unwrap();
+        assert_eq!((probe(&g).unwrap().width, probe(&g).unwrap().height), (160, 100));
+        // the tests' stand-in recording
+        let t = dir.join("take.mp4");
+        test_clip(&t, 401, 301, 1500, true).unwrap();
+        let p = probe(&t).unwrap();
+        assert_eq!((p.width, p.height, p.audio_tracks), (400, 300, 1), "even sizes, as an encoder needs");
+        assert!((1400..=1600).contains(&p.duration_ms), "{p:?}");
         std::fs::remove_dir_all(dir).unwrap();
     }
 }
