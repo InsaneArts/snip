@@ -205,8 +205,10 @@ Window {
     readonly property string micLabel: {
         if (mic === "") return "No microphone"
         const m = mics.find(x => x.id === mic)
-        return m ? m.label : mic
+        return (m ? m.label : mic) + (micMuted ? " (muted)" : "")
     }
+    // REC-14: a muted microphone records silence; said before it starts
+    readonly property bool micMuted: { const m = mics.find(x => x.id === mic); return !!(m && m.muted) }
     function clock(ms) {
         const t = Math.floor(ms / 1000), m = Math.floor(t / 60), s = t % 60
         return m + ":" + String(s).padStart(2, "0")
@@ -455,8 +457,9 @@ Window {
                 height: 30
                 radius: 15
                 opacity: hud.gif ? 0.4 : 1
-                color: hud.mic !== "" && !hud.gif ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22)
-                                                  : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, micHover.hovered ? 0.12 : 0.06)
+                color: hud.micMuted && !hud.gif ? Qt.rgba(Theme.warning.r, Theme.warning.g, Theme.warning.b, 0.3)
+                     : hud.mic !== "" && !hud.gif ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22)
+                     : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, micHover.hovered ? 0.12 : 0.06)
                 Row {
                     id: micRow
                     anchors.centerIn: parent
