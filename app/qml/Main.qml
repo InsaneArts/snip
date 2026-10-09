@@ -184,9 +184,10 @@ QtObject {
         function onScrollStatus(json) { root.scrollHud.status(JSON.parse(json)) }
         function onScrollClose() { root.scrollHud.close(); root.captureFinished() }
         // screen recording (REC): the HUD around the area
-        function onRecordOpen(json) { root.recordHud.open(JSON.parse(json)) }
+        // Snip's cards are never in a recording: they step aside meanwhile
+        function onRecordOpen(json) { root.quickAccess.capturing = true; root.recordHud.open(JSON.parse(json)) }
         function onRecordStatus(json) { root.recordHud.status(JSON.parse(json)) }
-        function onRecordClose() { root.recordHud.close() }
+        function onRecordClose() { root.recordHud.close(); root.captureFinished() }
         function onRecordInput(json) { root.recordHud.input(JSON.parse(json)) }
         // the video editor (VED)
         function onVideoEditorOpen(json) { root.openVideoEditor(JSON.parse(json)) }
