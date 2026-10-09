@@ -15,7 +15,7 @@ use cxx_qt_lib::QString;
 use serde_json::{json, Value};
 
 use snip_core::config::{AfterCapture, Appearance, ClipboardMode, Config, OpenLinks, Retention};
-use snip_core::geometry::Rect;
+use snip_core::geometry::{self, Rect};
 use snip_core::history::{Media, Record};
 use snip_core::store::{CaptureMeta, Store};
 use snip_core::trace::{self, js};
@@ -490,8 +490,7 @@ impl Inner {
             return reply(waiter, Response::err("no output"));
         };
         let s = snip_hypr::monitors().into_iter().find(|m| m.name == output).map_or(1.0, |m| m.scale);
-        let phys = |v: i32| (v as f64 * s).round() as i32;
-        let rect = Rect::new(phys(rect.x), phys(rect.y), phys(rect.w), phys(rect.h));
+        let rect = geometry::logical_to_physical(rect, s);
         // no session here: a Shift held on the last one is over (D32)
         self.skip_preset.store(false, Ordering::Relaxed);
         *self.capture_action.lock().unwrap() = action;
@@ -799,12 +798,7 @@ impl Inner {
         if s.delay > 0 && kind != "text" && kind != "insert" {
             let scale = frames::get(&output).map(|f| f.scale).unwrap_or(1.0);
             frames::clear();
-            let shown = Rect::new(
-                (rect.x as f64 / scale).round() as i32,
-                (rect.y as f64 / scale).round() as i32,
-                (rect.w as f64 / scale).round() as i32,
-                (rect.h as f64 / scale).round() as i32,
-            );
+            let shown = geometry::physical_to_logical(rect, scale);
             self.start_countdown(Countdown { output, rect: Some(rect), kind, waiter: s.waiter, cursor: s.cursor }, s.delay, Some(shown));
             return;
         }

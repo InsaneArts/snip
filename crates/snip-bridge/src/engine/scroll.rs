@@ -69,7 +69,8 @@ impl Inner {
             reply(old.waiter, cancelled());
         }
         super::hypr("session_keys", snip_hypr::keys::session_keys(&crate::bridge::app_id(), true));
-        let j = json!({ "output": output, "x": (rect.x as f64 / s).round(), "y": (rect.y as f64 / s).round(), "w": (rect.w as f64 / s).round(), "h": (rect.h as f64 / s).round() }).to_string();
+        let l = snip_core::geometry::physical_to_logical(rect, s);
+        let j = json!({ "output": output, "x": l.x, "y": l.y, "w": l.w, "h": l.h }).to_string();
         self.ui(move |e| e.scroll_open(&QString::from(j.as_str())));
     }
 

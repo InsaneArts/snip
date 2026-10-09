@@ -132,6 +132,25 @@ pub fn to_physical(r: RectF, scale: f64) -> Rect {
     Rect::new(x0, y0, (x1 - x0).max(0), (y1 - y0).max(0))
 }
 
+/// A rect of whole logical px on an output -> physical px, edges rounded as
+/// `to_physical` does: the overlay, `snip area` and recording all agree on
+/// the pixels of the same logical rect. (Rounding x, y, w, h each on its own
+/// can be a pixel off: at 1.25, x = 1, w = 1 is 1 px wide, not 2.)
+pub fn logical_to_physical(r: Rect, scale: f64) -> Rect {
+    to_physical(RectF { x: r.x as f64, y: r.y as f64, w: r.w as f64, h: r.h as f64 }, scale)
+}
+
+/// Physical px -> whole logical px, edges rounded: the inverse of
+/// `logical_to_physical` for the rects it makes, at any scale of 1 or more.
+pub fn physical_to_logical(r: Rect, scale: f64) -> Rect {
+    let s = if scale > 0.0 { scale } else { 1.0 };
+    let x0 = (r.x as f64 / s).round() as i32;
+    let y0 = (r.y as f64 / s).round() as i32;
+    let x1 = (r.right() as f64 / s).round() as i32;
+    let y1 = (r.bottom() as f64 / s).round() as i32;
+    Rect::new(x0, y0, (x1 - x0).max(0), (y1 - y0).max(0))
+}
+
 /// Size of the upright image for a buffer of `bw` x `bh` with transform `t`.
 pub fn upright_size(bw: i32, bh: i32, t: Transform) -> (i32, i32) {
     if t.swaps_axes() {
@@ -184,6 +203,22 @@ pub fn untransform_block(src: &[u8], w: usize, h: usize, bpp: usize, t: Transfor
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn logical_and_physical_px_convert_by_edges_both_ways() {
+        // by edges, not by value: x = 1, w = 1 at 1.25 covers physical 1..3
+        assert_eq!(logical_to_physical(Rect::new(1, 1, 1, 1), 1.25), Rect::new(1, 1, 2, 2));
+        // neighbours share an edge: no gap, no overlap
+        let (a, b) = (logical_to_physical(Rect::new(0, 0, 3, 1), 1.25), logical_to_physical(Rect::new(3, 0, 5, 1), 1.25));
+        assert_eq!(a.right(), b.x);
+        // the inverse gives back what went in, at every scale Hyprland offers
+        for scale in [1.0, 1.25, 1.5, 1.6, 5.0 / 3.0, 1.75, 2.0, 2.4, 3.0] {
+            for (x, y, w, h) in [(0, 0, 1536, 864), (1, 1, 1, 1), (307, 173, 922, 518), (17, 3, 9, 41)] {
+                let r = Rect::new(x, y, w, h);
+                assert_eq!(physical_to_logical(logical_to_physical(r, scale), scale), r, "{r:?} at {scale}");
+            }
+        }
+    }
 
     #[test]
     fn rounding_matches_hyprland_edge_rounding() {
