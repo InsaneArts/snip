@@ -121,12 +121,8 @@ pub fn gpu_can_encode(w: u32, h: u32) -> bool {
 /// 2×2. gsr can only take whole logical px, so the recording may be up to a
 /// pixel off the selection at a fractional scale.
 pub fn area_from_physical(rect: Rect, origin: (i32, i32), scale: f64) -> Rect {
-    let s = if scale > 0.0 { scale } else { 1.0 };
-    let x0 = (rect.x as f64 / s).round() as i32;
-    let y0 = (rect.y as f64 / s).round() as i32;
-    let x1 = (rect.right() as f64 / s).round() as i32;
-    let y1 = (rect.bottom() as f64 / s).round() as i32;
-    Rect::new(origin.0 + x0, origin.1 + y0, (x1 - x0).max(2), (y1 - y0).max(2))
+    let l = crate::geometry::physical_to_logical(rect, scale);
+    Rect::new(origin.0 + l.x, origin.1 + l.y, l.w.max(2), l.h.max(2))
 }
 
 #[cfg(test)]

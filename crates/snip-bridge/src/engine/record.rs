@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
-use snip_core::geometry::Rect;
+use snip_core::geometry::{self, Rect};
 use snip_core::record::{self, Audio, Spec, Target};
 use snip_core::store::CaptureMeta;
 use snip_core::trace::{self, js};
@@ -274,8 +274,7 @@ impl Inner {
                 rec.local = Rect::new(x, y, a.w.clamp(2, o.w - x), a.h.clamp(2, o.h - y));
                 rec.logical = Rect::new(o.x + rec.local.x, o.y + rec.local.y, rec.local.w, rec.local.h);
                 let s = rec.scale;
-                let phys = |v: i32| (v as f64 * s).round() as i32;
-                (rec.app, rec.title) = self.window_meta_at(&rec.output, Rect::new(phys(x), phys(y), phys(rec.local.w), phys(rec.local.h)), s);
+                (rec.app, rec.title) = self.window_meta_at(&rec.output, geometry::logical_to_physical(rec.local, s), s);
                 trace::trace("record_area", &format!("\"area\":[{},{},{},{}]", rec.local.x, rec.local.y, rec.local.w, rec.local.h));
             }
             // with or without a countdown, the HUD calls record_go once its
@@ -490,8 +489,7 @@ impl Inner {
         if w < 2 || h < 2 || x < 0 || y < 0 || x + w > o.w || y + h > o.h {
             return Err(format!("the area must lie inside {output} ({}x{} logical)", o.w, o.h));
         }
-        let phys = |v: i32| (v as f64 * scale).round() as i32;
-        self.record_open(output, Rect::new(phys(x), phys(y), phys(w), phys(h)), scale, Some(waiter), gif, true);
+        self.record_open(output, geometry::logical_to_physical(Rect::new(x, y, w, h), scale), scale, Some(waiter), gif, true);
         Ok(())
     }
 
@@ -522,8 +520,7 @@ impl Inner {
         let o = output.as_ref().and_then(|n| self.outputs.lock().unwrap().iter().find(|o| &o.name == n).map(|o| o.logical));
         let (Some(output), Some(o)) = (output, o) else { return reply(waiter, Response::err("no output")) };
         let scale = self.output_scale(&output);
-        let phys = |v: i32| (v as f64 * scale).round() as i32;
-        self.record_open(output, Rect::new(0, 0, phys(o.w), phys(o.h)), scale, waiter, gif, false);
+        self.record_open(output, geometry::logical_to_physical(Rect::new(0, 0, o.w, o.h), scale), scale, waiter, gif, false);
     }
 
     /// Where things stand, for `snip status` and tests.
