@@ -31,6 +31,10 @@ Its toggles, off and on, dark and light: on, the icon sits on a soft accent squa
 
 ![The panel's toggles](recording-panel-toggles.png)
 
+A whole-screen take has no controls on screen (D52): its countdown says how to stop it.
+
+![The countdown's hint](recording-countdown-stop-hint.png)
+
 Recording: the frame turns red; the controls sit outside the area.
 
 ![The recording controls](recording-controls.png)
