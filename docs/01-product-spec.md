@@ -142,7 +142,7 @@ What follows from this:
 - **Default After Capture rules (SET-03):** Screenshot: *Show QAO* ✓, Copy ✗, Save ✗, Annotate ✗, Pin ✗. Recording: *Show QAO* ✓, all others ✗. Users who want CleanShot's auto-copy or auto-save can turn those rules on.
 - **Closing a card never loses work**, so the CleanShot warning "Your media will be lost" appears only when history is set to *Never*.
 - **Clipboard-history privacy is solved by default.** Nothing reaches Omarchy's clipboard history until the user copies or saves on purpose, usually after redacting.
-- Recordings are written into the history store while recording. Save copies them to `$XDG_VIDEOS_DIR` and never moves them, so history keeps a playable copy until retention removes it.
+- Recordings are written beside the history store while recording, and move into it when they stop (a take cut short is recovered at the next start). Save copies them to `$XDG_VIDEOS_DIR` and never moves them, so history keeps a playable copy until retention removes it.
 
 ### 5.1 Capture modes (CAP)
 
@@ -276,7 +276,7 @@ A normal floating window (Hyprland rule: float, centred, with optional pin / alw
 | REC-05 | Controls pill: stop and timer, pause/resume, restart, discard, audio level | P1 | Placed **outside the region**. For full-monitor recordings, the controls sit on another monitor or are hidden, and the bar indicator plus hotkeys are used instead (the controls cannot be hidden from the recording, see the platform doc §3). |
 | REC-06 | Bar indicator with elapsed time; click to stop | P1 | Omarchy already has a recording indicator, so we either integrate with it or ship a bar widget plugin (decision Q4). |
 | REC-07 | Microphone and system audio: one mixed track, or separate tracks; mono option; no pop at the start | P1 | |
-| REC-08 | Webcam overlay: circle, square or rectangle; size; drag to a corner; mirror; click to toggle full-screen camera | P1 | It is an on-screen window, so it is recorded as seen. |
+| REC-08 | Webcam overlay: circle, square, rectangle or vertical; Small, Medium, Large or Huge, scaled to the recorded area; drag it anywhere, before and during the recording; mirrored by default; click to toggle full-screen camera | P1 | It is drawn on screen, so it is recorded as seen. CleanShot 4.x's shapes, sizes and mirror default ([research](research/recording-2026-10/cleanshot-x-4-recording.md) §3). |
 | REC-09 | Highlight clicks: colour (theme accent), size, outline or filled, animated | P1 | Uses the Hyprland Lua input hook (platform doc §10). |
 | REC-10 | Show keystrokes: size, dark or light, 6 positions, all keys or modifier combos only, held modifiers stay visible, repeat counter | P1 | Same hook. Muted while a password-manager window is focused or the session is locked. |
 | REC-11 | Do not disturb while recording (restore the previous state afterwards) | P1 | omarchy-shell `setDnd`. |
