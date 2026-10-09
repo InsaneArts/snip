@@ -147,11 +147,64 @@ pub enum ClipboardMode {
 pub struct Recording {
     /// Where Save writes recordings. Default: $XDG_VIDEOS_DIR/Screencasts
     pub export_dir: String,
+    /// REC-12: frames per second
+    pub fps: u32,
+    /// REC-12: gpu-screen-recorder's quality: medium, high, very_high, ultra
+    pub quality: String,
+    /// REC-12: the largest video ("" as recorded, or "2160p", "1440p", "1080p", "720p")
+    pub max_size: String,
+    /// CAP-11 for videos: the pointer in recordings
+    pub show_cursor: bool,
+    /// REC-03: seconds counted down before a recording starts (0: none)
+    pub countdown: u32,
+    /// REC-11: notifications held while recording
+    pub dnd: bool,
+    /// REC-04: the screen outside the area dimmed (else only a border)
+    pub dim: bool,
+    /// REC-07: the microphone: "" none, "default_input", or a device's name
+    pub mic: String,
+    /// REC-07: what the computer plays
+    pub system_audio: bool,
+    /// REC-07: one track per source (for other editors) instead of one mixed
+    pub separate_tracks: bool,
+    /// REC-13: a GIF's frames per second and width (height follows)
+    pub gif_fps: u32,
+    pub gif_width: u32,
+    /// REC-02: the last kind chosen in the toolbar: "video" or "gif"
+    pub kind: String,
 }
 
 impl Default for Recording {
     fn default() -> Self {
-        Self { export_dir: crate::paths::default_recording_dir().to_string_lossy().into_owned() }
+        Self {
+            export_dir: crate::paths::default_recording_dir().to_string_lossy().into_owned(),
+            fps: 60,
+            quality: "very_high".into(),
+            max_size: String::new(),
+            show_cursor: true,
+            countdown: 3,
+            dnd: true,
+            dim: true,
+            mic: String::new(),
+            system_audio: false,
+            separate_tracks: false,
+            gif_fps: 15,
+            gif_width: 800,
+            kind: "video".into(),
+        }
+    }
+}
+
+impl Recording {
+    /// gsr's `-s` for `max_size`: a 16:9 box the video is scaled to fit in.
+    pub fn max_box(&self) -> Option<(u32, u32)> {
+        match self.max_size.as_str() {
+            "2160p" => Some((3840, 2160)),
+            "1440p" => Some((2560, 1440)),
+            "1080p" => Some((1920, 1080)),
+            "720p" => Some((1280, 720)),
+            _ => None,
+        }
     }
 }
 
