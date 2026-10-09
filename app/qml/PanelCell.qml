@@ -1,29 +1,42 @@
 import QtQuick
 import Snip.Core
 
-// A cell of the recording panel (D49), CleanShot's: an icon, white with a
-// check under it when on, grey when off; its tip after a short rest.
+// A cell of the recording panel (D49). On, its icon sits on a soft accent
+// square, as Full screen's does; off, the icon is grey, or crossed out for a
+// source that's off (no microphone, no camera, no computer audio). The icon
+// never moves. Its tip shows after a short rest.
 Item {
     id: cell
     property string icon: ""
+    property string offIcon: ""               // off: this one (crossed out), else the icon in grey
     property bool on: false
     property bool toggle: true
     property string tip: ""
-    property color tint: "transparent"
-    property color iconColor: on || !toggle ? Theme.text : Theme.textSecondary
+    property color warn: "transparent"        // a warning instead (a muted microphone)
     property int iconSize: 18
     property int inset: 4
+    readonly property bool lit: toggle && on
+    readonly property bool warned: warn.a > 0
+    readonly property string shownIcon: toggle && !on && offIcon !== "" ? offIcon : icon
     signal tapped()
     width: 44
     height: 44
+    // a square, however wide the cell
     Rectangle {
-        anchors.fill: parent
-        anchors.margins: cell.inset
-        radius: 6
-        color: hover.hovered ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08) : cell.tint
+        anchors.centerIn: parent
+        width: Math.min(parent.width, parent.height) - 2 * cell.inset
+        height: width
+        radius: 8
+        color: cell.warned ? cell.warn
+             : cell.lit ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, hover.hovered ? 0.3 : 0.2)
+             : hover.hovered ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08) : "transparent"
     }
-    Icon { anchors.centerIn: parent; anchors.verticalCenterOffset: cell.toggle && cell.on ? -4 : 0; name: cell.icon; size: cell.iconSize; color: cell.iconColor }
-    Icon { visible: cell.toggle && cell.on; anchors.horizontalCenter: parent.horizontalCenter; y: parent.height - 14; name: "check"; size: 10; stroke: 2.5; color: Theme.text }
+    Icon {
+        anchors.centerIn: parent
+        name: cell.shownIcon
+        size: cell.iconSize
+        color: cell.warned ? Theme.warning : cell.lit ? Theme.accent : cell.toggle ? Theme.textSecondary : Theme.text
+    }
     HoverHandler {
         id: hover
         cursorShape: Qt.PointingHandCursor
