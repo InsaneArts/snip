@@ -163,7 +163,7 @@ Total from hotkey to frozen overlay: **about 15–35 ms warm** (one refresh plus
      -ffmpeg-opts "flush_packets=1;frag_duration=1000000" -exclude-metadata yes
      -write-first-frame-ts yes -ipc <sock> -v no -o <stage>/<stamp>.mp4
    ```
-   by its full path (Omarchy's surfaces look for a bare `gpu-screen-recorder`, D44), in its own process group, its messages to a log file (never a pipe). Wait for the first-frame timestamp, then start the timer. gsr takes 0.35–0.5 s to start. The flush options keep a killed recorder's file recoverable (`-ignore_editlist 1`). The research behind this: [research/recording-2026-10/gpu-screen-recorder.md](research/recording-2026-10/gpu-screen-recorder.md).
+   by its full path (Omarchy's surfaces look for a bare `gpu-screen-recorder`, D44), in its own process group, its messages to a log file (never a pipe). Wait for the first-frame timestamp, then start the timer. All of this, pause, stop and recovery included, is the **take** (`snip_core::take`): one module with two recorders behind it, gsr and ffmpeg's test pattern (`SNIP_RECORDER=fake`, for the nested Hyprland KMS can't see), so its clock and stops are tested in `cargo test`. gsr takes 0.35–0.5 s to start. The flush options keep a killed recorder's file recoverable (`-ignore_editlist 1`). The research behind this: [research/recording-2026-10/gpu-screen-recorder.md](research/recording-2026-10/gpu-screen-recorder.md).
 4. Turn on DND (`omarchy-shell notifications setDnd on`, previous state saved). Install the keystroke and click Lua hooks if they are enabled (§6.3).
 5. Stop: IPC `stop`, which replies after the file is finalised. Then post-process: trim the warm-up and the audio pop, and remux. Show the QAO card with a thumbnail; open the trimmer if After Capture says so.
 
@@ -433,11 +433,11 @@ snip/
 ├─ CMakeLists.txt             (top level: Qt app + Corrosion for the Rust crates)
 ├─ crates/
 │  ├─ snip-core/              geometry, document/op-log, encode, resize, stitch, OCR, QR,
-│  │                          history (rusqlite), config (toml_edit), naming, theme tokens
+│  │                          history (rusqlite), config (toml_edit), naming, theme tokens,
+│  │                          the recording's take (gpu-screen-recorder | test pattern)
 │  ├─ snip-wayland/           connection A: capture, clipboard, shortcuts, virtual pointer,
 │  │                          toplevels, cursor session (wayland-client + calloop)
 │  ├─ snip-hypr/              Hyprland socket2 / eval / window cache / Lua rule and hook injection
-│  ├─ snip-recorder/          gpu-screen-recorder + ffmpeg job control
 │  ├─ snip-ipc/               ctl.sock protocol (shared by daemon and CLI)
 │  ├─ snip-bridge/            cxx-qt QObjects and models exposed to QML
 │  └─ snip-cli/               `snip` binary (no Qt)

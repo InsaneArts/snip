@@ -15,6 +15,7 @@ The shared language of this project. Use these words in code, commits, PRs and c
 - **Physical px / logical px**: buffer pixels vs Hyprland layout pixels (scale 1.25: 1 logical = 1.25 physical). Selections are held in physical px of the **upright** frame (output transform undone).
 - **snipd / snip**: the daemon (Rust core plus Qt Quick UI, one process) / the CLI that talks to it over `ctl.sock`.
 - **Engine**: the Rust QObject the QML talks to (`crates/snip-bridge`).
+- **Take**: one run of the screen recorder, from its start to a finished file (`snip_core::take`): gpu-screen-recorder, or ffmpeg's test pattern in tests. A **recording** is a take plus what Snip turns on around it (the HUD, Do Not Disturb, the desktop cover, the click and key hooks).
 - **Connection A / B**: Snip's own Wayland connection (capture, clipboard, shortcuts) / Qt's (all surfaces).
 - **Theme tokens**: colours, radius and fonts resolved from the current Omarchy theme (`Theme.qml`).
 - **Test instance**: an isolated snipd (own XDG dirs, `SNIP_RUNTIME_DIR`, `SNIP_APP_ID`, `SNIP_OUTPUTS`) on a temporary headless output.
