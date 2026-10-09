@@ -3,16 +3,19 @@ import QtQuick.Window
 import QtQuick.Effects
 import QtMultimedia
 import Snip.Core
+import "editor.js" as Ed
 
 // The video editor (VED-01…03), laid out as CleanShot 5's (D50): the file's
-// name and Export along the top; a sidebar of sections (Audio) with the cut
-// tool; the recording in the middle, with play controls under it; its frames
-// along a timeline across the bottom, which zooms. Drag the ends to trim; B
-// (or the scissors) splits at the playhead; Delete cuts the part that's
-// selected (again: brings it back). Each audio track gets a volume (0 mutes
-// it; several are mixed into one), and mono. Export as MP4 or GIF, at a
-// quality and size, with an estimate of the file's size: Replace the
-// recording, or Save as New. Playback skips what's cut, so you see the result.
+// name and Export along the top; a sidebar of sections (Audio, Background)
+// with the cut tool; the recording in the middle, with play controls under
+// it; its frames along a timeline across the bottom, which zooms. Drag the
+// ends to trim; B (or the scissors) splits at the playhead; Delete cuts the
+// part that's selected (again: brings it back). Each audio track gets a
+// volume (0 mutes it; several are mixed into one), and mono. A background
+// goes around the recording as around a screenshot, into the export too.
+// Export as MP4 or GIF, at a quality and size, with an estimate of the
+// file's size: Replace the recording, or Save as New. Playback skips what's
+// cut, so you see the result.
 Window {
     id: ve
     property var info: ({})                 // {id, path, duration, fps, width, height, tracks, bytes, title, output}
@@ -96,6 +99,24 @@ Window {
         const t = Math.round(ms / 100) / 10, m = Math.floor(t / 60), s = t - m * 60
         return m + ":" + (s < 10 ? "0" : "") + (tenths ? s.toFixed(1) : Math.round(s))
     }
+    // the background (D50), as a screenshot's (BG-01…06), in the recording's
+    // pixels: around it in the preview, and drawn into the export
+    property var bg: null
+    property var bgPreview: null                  // while a slider is dragged
+    readonly property var bgLive: bg ? Object.assign({}, bg, bgPreview || {}) : null
+    readonly property real unit: info.scale || 1   // pixels per point
+    function setBg(patch) {
+        bgPreview = null
+        bg = patch === null ? null : Object.assign({}, bg || Ed.defaultBackground(unit), patch)
+    }
+    function previewBg(patch) {
+        if (!bg) setBg({})
+        bgPreview = Object.assign({}, bgPreview || {}, patch)
+    }
+    function focusKeys() { keyboard.forceActiveFocus() }
+    // the recording, and the result around it
+    readonly property var inner: ({ x: 0, y: 0, w: info.width || 16, h: info.height || 9 })
+    readonly property var outer: bgLive ? Ed.bgRect(bgLive, inner) : inner
     function setVolume(i, v) {
         const a = volumes.slice()
         a[i] = Math.max(0, Math.min(2, v))
@@ -125,11 +146,32 @@ Window {
         error = ""
         progress = 0
         player.pause()
+        if (!bgLive) return send(replace, null)
+        // the background first, as the export draws it: a grab, then ffmpeg
+        coverReplace = replace
+        coverToken = controller.nextToken()
+        cover.active = true
+    }
+    function send(replace, background) {
         const cfg = controller && controller.settings.config ? controller.settings.config.recording : null
         Engine.videoExport(info.id, JSON.stringify({
             keep: kept, tracks: volumes, mono: mono, height: maxHeight > 0 ? maxHeight : null, quality: quality,
-            gif: gif ? { fps: cfg ? cfg.gif_fps : 15, width: cfg ? cfg.gif_width : 800 } : null
+            gif: gif ? { fps: cfg ? cfg.gif_fps : 15, width: cfg ? cfg.gif_width : 800 } : null, background: background
         }), replace)
+    }
+    property int coverToken: -1
+    property bool coverReplace: false
+    Connections {
+        target: Platform
+        function onGrabbed(token, ok) {
+            if (token !== ve.coverToken) return
+            ve.coverToken = -1
+            cover.active = false
+            if (ok) return ve.send(ve.coverReplace, { token: token, video: [-ve.outer.x, -ve.outer.y, ve.inner.w, ve.inner.h] })
+            ve.progress = -1
+            ve.error = "The background couldn't be drawn"
+            ve.exportOpen = true
+        }
     }
     function exportStatus(s) {
         if (s.done) {
@@ -288,7 +330,7 @@ Window {
             spacing: 6
             Repeater {
                 // [section, icon, name]
-                model: [["audio", "volume", "Audio"]]
+                model: [["audio", "volume", "Audio"], ["background", "image", "Background"]]
                 SideButton {
                     required property var modelData
                     objectName: "video-section=" + modelData[0]
@@ -313,10 +355,17 @@ Window {
     Rectangle {
         id: inspector
         anchors { left: sidebar.right; top: header.bottom; bottom: timelineArea.top }
-        width: 248
+        width: 264                                // seven colours to a row, as the Background tool's
         color: Theme.surface
         Rectangle { anchors { right: parent.right; top: parent.top; bottom: parent.bottom } width: 1; color: Theme.hairline }
+        BackgroundPanel {
+            visible: ve.section === "background"
+            anchors { fill: parent; rightMargin: 1 }
+            ed: ve
+            video: true
+        }
         Flickable {
+            visible: ve.section === "audio"
             anchors.fill: parent
             anchors.margins: 16
             contentHeight: audioPanel.implicitHeight
@@ -325,7 +374,6 @@ Window {
             // Audio (VED-03): each track's volume (0 mutes it; several are mixed into one), and mono
             Column {
                 id: audioPanel
-                visible: ve.section === "audio"
                 width: parent.width
                 spacing: 14
                 Text { text: "Audio"; color: Theme.text; font.family: Theme.fontUi; font.pixelSize: 13; font.weight: Font.DemiBold }
@@ -390,14 +438,73 @@ Window {
         id: stage
         anchors { left: inspector.right; right: parent.right; top: header.bottom; bottom: transport.top }
         color: Qt.rgba(0, 0, 0, Theme.light ? 0.06 : 0.35)
-        VideoOutput {
-            id: video
-            objectName: "video-preview"
-            anchors.fill: parent
-            anchors.margins: 24
-            fillMode: VideoOutput.PreserveAspectFit
+        // the result fitted in: the recording in its background
+        Item {
+            id: result
+            objectName: "video-result"
+            readonly property real k: Math.min((stage.width - 48) / ve.outer.w, (stage.height - 48) / ve.outer.h)
+            anchors.centerIn: parent
+            width: ve.outer.w * k
+            height: ve.outer.h * k
+            // in the recording's pixels, its corner at 0, 0
+            Item {
+                x: -ve.outer.x * result.k
+                y: -ve.outer.y * result.k
+                transform: Scale { xScale: result.k; yScale: result.k }
+                BackgroundLayer { visible: ve.bgLive !== null; bg: ve.bgLive; rect: ve.outer; inner: ve.inner }
+                VideoOutput {
+                    id: video
+                    objectName: "video-preview"
+                    width: ve.inner.w
+                    height: ve.inner.h
+                    // its corners rounded, at the size it shows
+                    readonly property size shown: Qt.size(Math.ceil(width * result.k * Screen.devicePixelRatio), Math.ceil(height * result.k * Screen.devicePixelRatio))
+                    layer.enabled: !!ve.bgLive && ve.bgLive.radius > 0
+                    layer.textureSize: shown
+                    layer.effect: MultiEffect { maskEnabled: true; maskSource: videoMask; maskThresholdMin: 0.5; maskSpreadAtMin: 1.0 }
+                }
+                Item {
+                    id: videoMask
+                    visible: false
+                    width: ve.inner.w
+                    height: ve.inner.h
+                    layer.enabled: true
+                    layer.textureSize: video.shown
+                    Rectangle { anchors.fill: parent; radius: ve.bgLive ? ve.bgLive.radius : 0; color: "white" }
+                }
+            }
         }
         MouseArea { anchors.fill: parent; onClicked: ve.playPause() }
+    }
+    // the background for the export: drawn off screen at the result's size, a
+    // hole where the recording shows (ffmpeg puts it on top), then grabbed
+    Loader {
+        id: cover
+        active: false
+        x: -100000
+        sourceComponent: Item {
+            id: coverScene
+            readonly property var r: ve.outer
+            Item {
+                width: coverScene.r.w
+                height: coverScene.r.h
+                layer.enabled: true
+                layer.textureSize: Qt.size(width, height)
+                layer.effect: MultiEffect { maskEnabled: true; maskInverted: true; maskSource: hole; maskThresholdMin: 0.5; maskSpreadAtMin: 1.0 }
+                BackgroundLayer { x: -coverScene.r.x; y: -coverScene.r.y; bg: ve.bgLive; rect: coverScene.r; inner: ve.inner }
+            }
+            Item {
+                id: hole
+                visible: false
+                width: coverScene.r.w
+                height: coverScene.r.h
+                layer.enabled: true
+                layer.textureSize: Qt.size(width, height)
+                Rectangle { x: -coverScene.r.x; y: -coverScene.r.y; width: ve.inner.w; height: ve.inner.h; radius: ve.bgLive ? ve.bgLive.radius : 0; color: "white" }
+            }
+            // a frame for the wallpaper to load, as the screenshot's does
+            Timer { interval: 60; running: true; onTriggered: Platform.grabExact(coverScene, coverScene.r.w, coverScene.r.h, ve.coverToken) }
+        }
     }
 
     // the time; ⏮ ▶ ⏭; the timeline's zoom
@@ -850,6 +957,7 @@ Window {
         case "seek": player.pause(); seek(Number(a[1])); break
         case "trim": inMs = Number(a[1]); outMs = Number(a[2]); break
         case "volume": { const v = volumes.slice(); v[Number(a[1])] = Number(a[2]); volumes = v; break }
+        case "bg": setBg(JSON.parse(a.slice(1).join(" "))); break
         case "keys": Platform.sendKeys(ve, a.slice(1).join(" ")); break
         case "export": exportIt(a[1] === "replace"); break
         case "where": {
@@ -865,7 +973,9 @@ Window {
                                                      playing: player.playbackState === MediaPlayer.PlayingState, position: headMs,
                                                      progress: progress, error: error, estimate: Math.round(estimate), thumbs: thumbs.length,
                                                      tracks: info.tracks || 0, gif: gif, exportOpen: exportOpen, zoom: zoom,
-                                                     section: section }).slice(1, -1))
+                                                     section: section, bg: bgLive, outer: outer,
+                                                     result: (p => [p.x, p.y, result.width, result.height])(result.mapToItem(contentItem, 0, 0))
+                                                   }).slice(1, -1))
             break
         }
     }

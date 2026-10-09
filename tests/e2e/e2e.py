@@ -2183,6 +2183,55 @@ def video_editor(s, env):
 
 
 @case
+def video_editor_background(s, env):
+    """D50: the video editor's Background section puts a background around the recording,
+    as the Background tool does around a screenshot: in the preview at once, and in the
+    export, which is the background's size with the recording in it, its corners rounded."""
+    from PIL import Image
+    s.cli("close-all"); time.sleep(0.3)
+    clip = s.tmp / "bg-me.mp4"
+    make_clip(clip, seconds=2, size="640x360")
+    s.json("edit", str(clip))
+    assert wait_for(lambda: video_editor_window(), 6), "the video editor opens"
+    time.sleep(0.8)
+    video_click(s, env, "video-section=background")
+    assert wait_for(lambda: video_state(s)["section"] == "background", 2), video_state(s)
+    time.sleep(0.3)
+    video_click(s, env, "bg-color:#ff3b30")
+    assert wait_for(lambda: (video_state(s)["bg"] or {}).get("value") == "#ff3b30", 2), video_state(s)
+    st = video_state(s)
+    bg, outer = st["bg"], st["outer"]
+    pad = bg["padding"] + bg["inset"]
+    assert (outer["w"], outer["h"]) == (640 + 2 * pad, 360 + 2 * pad), (bg, outer)
+    red = lambda p: p[0] > 200 and p[1] < 90 and p[2] < 90
+    # the preview: red around the recording
+    time.sleep(0.3)
+    shot = s.tmp / "bg-preview.png"
+    sh("grim", "-o", OUT, str(shot))
+    im, mon, w = Image.open(shot).convert("RGB"), env.monitor(), video_editor_window()
+    x, y, rw, rh = st["result"]
+    at = lambda dx, dy: im.getpixel((round((w["at"][0] - mon["x"] + x + dx) * mon["scale"]), round((w["at"][1] - mon["y"] + y + dy) * mon["scale"])))
+    assert red(at(4, rh / 2)) and not red(at(rw / 2, rh / 2)), ("red around it in the preview", at(4, rh / 2), at(rw / 2, rh / 2))
+    # exported: the background's size, red around the recording, the recording inside
+    n = len(s.traces("video_exported_ui"))
+    s.debug("ui", "video", "export", "new")
+    assert wait_for(lambda: len(s.traces("video_exported_ui")) > n, 30), "the export ends"
+    done = s.traces("video_exported_ui")[-1]
+    assert done["ok"], done
+    new = next(r for r in s.json("list", "-n", "5")["result"] if r["id"] == done["id"])
+    W, H = (640 + 2 * pad) & ~1, (360 + 2 * pad) & ~1
+    assert (new["width"], new["height"]) == (W, H), ("the background's size", new["width"], new["height"], W, H)
+    frame = s.tmp / "bg-frame.png"
+    sh("ffmpeg", "-v", "error", "-y", "-i", new["source"], "-frames:v", "1", str(frame))
+    f = Image.open(frame).convert("RGB")
+    assert red(f.getpixel((4, H // 2))), ("red around it in the export", f.getpixel((4, H // 2)))
+    r, g, b = f.getpixel((pad + 1, pad + 1))
+    assert r > 2 * g and r > 2 * b, ("its corner rounded off: the background (under the shadow) shows", (r, g, b))
+    assert not red(f.getpixel((W // 2, H // 2))), "the recording inside"
+    s.cli("close-all")
+
+
+@case
 def history_filters(s, env):
     """HIS-01: History's filters: All, Screenshots (plain captures) and Projects (objects
     still editable)."""

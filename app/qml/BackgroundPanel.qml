@@ -6,10 +6,12 @@ import "editor.js" as Ed
 // The Background tool's panel (BG-01…06), CleanShot's sidebar: presets and
 // None, sources (gradients, the Omarchy theme's wallpapers, blurred, plain
 // colours), then padding, inset and Auto-balance, shadow, corners, ratio and
-// alignment.
+// alignment. The video editor's (D50) has no presets, no blurred capture,
+// no Auto-balance and no colour of your own: `video`.
 Rectangle {
     id: panel
     required property var ed
+    property bool video: false
     readonly property var bg: ed.bgLive
     readonly property var walls: JSON.parse(Engine.wallpapers() || "[]")
     // the user's own wallpapers (BG-01), added with + or by dropping a file
@@ -48,7 +50,7 @@ Rectangle {
         ed.focusKeys()
     }
     color: Theme.surface
-    Rectangle { anchors { left: parent.left; top: parent.top; bottom: parent.bottom } width: 1; color: Theme.hairline }
+    Rectangle { visible: !panel.video; anchors { left: parent.left; top: parent.top; bottom: parent.bottom } width: 1; color: Theme.hairline }
 
     component Heading: Text { color: Theme.textSecondary; font.family: Theme.fontUi; font.pixelSize: 12; font.weight: Font.DemiBold; topPadding: 6 }
     // a source's thumbnail: the picture to its rounded edges, no frame; the
@@ -98,7 +100,7 @@ Rectangle {
 
             // presets (BG-03): a dropdown and +, as in CleanShot
             Row {
-                visible: !panel.naming
+                visible: !panel.naming && !panel.video
                 width: parent.width; spacing: 6
                 Rectangle {
                     id: presetsButton
@@ -138,7 +140,7 @@ Rectangle {
                 border.width: panel.bg ? 0 : 2; border.color: Theme.accent
                 Text { anchors.centerIn: parent; text: "None"; color: Theme.text; font.family: Theme.fontUi; font.pixelSize: 13; font.weight: Font.DemiBold }
                 MouseArea { id: noneMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                            onClicked: { panel.ed.setBg(null); panel.ed.bgPreset = "" } }
+                            onClicked: { panel.ed.setBg(null); if (!panel.video) panel.ed.bgPreset = "" } }
             }
 
             Item {
@@ -157,6 +159,7 @@ Rectangle {
                     delegate: Tile {
                         id: gradTile
                         required property int index
+                        objectName: "bg-gradient:" + index
                         Component.onCompleted: if (index === 0) panel.firstTile = gradTile
                         current: !!panel.bg && panel.bg.kind === "gradient" && panel.bg.value === index
                         BackgroundLayer {
@@ -234,8 +237,9 @@ Rectangle {
                     onPicked: panel.ed.setBg({ kind: "blur-wallpaper", value: panel.walls[0] })
                 }
                 Tile {
+                    visible: !panel.video
                     current: !!panel.bg && panel.bg.kind === "blur-image"
-                    Image { id: blurShot; anchors.fill: parent; visible: false; source: "file://" + panel.ed.basePath
+                    Image { id: blurShot; anchors.fill: parent; visible: false; source: panel.video ? "" : "file://" + panel.ed.basePath
                             fillMode: Image.PreserveAspectCrop; sourceSize: Qt.size(120, 80); smooth: true }
                     MultiEffect { anchors.fill: parent; source: blurShot; autoPaddingEnabled: false; blurEnabled: true; blur: 1.0; blurMax: 16 }
                     onPicked: panel.ed.setBg({ kind: "blur-image", value: "" })
@@ -249,6 +253,7 @@ Rectangle {
                     model: ["theme-a", "theme-b"].concat(Ed.palette).concat(["transparent"])
                     delegate: Rectangle {
                         required property string modelData
+                        objectName: "bg-color:" + modelData
                         width: 28; height: 28; radius: 14
                         color: modelData === "theme-a" ? Theme.accent : modelData === "theme-b" ? (Theme.signature.length > 1 ? Theme.signature[1] : Theme.background) : modelData
                         border.width: !!panel.bg && panel.bg.kind === "color" && panel.bg.value === modelData ? 2 : 1
@@ -261,6 +266,7 @@ Rectangle {
                 // any other colour, from the colour panel
                 Rectangle {
                     id: customBgColor
+                    visible: !panel.video
                     readonly property bool current: !!panel.bg && panel.bg.kind === "color"
                         && ["theme-a", "theme-b", "transparent"].concat(Ed.palette).indexOf(panel.bg.value) < 0
                     width: 28; height: 28; radius: 14
@@ -283,12 +289,13 @@ Rectangle {
             // CleanShot's pairs: Inset with Auto-balance, Shadow with Corners
             Row {
                 width: parent.width; spacing: 16
-                Slider { width: (parent.width - 16) / 2; label: "Inset"; from: 0; to: 60; unit: " px"
+                Slider { width: panel.video ? parent.width : (parent.width - 16) / 2; label: "Inset"; from: 0; to: 60; unit: " px"
                          value: panel.bg ? panel.bg.inset / panel.ed.unit : 0
                          onMoved: (v) => panel.ed.previewBg({ inset: Math.round(v * panel.ed.unit) })
                          onReleased: (v) => panel.release({ inset: Math.round(v * panel.ed.unit) }) }
                 // Auto-balance (BG-02): even margins around the content
                 Item {
+                    visible: !panel.video
                     width: (parent.width - 16) / 2; height: 40
                     Row {
                         y: 20; spacing: 8
