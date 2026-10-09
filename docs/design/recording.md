@@ -43,7 +43,7 @@ Snip's icon in the bar while it records (live, on DP-2; the bar is dimmed as eve
 
 ![The bar icon](recording-bar.png)
 
-The video editor: two splits, the middle part cut (dimmed, "1.5 s"), a trim (the orange handles).
+The video editor, laid out as CleanShot 5's (D50): two splits, the middle part cut (dimmed, "3.5 s"), a trim (the orange handles), the last part selected.
 
 ![The video editor](video-editor.png)
 

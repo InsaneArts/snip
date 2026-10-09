@@ -289,7 +289,7 @@ A normal floating window (Hyprland rule: float, centred, with optional pin / alw
 
 | ID | Feature | Pri | Notes |
 |---|---|---|---|
-| VED-01 | Trimmer: in and out handles, thumbnail strip, frame stepping, play/pause on Space | P1 | |
+| VED-01 | Trimmer: in and out handles, thumbnail strip, frame stepping, play/pause on Space | P1 | CleanShot 5's layout (D50): the name and Export along the top, a sidebar of sections with the cut tool, the recording in the middle with play controls under it, a timeline across the bottom with a ruler, which zooms. |
 | VED-02 | Export: quality, resolution, mute or keep audio, estimated size, Replace or Save as new, export as GIF | P1 | |
 | VED-03 | Cuts: split at playhead (B / Ctrl+B), delete segments | P1 | |
 | VED-04 | **Studio Mode**: record the screen without the cursor, plus event logs (cursor path, clicks, keys) and the camera as a separate stream, saved as a project | P2 | **Out of v1 (decided 2026-10-06).** The v1 recording design keeps the door open (architecture §6.4). |
