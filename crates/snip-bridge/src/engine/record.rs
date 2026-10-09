@@ -517,3 +517,37 @@ impl Inner {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// gsr's control socket, as its man page describes it: a JSON request
+    /// line, one JSON reply line.
+    #[test]
+    fn gsr_requests_are_json_lines_answered_once() {
+        let dir = std::env::temp_dir().join(format!("snip-gsr-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let sock = dir.join("gsr.sock");
+        let listener = std::os::unix::net::UnixListener::bind(&sock).unwrap();
+        let server = std::thread::spawn(move || {
+            for _ in 0..2 {
+                let (s, _) = listener.accept().unwrap();
+                let mut line = String::new();
+                BufReader::new(&s).read_line(&mut line).unwrap();
+                let v: Value = serde_json::from_str(&line).unwrap();
+                let reply = if v["name"] == "stop" && v["data"].is_null() {
+                    json!({ "id": v["id"], "result": "ok", "data": "/run/rec/take.mp4" })
+                } else {
+                    json!({ "id": v["id"], "result": "error", "data": "not recording" })
+                };
+                writeln!(&s, "{reply}").unwrap();
+            }
+        });
+        assert_eq!(gsr_request(&sock, "stop", Value::Null).unwrap(), json!("/run/rec/take.mp4"), "stop answers with the file");
+        assert_eq!(gsr_request(&sock, "set-paused", json!(true)).unwrap_err(), "gsr: not recording", "errors come through");
+        server.join().unwrap();
+        assert!(gsr_request(&sock, "stop", Value::Null).is_err(), "no gsr: an error, not a hang");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}
