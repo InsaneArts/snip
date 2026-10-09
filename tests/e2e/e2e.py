@@ -1745,6 +1745,92 @@ def record_with_the_hud(s, env):
     assert wait_for(lambda: not record_hud(s)["open"], 2)
 
 
+def video_editor_window():
+    return next((c for c in hypr_json("clients") if c["class"] == "snip-e2e" and c["title"].startswith("Snip Video Editor")), None)
+
+
+def video_state(s):
+    n = len(s.traces("video_state"))
+    s.debug("ui", "video", "state")
+    assert wait_for(lambda: len(s.traces("video_state")) > n, 3), "no video_state"
+    return s.traces("video_state")[-1]
+
+
+def video_click(s, env, name):
+    n = len(s.traces("video_where"))
+    s.debug("ui", "video", "where", name)
+    assert wait_for(lambda: len(s.traces("video_where")) > n, 2)
+    p = s.traces("video_where")[-1]
+    assert p["x"] >= 0, (name, "isn't shown")
+    w, mon = video_editor_window(), env.monitor()
+    s.move(w["at"][0] - mon["x"] + p["x"], w["at"][1] - mon["y"] + p["y"]); time.sleep(0.1); s.click()
+
+
+@case
+def video_editor(s, env):
+    """VED-01…03: `snip edit` opens a video in the video editor (frames along the timeline);
+    Split and Cut (by hand), and a trim, keep only the parts wanted; Save as New gives a
+    new capture of just those; Replace (as a GIF) turns the recording into it."""
+    s.cli("close-all"); time.sleep(0.3)
+    clip = s.tmp / "edit-me.mp4"
+    make_clip(clip, seconds=4, size="640x360")
+    s.json("edit", str(clip))
+    assert wait_for(lambda: video_editor_window(), 6), "the video editor opens"
+    time.sleep(0.8)                                                # centred by its rule
+    w = video_editor_window()
+    from PIL import Image
+    shot = s.tmp / "editor.png"
+    sh("grim", "-o", OUT, str(shot))
+    im, mon = Image.open(shot).convert("RGB"), env.monitor()
+    sc = mon["scale"]
+    cx, cy = round((w["at"][0] - mon["x"] + w["size"][0] / 2) * sc), round((w["at"][1] - mon["y"] + 200) * sc)
+    colours = {im.getpixel((cx + dx, cy + dy)) for dx in range(-60, 61, 30) for dy in range(-30, 31, 30)}
+    assert len(colours) > 3, ("the first frame shows before playing", colours)
+    assert any(t.rstrip("*") == "snip-video-editor" for t in w["tags"]) and w["floating"], (w["tags"], w["floating"])
+    st = video_state(s)
+    assert (st["thumbs"], st["tracks"]) == (12, 1) and 3900 <= st["duration"] <= 4100, st
+    orig = st["id"]
+    # split at 1 s and 2.5 s, by the button at the playhead
+    for ms in (1000, 2500):
+        s.debug("ui", "video", "seek", str(ms))
+        assert wait_for(lambda: abs(video_state(s)["position"] - ms) < 40, 3), video_state(s)
+        video_click(s, env, "video-split")
+        assert wait_for(lambda: any(abs(c - ms) < 40 for c in video_state(s)["cuts"]), 2), video_state(s)["cuts"]
+    # the middle part: select it on the timeline, then Cut
+    video_click(s, env, "video-part:1")
+    assert wait_for(lambda: video_state(s)["selected"] == 1, 2), video_state(s)
+    video_click(s, env, "video-cut")
+    assert wait_for(lambda: len(video_state(s)["cut"]) == 1, 2), video_state(s)
+    s.debug("ui", "video", "trim", "200", "3800")
+    st = video_state(s)
+    assert 2000 <= st["keptMs"] <= 2200, ("0.2–1.0 s and 2.5–3.8 s are kept", st["kept"])
+    n = len(s.traces("video_exported_ui"))
+    s.debug("ui", "video", "export", "new")
+    assert wait_for(lambda: len(s.traces("video_exported_ui")) > n, 30), "the export ends"
+    done = s.traces("video_exported_ui")[-1]
+    assert done["ok"], done
+    assert wait_for(lambda: not video_editor_window(), 3), "the editor closes after it"
+    new = next(r for r in s.json("list", "-n", "5")["result"] if r["id"] == done["id"])
+    assert new["id"] != orig and 1950 <= new["duration_ms"] <= 2250, ("just the parts kept", new["duration_ms"])
+    assert new["width"] == 640 and done["id"] in s.status()["cards"], "a new capture, with its card"
+    # Replace, as a GIF: the recording itself becomes a GIF
+    s.cli("close-all"); time.sleep(0.3)                             # that card would cover the editor's corner
+    s.json("edit", str(clip))                                       # (a new import of the clip, to replace)
+    assert wait_for(lambda: video_editor_window(), 6)
+    time.sleep(0.8)
+    target = video_state(s)["id"]
+    s.debug("ui", "video", "trim", "0", "1000")
+    video_click(s, env, "video-format=true")
+    assert wait_for(lambda: video_state(s)["gif"], 2)
+    n = len(s.traces("video_exported_ui"))
+    video_click(s, env, "video-replace")
+    assert wait_for(lambda: len(s.traces("video_exported_ui")) > n, 30)
+    assert s.traces("video_exported_ui")[-1]["ok"], s.traces("video_exported_ui")[-1]
+    rec = next(r for r in s.json("list", "-n", "5")["result"] if r["id"] == target)
+    assert rec["source"].endswith("source.gif") and rec["duration_ms"] <= 1200, rec
+    s.cli("close-all")
+
+
 @case
 def history_filters(s, env):
     """HIS-01: History's filters: All, Screenshots (plain captures) and Projects (objects

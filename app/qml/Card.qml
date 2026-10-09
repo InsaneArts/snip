@@ -182,8 +182,8 @@ Item {
                     card.host.drag(card)
                 }
             }
-            // a recording plays; an image opens in the editor
-            onDoubleClicked: (m) => { if (m.button === Qt.LeftButton) card.host.act(card.isMedia ? "preview" : "annotate", card) }
+            // an image or a video opens in its editor; a GIF plays
+            onDoubleClicked: (m) => { if (m.button === Qt.LeftButton) card.host.act(card.data_.media === "gif" ? "preview" : "annotate", card) }
         }
 
         // two-finger swipes (QAO-08): sideways dismisses, down hides all
@@ -254,9 +254,9 @@ Item {
             }
             FrostButton { x: 8; y: 8; icon: "x"; onClicked: card.host.dismiss(card, -1) }
             // CleanShot's corners: close, pin; annotate, (cloud →) text. Right-click: the menu.
-            // (a recording has none of these: it isn't an image to pin, mark up or read)
+            // (a recording isn't an image to pin or read; a video's pencil is the video editor)
             FrostButton { visible: !card.isMedia; x: parent.width - width - 8; y: 8; icon: "pin"; onClicked: card.host.act("pin", card) }
-            FrostButton { visible: !card.isMedia; x: 8; y: parent.height - height - 8; icon: "pencil"; onClicked: card.host.act("annotate", card) }
+            FrostButton { visible: card.data_.media !== "gif"; x: 8; y: parent.height - height - 8; icon: card.isMedia ? "scissors" : "pencil"; onClicked: card.host.act("annotate", card) }
             FrostButton { visible: !card.isMedia; x: parent.width - width - 8; y: parent.height - height - 8; icon: "scan-text"; onClicked: card.host.act("text", card) }
         }
 

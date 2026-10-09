@@ -29,6 +29,7 @@ use crate::frames;
 
 mod record;
 mod scroll;
+mod video;
 
 pub type Waiter = mpsc::Sender<Response>;
 
@@ -1539,7 +1540,7 @@ impl Inner {
     }
 
     /// Annotate / double-click: Snip's editor, or the configured external one.
-    pub fn annotate(&self, id: &str) {
+    pub fn annotate(self: &Arc<Self>, id: &str) {
         let editor = self.cfg().general.external_editor;
         if editor.trim().is_empty() {
             self.edit(id);
@@ -1588,10 +1589,14 @@ impl Inner {
     }
 
     /// Open Snip's editor on a capture (ANN-16: its objects stay editable).
-    pub fn edit(&self, id: &str) {
+    pub fn edit(self: &Arc<Self>, id: &str) {
         let Ok(rec) = self.store.get(id) else { return };
         if rec.media() != Media::Image {
-            return; // recordings open in the video editor (VED)
+            // a video opens in the video editor (VED); a GIF has none yet
+            if rec.media() == Media::Video {
+                self.video_open(id);
+            }
+            return;
         }
         let Ok((image, doc)) = self.store.edit_state(id) else { return };
         let (width, height) = png_file_size(&image).unwrap_or((rec.width, rec.height));

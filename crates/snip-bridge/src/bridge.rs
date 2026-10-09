@@ -274,6 +274,12 @@ pub mod qobject {
         fn record_discard(self: Pin<&mut Engine>);
         #[qinvokable]
         fn record_cancel(self: Pin<&mut Engine>);
+        /// The video editor: open a recording; export what's kept (JSON),
+        /// replacing it or as a new capture
+        #[qinvokable]
+        fn video_open(self: Pin<&mut Engine>, id: QString);
+        #[qinvokable]
+        fn video_export(self: Pin<&mut Engine>, id: QString, spec: QString, replace: bool);
 
         #[qinvokable]
         fn annotate(self: Pin<&mut Engine>, id: QString);
@@ -422,6 +428,13 @@ pub mod qobject {
         fn record_status(self: Pin<&mut Engine>, json: &QString);
         #[qsignal]
         fn record_close(self: Pin<&mut Engine>);
+        /// The video editor (VED): a recording to edit ({id, path, duration,
+        /// fps, width, height, tracks, thumbs, bytes, title, output}), and an
+        /// export's {progress} or {done, ok, error, id}
+        #[qsignal]
+        fn video_editor_open(self: Pin<&mut Engine>, json: &QString);
+        #[qsignal]
+        fn video_export_status(self: Pin<&mut Engine>, id: &QString, json: &QString);
 
         /// Every pin at once (PIN-07): toggle (hide or show) | close
         #[qsignal]
@@ -1009,6 +1022,18 @@ impl qobject::Engine {
     fn record_cancel(self: Pin<&mut Self>) {
         if let Some(i) = self.inner() {
             i.record_cancel();
+        }
+    }
+
+    fn video_open(self: Pin<&mut Self>, id: QString) {
+        if let Some(i) = self.inner() {
+            i.video_open(&id.to_string());
+        }
+    }
+
+    fn video_export(self: Pin<&mut Self>, id: QString, spec: QString, replace: bool) {
+        if let Some(i) = self.inner() {
+            i.video_export(&id.to_string(), &spec.to_string(), replace);
         }
     }
 
