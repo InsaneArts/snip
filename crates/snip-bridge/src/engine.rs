@@ -318,6 +318,7 @@ impl Inner {
             }
             Event::ClipboardLost => {}
             Event::Error(e) => trace::error("wayland", &format!("\"msg\":{}", js(&e))),
+            Event::Idle(idle) => trace::trace("idle", &format!("\"idle\":{idle}")),
         }
     }
 
@@ -2228,6 +2229,11 @@ impl Inner {
             }
             "wheel" => {
                 self.wl(Wl::PointerWheel { notches: n(0) as i32 });
+                Response::ok(Value::Null)
+            }
+            // whether the session goes idle after this many ms without input
+            "idle-watch" => {
+                self.wl(Wl::IdleWatch(n(0) as u32));
                 Response::ok(Value::Null)
             }
             "ui" => {
