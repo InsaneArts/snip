@@ -96,6 +96,11 @@ pub fn gsr_args(s: &Spec) -> Vec<String> {
         // AAC: every player and browser takes it in an MP4 (opus is gsr's default)
         push("-ac", "aac".into());
     }
+    // a recorder killed mid-take leaves a file Snip can recover (REC-14):
+    // each packet goes to disk, and a fragment closes every second
+    push("-ffmpeg-opts", "flush_packets=1;frag_duration=1000000".into());
+    // no device names in the tracks' titles
+    push("-exclude-metadata", "yes".into());
     push("-write-first-frame-ts", "yes".into());
     push("-ipc", s.ipc.to_string_lossy().into_owned());
     push("-v", "no".into());
@@ -143,6 +148,7 @@ mod tests {
         assert!(p.contains(&("-fm".into(), "cfr".into())) && p.contains(&("-write-first-frame-ts".into(), "yes".into())));
         assert_eq!(p.last().unwrap(), &("-o".into(), "/run/rec/take.mp4".into()), "the output goes last");
         assert!(p.contains(&("-ipc".into(), "/run/rec/gsr.sock".into())));
+        assert!(p.contains(&("-ffmpeg-opts".into(), "flush_packets=1;frag_duration=1000000".into())), "recoverable if killed");
     }
 
     #[test]

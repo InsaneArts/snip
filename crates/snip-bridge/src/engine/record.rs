@@ -7,7 +7,7 @@
 //! The HUD (QML) draws only outside the area: KMS capture records whatever
 //! is on screen there, Snip's own layers included.
 
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -88,6 +88,30 @@ impl Run {
 
 fn fake() -> bool {
     std::env::var("SNIP_RECORDER").is_ok_and(|v| v == "fake")
+}
+
+/// Where takes are written: on disk beside history (a long take would fill
+/// the runtime dir's tmpfs, and history takes it with a rename). A take still
+/// here when Snip starts was cut short, and is recovered.
+fn stage_dir() -> PathBuf {
+    paths::data_dir().join("recording")
+}
+
+/// gsr's control sockets (a socket's path can't be over 107 bytes).
+fn sock_dir() -> PathBuf {
+    paths::runtime_dir().join("recording")
+}
+
+fn sock_for(take: &Path) -> PathBuf {
+    sock_dir().join(take.with_extension("sock").file_name().unwrap_or_default())
+}
+
+/// A recording stops when its disk has less free space than this (REC-14):
+/// gsr would go on as if recording, saving nothing. SNIP_RECORD_MIN_FREE
+/// (bytes) lets tests reach it.
+fn disk_low() -> bool {
+    let min = std::env::var("SNIP_RECORD_MIN_FREE").ok().and_then(|v| v.parse().ok()).unwrap_or(1u64 << 30);
+    rustix::fs::statvfs(stage_dir()).is_ok_and(|s| s.f_bavail.saturating_mul(s.f_frsize) < min)
 }
 
 /// gpu-screen-recorder's full path (PATH searched), so its argv[0] isn't the
@@ -203,11 +227,11 @@ impl Inner {
         let cfg = self.cfg().recording;
         let mut r = self.recording.lock().unwrap();
         let Some(rec) = r.as_mut().filter(|r| matches!(r.state, State::Ready | State::Countdown)) else { return };
-        let dir = paths::runtime_dir().join("recording");
-        let _ = paths::ensure_private_dir(&dir);
+        let _ = paths::ensure_private_dir(&stage_dir());
+        let _ = paths::ensure_private_dir(&sock_dir());
         let stamp = format!("{}", chrono::Local::now().format("%Y%m%d-%H%M%S%3f"));
-        let file = dir.join(format!("{stamp}.mp4"));
-        let ipc = dir.join(format!("{stamp}.sock"));
+        let file = stage_dir().join(format!("{stamp}.mp4"));
+        let ipc = sock_for(&file);
         // a GIF is silent (REC-13)
         let audio = Audio {
             mic: (!rec.gif && !cfg.mic.is_empty()).then(|| cfg.mic.clone()),
@@ -238,8 +262,12 @@ impl Inner {
             trace::trace("gsr", &format!("\"args\":{}", js(&args.join(" "))));
             // its own process group: a terminal's Ctrl+C never reaches it. By
             // its full path: Omarchy's bar and keys look for a bare
-            // "gpu-screen-recorder" and would stop it (and toast a bogus "saved")
-            match Command::new(gsr_path()).args(&args).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped()).process_group(0).spawn() {
+            // "gpu-screen-recorder" and would stop it (and toast a bogus "saved").
+            // Its messages go to a file: a pipe nobody reads fills up and stalls
+            // it, and if Snip died, gsr's next line would kill it (SIGPIPE) mid-save
+            let spawned = std::fs::File::create(file.with_extension("log"))
+                .and_then(|log| Command::new(gsr_path()).args(&args).stdin(Stdio::null()).stdout(Stdio::null()).stderr(log).process_group(0).spawn());
+            match spawned {
                 Ok(c) => Some(c),
                 Err(e) => {
                     drop(r);
@@ -256,23 +284,32 @@ impl Inner {
             self.dnd(true);
         }
         self.record_status(json!({ "elapsed": 0 }));
-        if !fake() {
-            let me = self.clone();
-            std::thread::spawn(move || me.record_watch(file));
-        }
+        let me = self.clone();
+        std::thread::spawn(move || me.record_watch(file));
     }
 
     /// While gsr records: it started (its first-frame file), or it stopped by
     /// itself (an error, or something else sending it SIGINT, such as
-    /// Omarchy's bar button): then the recording ends as if stopped.
+    /// Omarchy's bar button): then the recording ends as if stopped. And the
+    /// disk isn't full yet.
     fn record_watch(self: Arc<Self>, file: PathBuf) {
         let ts = PathBuf::from(format!("{}.ts", file.display()));
-        let mut announced = false;
+        let mut announced = fake();
+        let mut checked = Instant::now();
         loop {
             std::thread::sleep(Duration::from_millis(150));
             let mut r = self.recording.lock().unwrap();
             let Some(rec) = r.as_mut() else { return };
             let Some(run) = rec.run.as_mut().filter(|run| run.file == file) else { return };
+            if checked.elapsed() >= Duration::from_secs(2) {
+                checked = Instant::now();
+                if disk_low() {
+                    drop(r);
+                    trace::warn("record_disk_low", "");
+                    self.record_finish(true);
+                    return self.toast("The disk is almost full: the recording stopped");
+                }
+            }
             if !announced && ts.exists() {
                 announced = true;
                 // the clock starts at gsr's first frame
@@ -284,10 +321,8 @@ impl Inner {
             }
             let exited = run.child.as_mut().and_then(|c| c.try_wait().ok().flatten());
             if let Some(status) = exited {
-                let mut err = String::new();
-                if let Some(mut stderr) = run.child.as_mut().and_then(|c| c.stderr.take()) {
-                    let _ = stderr.read_to_string(&mut err);
-                }
+                let log = std::fs::read_to_string(file.with_extension("log")).unwrap_or_default();
+                let err = &log[log.floor_char_boundary(log.len().saturating_sub(2000))..];
                 let saved = file.metadata().is_ok_and(|m| m.len() > 0);
                 drop(r);
                 trace::warn("gsr_exited", &format!("\"status\":{},\"saved\":{saved},\"stderr\":{}", js(&status.to_string()), js(err.trim())));
@@ -436,6 +471,7 @@ impl Inner {
         let ts = PathBuf::from(format!("{}.ts", run.file.display()));
         let _ = std::fs::remove_file(ts);
         let _ = std::fs::remove_file(&run.ipc);
+        let _ = std::fs::remove_file(run.file.with_extension("log"));
         if keep && !run.rolling {
             self.toast("Stopped before the first frame: nothing was recorded");
         }
@@ -497,6 +533,62 @@ impl Inner {
                 self.toast(format!("Couldn't keep the recording: {e}"));
                 reply(rec.waiter, Response::err(e));
             }
+        }
+    }
+
+    /// Takes left behind when Snip stopped mid-recording (it crashed, or its
+    /// service was stopped): into history, as far as they got (REC-14).
+    pub fn record_recover(self: &Arc<Self>) {
+        // listed now, before a new take can start
+        let takes: Vec<PathBuf> = std::fs::read_dir(stage_dir())
+            .map(|d| d.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "mp4")).collect())
+            .unwrap_or_default();
+        if takes.is_empty() {
+            return;
+        }
+        let me = self.clone();
+        std::thread::spawn(move || {
+            let mut kept = 0;
+            for take in takes {
+                // a gsr that outlived Snip: stopped, so its file is finished
+                let _ = gsr_request(&sock_for(&take), "stop", Value::Null);
+                let fixed = take.with_extension("recovered.mp4");
+                let file = if media::fragmented(&take) { media::recover(&take, &fixed).map(|_| fixed.clone()) } else { Ok(take.clone()) };
+                let output = me.cursor_output().unwrap_or_default();
+                let meta = CaptureMeta { kind: "recording".into(), scale: 1.0, output: output.clone(), app: None, title: None };
+                match file.and_then(|f| me.ingest_media(&f, true, meta)) {
+                    Ok(r) => {
+                        trace::trace("record_recovered", &format!("\"id\":\"{}\",\"ms\":{}", r.id, r.duration_ms));
+                        me.show_card(&r, &output);
+                        kept += 1;
+                    }
+                    // nothing in it (stopped before its first frame)
+                    Err(e) => trace::warn("record_recover", &format!("\"file\":{},\"msg\":{}", js(&take.to_string_lossy()), js(&e))),
+                }
+                for f in [take.clone(), fixed, take.with_extension("log"), PathBuf::from(format!("{}.ts", take.display())), sock_for(&take)] {
+                    let _ = std::fs::remove_file(f);
+                }
+            }
+            if kept > 0 {
+                me.toast(if kept == 1 { "Recovered a recording that was cut short".to_string() } else { format!("Recovered {kept} recordings that were cut short") });
+            }
+        });
+    }
+
+    /// A monitor went away (REC-14): gsr would go on encoding its last frame,
+    /// so a recording of it stops, and is kept.
+    pub fn record_output_removed(self: &Arc<Self>, name: &str) {
+        let state = self.recording.lock().unwrap().as_ref().filter(|r| r.output == name).map(|r| r.state);
+        match state {
+            Some(State::Recording | State::Paused) => {
+                let me = self.clone();
+                std::thread::spawn(move || {
+                    me.record_finish(true);
+                    me.toast("The display was disconnected: the recording is saved");
+                });
+            }
+            Some(State::Ready | State::Countdown) => self.record_close(false),
+            _ => {}
         }
     }
 
