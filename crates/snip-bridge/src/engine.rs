@@ -1166,9 +1166,7 @@ impl Inner {
     /// BG-03 "Automatically apply preset to all screenshots": the preset set
     /// to auto-apply (backgrounds.json), its sizes in points.
     fn auto_background(&self) -> Option<Value> {
-        let j: Value = serde_json::from_str(&std::fs::read_to_string(paths::data_dir().join("backgrounds.json")).ok()?).ok()?;
-        let name = j["auto"].as_str()?;
-        j["presets"].as_array()?.iter().find(|p| p["name"] == name).map(|p| p["bg"].clone())
+        snip_core::editor_files::auto_background()
     }
 
     /// A new screenshot gets the auto-applied background before its card:

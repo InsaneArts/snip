@@ -4,6 +4,7 @@
 pub mod balance;
 pub mod config;
 pub mod desktop;
+pub mod editor_files;
 pub mod encode;
 pub mod frame;
 pub mod geometry;
