@@ -19,6 +19,33 @@ pub struct Record {
     pub saved: Option<PathBuf>,
     pub app: Option<String>,
     pub title: Option<String>,
+    /// a recording's length (0 for images)
+    pub duration_ms: u64,
+}
+
+/// What a capture's file holds, by its extension (REC-12, REC-13).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Media {
+    Image,
+    Video,
+    Gif,
+}
+
+impl Media {
+    pub fn of(path: &Path) -> Media {
+        match path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).as_deref() {
+            Some("mp4" | "mkv" | "webm" | "mov") => Media::Video,
+            Some("gif") => Media::Gif,
+            _ => Media::Image,
+        }
+    }
+}
+
+impl Record {
+    pub fn media(&self) -> Media {
+        Media::of(&self.source)
+    }
 }
 
 pub struct History {
@@ -61,6 +88,11 @@ impl History {
         let has_scale: bool = db.prepare("SELECT 1 FROM pragma_table_info('captures') WHERE name = 'scale'")?.exists([])?;
         if !has_scale {
             db.execute_batch("ALTER TABLE captures ADD COLUMN scale REAL NOT NULL DEFAULT 1;")?;
+        }
+        // REC (added 2026-10-09): a recording's length
+        let has_duration: bool = db.prepare("SELECT 1 FROM pragma_table_info('captures') WHERE name = 'duration_ms'")?.exists([])?;
+        if !has_duration {
+            db.execute_batch("ALTER TABLE captures ADD COLUMN duration_ms INTEGER NOT NULL DEFAULT 0;")?;
         }
         db.execute_batch(
             "CREATE VIRTUAL TABLE IF NOT EXISTS captures_fts
@@ -121,7 +153,7 @@ impl History {
              WHERE captures_fts MATCH ?1 ORDER BY rank LIMIT ?2"
         );
         let mut st = self.db.prepare(&sql)?;
-        let rows = st.query_map(params![terms.join(" "), limit], |r| Ok((Self::row(r)?, r.get::<_, String>(11)?)))?;
+        let rows = st.query_map(params![terms.join(" "), limit], |r| Ok((Self::row(r)?, r.get::<_, String>(12)?)))?;
         rows.collect()
     }
 
@@ -135,8 +167,8 @@ impl History {
 
     pub fn insert(&self, r: &Record) -> rusqlite::Result<()> {
         self.db.execute(
-            "INSERT INTO captures (id, created_at, kind, width, height, output, source, saved, app, title, scale)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            "INSERT INTO captures (id, created_at, kind, width, height, output, source, saved, app, title, scale, duration_ms)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 r.id,
                 r.created_at,
@@ -148,7 +180,8 @@ impl History {
                 r.saved.as_ref().map(|p| p.to_string_lossy().into_owned()),
                 r.app,
                 r.title,
-                r.scale
+                r.scale,
+                r.duration_ms as i64
             ],
         )?;
         Ok(())
@@ -167,10 +200,11 @@ impl History {
             app: r.get(8)?,
             title: r.get(9)?,
             scale: r.get(10)?,
+            duration_ms: r.get::<_, i64>(11)?.max(0) as u64,
         })
     }
 
-    const COLS: &'static str = "id, created_at, kind, width, height, output, source, saved, app, title, scale";
+    const COLS: &'static str = "id, created_at, kind, width, height, output, source, saved, app, title, scale, duration_ms";
 
     pub fn get(&self, id: &str) -> rusqlite::Result<Option<Record>> {
         self.db
@@ -265,6 +299,7 @@ mod tests {
             width: 10,
             height: 5,
             scale: 1.25,
+            duration_ms: 0,
             output: "DP-2".into(),
             source: dir.join("source.png"),
             saved: None,
@@ -299,6 +334,7 @@ mod tests {
         drop(db);
         let h = History::open(&root).unwrap();
         assert_eq!(h.get("old").unwrap().unwrap().scale, 1.0);
+        assert_eq!(h.get("old").unwrap().unwrap().duration_ms, 0);
         std::fs::remove_dir_all(root).unwrap();
     }
 
