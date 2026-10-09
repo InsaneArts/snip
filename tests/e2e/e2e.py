@@ -2086,9 +2086,11 @@ def video_click(s, env, name):
 
 @case
 def video_editor(s, env):
-    """VED-01…03: `snip edit` opens a video in the video editor (frames along the timeline);
-    Split and Cut (by hand), and a trim, keep only the parts wanted; Save as New gives a
-    new capture of just those; Replace (as a GIF) turns the recording into it."""
+    """VED-01…03, D50: `snip edit` opens a video in the video editor, laid out as CleanShot
+    5's (frames along a timeline across the bottom); Split and Cut (by hand), and a trim,
+    keep only the parts wanted; ⏮ ⏭ go from part to part; a track mutes; the timeline
+    zooms; Save as New gives a new capture of just those parts; Replace (as a GIF, from the
+    Export popover) turns the recording into it."""
     s.cli("close-all"); time.sleep(0.3)
     clip = s.tmp / "edit-me.mp4"
     make_clip(clip, seconds=4, size="640x360")
@@ -2101,8 +2103,9 @@ def video_editor(s, env):
     sh("grim", "-o", OUT, str(shot))
     im, mon = Image.open(shot).convert("RGB"), env.monitor()
     sc = mon["scale"]
-    cx, cy = round((w["at"][0] - mon["x"] + w["size"][0] / 2) * sc), round((w["at"][1] - mon["y"] + 200) * sc)
-    colours = {im.getpixel((cx + dx, cy + dy)) for dx in range(-60, 61, 30) for dy in range(-30, 31, 30)}
+    px, py = video_point(s, env, "video-preview")
+    cx, cy = round(px * sc), round(py * sc)
+    colours = {im.getpixel((cx + dx, cy + dy)) for dx in range(-240, 241, 60) for dy in range(-90, 91, 45)}
     assert len(colours) > 3, ("the first frame shows before playing", colours)
     assert any(t.rstrip("*") == "snip-video-editor" for t in w["tags"]) and w["floating"], (w["tags"], w["floating"])
     st = video_state(s)
@@ -2115,6 +2118,18 @@ def video_editor(s, env):
         assert wait_for(lambda: abs(video_state(s)["position"] - ms) < 40, 3), video_state(s)
         video_click(s, env, "video-split")
         assert wait_for(lambda: any(abs(c - ms) < 40 for c in video_state(s)["cuts"]), 2), video_state(s)["cuts"]
+    # ⏮ ⏭: to the edges of the parts
+    s.debug("ui", "video", "seek", "1800")
+    assert wait_for(lambda: abs(video_state(s)["position"] - 1800) < 40, 3), video_state(s)
+    video_click(s, env, "video-next")
+    assert wait_for(lambda: video_state(s)["position"] == 2500, 2), video_state(s)
+    video_click(s, env, "video-prev")
+    assert wait_for(lambda: video_state(s)["position"] == 1000, 2), video_state(s)
+    # the track mutes, and comes back at 100 %
+    video_click(s, env, "video-mute:0")
+    assert wait_for(lambda: video_state(s)["volumes"] == [0], 2), video_state(s)
+    video_click(s, env, "video-mute:0")
+    assert wait_for(lambda: video_state(s)["volumes"] == [1], 2), video_state(s)
     # a drag along the timeline: the playhead ends where the pointer does (seeks
     # don't pile up behind it)
     (x0, y0), (x1, y1) = video_point(s, env, "video-part:0"), video_point(s, env, "video-part:2")
@@ -2134,6 +2149,9 @@ def video_editor(s, env):
     s.debug("ui", "video", "trim", "200", "3800")
     st = video_state(s)
     assert 2000 <= st["keptMs"] <= 2200, ("0.2–1.0 s and 2.5–3.8 s are kept", st["kept"])
+    # the timeline zooms (the slider's middle: ×2.8), the playhead kept in view
+    video_click(s, env, "video-zoom")
+    assert wait_for(lambda: 2.6 < video_state(s)["zoom"] < 3.1, 2), video_state(s)
     n = len(s.traces("video_exported_ui"))
     s.debug("ui", "video", "export", "new")
     assert wait_for(lambda: len(s.traces("video_exported_ui")) > n, 30), "the export ends"
@@ -2150,6 +2168,9 @@ def video_editor(s, env):
     time.sleep(0.8)
     target = video_state(s)["id"]
     s.debug("ui", "video", "trim", "0", "1000")
+    video_click(s, env, "video-export")
+    assert wait_for(lambda: video_state(s)["exportOpen"], 2), "the Export popover opens"
+    time.sleep(0.2)
     video_click(s, env, "video-format=true")
     assert wait_for(lambda: video_state(s)["gif"], 2)
     n = len(s.traces("video_exported_ui"))
