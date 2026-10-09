@@ -79,6 +79,8 @@ pub fn gsr_args(s: &Spec) -> Vec<String> {
         push("-k", "h264".into());
     } else {
         push("-k", s.codec.clone());
+        // no CUDA (after a suspend, a driver mismatch): x264 instead of failing
+        push("-fallback-cpu-encoding", "yes".into());
     }
     push("-q", s.quality.clone());
     push("-f", s.fps.to_string());
@@ -149,6 +151,7 @@ mod tests {
         assert_eq!(p.last().unwrap(), &("-o".into(), "/run/rec/take.mp4".into()), "the output goes last");
         assert!(p.contains(&("-ipc".into(), "/run/rec/gsr.sock".into())));
         assert!(p.contains(&("-ffmpeg-opts".into(), "flush_packets=1;frag_duration=1000000".into())), "recoverable if killed");
+        assert!(p.contains(&("-fallback-cpu-encoding".into(), "yes".into())), "x264 when CUDA can't start");
     }
 
     #[test]
