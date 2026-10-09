@@ -135,6 +135,8 @@ Window {
         Qt.callLater(fitInput)
     }
     function close() {
+        // a countdown stopped short mustn't go on to "starting"
+        tick.stop()
         phase = "closed"
         visible = false
     }
