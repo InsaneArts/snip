@@ -47,6 +47,10 @@ The video editor, laid out as CleanShot 5's (D50): two splits, the middle part c
 
 ![The video editor](video-editor.png)
 
+Its Background section (VED-06): a gradient, 16:9, padding and rounded corners; then a frame of the export.
+
+![The background, in the editor and exported](video-editor-background.png)
+
 ## How it works
 
 ```
@@ -97,6 +101,7 @@ history card ─ Edit Video… ─▶ VideoEditor window ─▶ media::export (f
 | CleanShot's panel at once: the area chosen on it (drag, handles, W × H, ⤢, Space for a window), Record GIF and Record Video | REC-01/02, D49 | ✅ built |
 | Settings › Recording; Record Screen in Snip's menu | REC-06 (part), REC-12/13 | ✅ built |
 | Video editor: split, cut, trim, track volumes, mono, MP4 or GIF, Replace or Save as New | VED-01…03 | ✅ built |
+| The editor in CleanShot 5's layout; a background around the recording, drawn into the export | VED-01, VED-06, D50 | ✅ built |
 | Safety: recovery, low disk, display unplugged | REC-14 (part) | ✅ built |
 | Camera bubble | REC-08 | ✅ built; a real camera is untested (none here) |
 | Click highlights and keystrokes | REC-09/10 | ✅ built; real typing into the hook is untested (the nested Hyprland has no keyboard of ours) |
