@@ -23,6 +23,7 @@ Item {
 
     readonly property string cardId: data_.id
     readonly property bool saved: !!data_.saved
+    readonly property bool isMedia: (data_.media || "image") !== "image"
     readonly property bool hovered: forceHover || bodyHover.hovered || hover.pressed
     // 0..1: thumbnail frosting and hover controls (CleanShot: ~150 ms)
     readonly property bool frosted: (hovered && !dragging) || status !== ""
@@ -111,6 +112,32 @@ Item {
                 color: Theme.light ? Qt.rgba(0.10, 0.08, 0.08, 0.26) : Qt.rgba(0.04, 0.05, 0.08, 0.38)
                 opacity: card.frost
             }
+            // REC: a recording's kind and length, bottom left
+            Rectangle {
+                visible: (card.data_.media || "image") !== "image"
+                x: 8
+                y: parent.height - height - 8
+                height: 20
+                width: badgeRow.implicitWidth + 12
+                radius: 10
+                color: Qt.rgba(0, 0, 0, 0.55)
+                opacity: 1 - card.frost
+                Row {
+                    id: badgeRow
+                    anchors.centerIn: parent
+                    spacing: 4
+                    Icon { visible: card.data_.media === "video"; anchors.verticalCenter: parent.verticalCenter; name: "play"; size: 10; stroke: 1.5; filled: true; color: "white" }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: card.data_.media === "gif" ? "GIF" : card.clock(card.data_.duration || 0)
+                        color: "white"
+                        font.family: Theme.fontUi
+                        font.pixelSize: 11
+                        font.weight: Font.DemiBold
+                        font.features: { "tnum": 1 }
+                    }
+                }
+            }
             Rectangle {   // a status (white text) needs a darker glass on light screenshots
                 anchors.fill: parent
                 color: Qt.rgba(0, 0, 0, 0.30)
@@ -155,7 +182,8 @@ Item {
                     card.host.drag(card)
                 }
             }
-            onDoubleClicked: (m) => { if (m.button === Qt.LeftButton) card.host.act("annotate", card) }
+            // a recording plays; an image opens in the editor
+            onDoubleClicked: (m) => { if (m.button === Qt.LeftButton) card.host.act(card.isMedia ? "preview" : "annotate", card) }
         }
 
         // two-finger swipes (QAO-08): sideways dismisses, down hides all
@@ -226,9 +254,10 @@ Item {
             }
             FrostButton { x: 8; y: 8; icon: "x"; onClicked: card.host.dismiss(card, -1) }
             // CleanShot's corners: close, pin; annotate, (cloud →) text. Right-click: the menu.
-            FrostButton { x: parent.width - width - 8; y: 8; icon: "pin"; onClicked: card.host.act("pin", card) }
-            FrostButton { x: 8; y: parent.height - height - 8; icon: "pencil"; onClicked: card.host.act("annotate", card) }
-            FrostButton { x: parent.width - width - 8; y: parent.height - height - 8; icon: "scan-text"; onClicked: card.host.act("text", card) }
+            // (a recording has none of these: it isn't an image to pin, mark up or read)
+            FrostButton { visible: !card.isMedia; x: parent.width - width - 8; y: 8; icon: "pin"; onClicked: card.host.act("pin", card) }
+            FrostButton { visible: !card.isMedia; x: 8; y: parent.height - height - 8; icon: "pencil"; onClicked: card.host.act("annotate", card) }
+            FrostButton { visible: !card.isMedia; x: parent.width - width - 8; y: parent.height - height - 8; icon: "scan-text"; onClicked: card.host.act("text", card) }
         }
 
         // ---------------------------------------------------------------- status: work in progress and results
@@ -288,6 +317,11 @@ Item {
 
     Timer { id: statusReset; onTriggered: { card.status = ""; card.detail = "" } }
     // show a status for `ms` (0 = until replaced; work in progress gives up after 20 s)
+    // a recording's length: m:ss (h:mm:ss past an hour)
+    function clock(ms) {
+        const t = Math.round(ms / 1000), h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, s = t % 60
+        return (h > 0 ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(s).padStart(2, "0")
+    }
     function flash(s, ms, d) {
         status = s
         detail = d || ""

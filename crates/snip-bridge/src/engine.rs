@@ -16,10 +16,10 @@ use serde_json::{json, Value};
 
 use snip_core::config::{AfterCapture, ClipboardMode, Config, OpenLinks, Retention};
 use snip_core::geometry::Rect;
-use snip_core::history::Record;
+use snip_core::history::{Media, Record};
 use snip_core::store::{CaptureMeta, Store};
 use snip_core::trace::{self, js};
-use snip_core::{desktop, encode, naming, ocr, paths, qr, theme, window};
+use snip_core::{desktop, encode, media, naming, ocr, paths, qr, theme, window};
 use snip_hypr::Client;
 use snip_ipc::{Request as Ctl, Response};
 use snip_wayland::{CaptureResult, Event, Features, Frame, OutputInfo, Request as Wl, Source};
@@ -152,6 +152,10 @@ pub fn card_json(rec: &Record, output: &str) -> Value {
         "height": rec.height,
         "kind": rec.kind,
         "scale": rec.scale,
+        // REC: a recording shows its poster and its length
+        "media": rec.media(),
+        "duration": rec.duration_ms,
+        "thumb": Store::poster(rec),
         "saved": rec.saved,
         "created": rec.created_at,
         "output": output,
@@ -1082,6 +1086,9 @@ impl Inner {
 
     fn index_one(&self, id: &str, source: &Path) {
         let t0 = trace::now_ns();
+        // a recording is searched by its first frame
+        let poster = source.with_file_name("poster.png");
+        let source = if Media::of(source) != Media::Image { poster.as_path() } else { source };
         let text = std::fs::read(source)
             .ok()
             .and_then(|b| encode::decode_png(&b).ok())
@@ -1277,6 +1284,10 @@ impl Inner {
     /// Copy (§5.0): clipboard only.
     pub fn copy(&self, id: &str) -> Result<(), String> {
         let cfg = self.cfg();
+        let rec = self.store.get(id).map_err(|e| e.to_string())?;
+        if rec.media() != Media::Image {
+            return self.copy_media(&rec);
+        }
         let png = self.store.bytes(id).map_err(|e| e.to_string())?;
         let mut offers: Vec<(String, Arc<Vec<u8>>)> = vec![];
         if cfg.clipboard.mode != ClipboardMode::File {
@@ -1302,6 +1313,27 @@ impl Inner {
         }
         self.wl(Wl::SetClipboard { offers });
         trace::trace("copied", &format!("\"id\":\"{id}\""));
+        Ok(())
+    }
+
+    /// A recording on the clipboard is its file (named like a saved one): file
+    /// managers and chat apps take it, terminals get its path; a GIF also as
+    /// image/gif for apps that paste images.
+    fn copy_media(&self, rec: &Record) -> Result<(), String> {
+        let file = self.drag_file(&rec.id)?;
+        let uri = format!("file://{}", percent_encode(&file));
+        let mut offers: Vec<(String, Arc<Vec<u8>>)> = vec![];
+        if rec.media() == Media::Gif {
+            offers.push(("image/gif".into(), Arc::new(std::fs::read(&rec.source).map_err(|e| e.to_string())?)));
+        }
+        offers.push(("text/uri-list".into(), Arc::new(format!("{uri}\r\n").into_bytes())));
+        offers.push(("x-special/gnome-copied-files".into(), Arc::new(format!("copy\n{uri}").into_bytes())));
+        let text = Arc::new(file.to_string_lossy().into_owned().into_bytes());
+        for t in ["text/plain;charset=utf-8", "text/plain", "UTF8_STRING"] {
+            offers.push((t.into(), text.clone()));
+        }
+        self.wl(Wl::SetClipboard { offers });
+        trace::trace("copied", &format!("\"id\":\"{}\",\"media\":true", rec.id));
         Ok(())
     }
 
@@ -1403,7 +1435,8 @@ impl Inner {
         let when = chrono::DateTime::from_timestamp(rec.created_at, 0).map(|t| t.with_timezone(&chrono::Local)).unwrap_or_else(chrono::Local::now);
         let ctx = naming::NameContext { window_title: rec.title.clone(), app_name: rec.app.clone(), counter: 0, random: id.chars().rev().take(4).collect() };
         let stem = cfg.file_stem(when, rec.scale, &ctx);
-        let path = dir.join(format!("{stem}.png"));
+        let ext = rec.source.extension().and_then(|e| e.to_str()).unwrap_or("png");
+        let path = dir.join(format!("{stem}.{ext}"));
         if std::fs::hard_link(&rec.source, &path).is_err() {
             std::fs::copy(&rec.source, &path).map_err(|e| e.to_string())?;
         }
@@ -1496,6 +1529,9 @@ impl Inner {
     /// A pin whose image's corner goes at `at` (layout px), or centred.
     fn pin_at(&self, id: &str, at: Option<(i32, i32)>) -> Result<Value, String> {
         let rec = self.store.get(id).map_err(|e| e.to_string())?;
+        if rec.media() != Media::Image {
+            return Err("only images can be pinned".into());
+        }
         let monitors = snip_hypr::monitors();
         let here = self.cursor_output();
         let scale = monitors.iter().find(|m| m.name == rec.output).or_else(|| monitors.iter().find(|m| Some(&m.name) == here.as_ref())).map(|m| m.scale).unwrap_or(1.0);
@@ -1513,6 +1549,9 @@ impl Inner {
     /// Open Snip's editor on a capture (ANN-16: its objects stay editable).
     pub fn edit(&self, id: &str) {
         let Ok(rec) = self.store.get(id) else { return };
+        if rec.media() != Media::Image {
+            return; // recordings open in the video editor (VED)
+        }
         let Ok((image, doc)) = self.store.edit_state(id) else { return };
         let (width, height) = png_file_size(&image).unwrap_or((rec.width, rec.height));
         let output = self.cursor_output();
@@ -1593,6 +1632,9 @@ impl Inner {
         let (me, id, op) = (self.clone(), id.to_string(), op.to_string());
         std::thread::spawn(move || {
             let Ok(rec) = me.store.get(&id) else { return };
+            if rec.media() != Media::Image {
+                return;
+            }
             let Some((data, w, h, alpha)) = me.store.bytes(&id).ok().and_then(|b| encode::decode_png(&b).ok()) else { return };
             let bpp = if alpha { 4 } else { 3 };
             let size: Option<(u32, u32)> = match op.split_whitespace().collect::<Vec<_>>()[..] {
@@ -1632,8 +1674,13 @@ impl Inner {
         let me = self.clone();
         let id = id.to_string();
         std::thread::spawn(move || {
-            // the card shows "Reading text…" until one of these arrives
-            let Some((data, w, h, alpha)) = me.store.bytes(&id).ok().and_then(|b| encode::decode_png(&b).ok()) else {
+            // the card shows "Reading text…" until one of these arrives; a
+            // recording is read from its first frame
+            let bytes = match me.store.get(&id).ok().and_then(|r| Store::poster(&r)) {
+                Some(poster) => std::fs::read(poster).ok().map(Arc::new),
+                None => me.store.bytes(&id).ok(),
+            };
+            let Some((data, w, h, alpha)) = bytes.and_then(|b| encode::decode_png(&b).ok()) else {
                 me.card_status(&id, "error", "Couldn't open the image");
                 return;
             };
@@ -1755,6 +1802,11 @@ impl Inner {
 
     /// An image file (or a Snip project) as a new capture in history.
     fn import(&self, path: &str) -> Result<Record, String> {
+        let title = Path::new(path).file_stem().map(|s| s.to_string_lossy().into_owned());
+        if Media::of(Path::new(path)) != Media::Image {
+            let out = self.cursor_output().unwrap_or_default();
+            return self.ingest_media(Path::new(path), false, CaptureMeta { kind: "import".into(), scale: 1.0, output: out, app: None, title });
+        }
         if path.to_ascii_lowercase().ends_with(".snip") {
             let out = self.cursor_output().unwrap_or_default();
             let rec = self.store.import_project(Path::new(path), &out, now_secs()).map_err(|e| e.to_string())?;
@@ -1762,13 +1814,23 @@ impl Inner {
             return Ok(rec);
         }
         let bytes = std::fs::read(path).map_err(|e| format!("{path}: {e}"))?;
-        let (w, h) = png_size(&bytes).ok_or("only PNG files can be opened for now")?;
-        let title = Path::new(path).file_stem().map(|s| s.to_string_lossy().into_owned());
+        let (w, h) = png_size(&bytes).ok_or("only PNG files, videos and GIFs can be opened for now")?;
         let out = self.cursor_output().unwrap_or_default();
         let rec = self
             .store
             .ingest(bytes, w, h, CaptureMeta { kind: "import".into(), scale: 1.0, output: out, app: None, title }, now_secs())
             .map_err(|e| e.to_string())?;
+        self.wake_indexer();
+        Ok(rec)
+    }
+
+    /// A video or GIF into history (a recording's own file is `take`n):
+    /// ffprobe reads it, its first frame becomes the poster.
+    fn ingest_media(&self, file: &Path, take: bool, meta: CaptureMeta) -> Result<Record, String> {
+        let p = media::probe(file)?;
+        let poster = media::poster(file)?;
+        let rec = self.store.ingest_media(file, take, &poster, p.width, p.height, p.duration_ms, meta, now_secs()).map_err(|e| e.to_string())?;
+        trace::trace("media_ingested", &format!("\"id\":\"{}\",\"media\":{},\"w\":{},\"h\":{},\"ms\":{}", rec.id, js(&format!("{:?}", rec.media()).to_lowercase()), p.width, p.height, p.duration_ms));
         self.wake_indexer();
         Ok(rec)
     }

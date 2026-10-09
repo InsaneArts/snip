@@ -12,6 +12,8 @@ Rectangle {
 
     property string mode: "menu"            // "resize": the W × H form
     onCardChanged: mode = "menu"
+    // a recording (video or GIF): only what applies to a file
+    readonly property bool isMedia: !!card && (card.data_.media || "image") !== "image"
     readonly property int imgW: card ? card.data_.width : 1
     readonly property int imgH: card ? card.data_.height : 1
 
@@ -19,16 +21,16 @@ Rectangle {
         { label: "Copy", key: "Ctrl+C", action: "copy", icon: "copy" },
         { label: card && card.saved ? "Show in Files" : "Save", key: card && card.saved ? "" : "Ctrl+S", action: card && card.saved ? "show" : "save", icon: card && card.saved ? "folder" : "save" },
         { label: "Save As…", key: "Ctrl+Shift+S", action: "save-as", icon: "save" },
-        { label: "Annotate", key: "Ctrl+E", action: "annotate", icon: "pencil" },
-        { label: "Pin to Screen", key: "Ctrl+P", action: "pin", icon: "pin" },
+        { label: "Annotate", key: "Ctrl+E", action: "annotate", icon: "pencil", hidden: menu.isMedia },
+        { label: "Pin to Screen", key: "Ctrl+P", action: "pin", icon: "pin", hidden: menu.isMedia },
         { label: "Open With…", key: "", action: "open-with", icon: "share" },
-        { label: "Extract Text", key: "", action: "text", icon: "scan-text" },
-        { label: "Rotate Left", key: "", action: "rotate-left", icon: "rotate-ccw" },
-        { label: "Flip Horizontal", key: "", action: "flip-horizontal", icon: "flip-horizontal" },
-        { label: "Scale to 1×", key: "", action: "scale-1x", icon: "minimize", hidden: !(card && card.data_.scale > 1) },
-        { label: "Resize…", key: "", action: "resize", icon: "scaling" },
+        { label: "Extract Text", key: "", action: "text", icon: "scan-text", hidden: menu.isMedia },
+        { label: "Rotate Left", key: "", action: "rotate-left", icon: "rotate-ccw", hidden: menu.isMedia },
+        { label: "Flip Horizontal", key: "", action: "flip-horizontal", icon: "flip-horizontal", hidden: menu.isMedia },
+        { label: "Scale to 1×", key: "", action: "scale-1x", icon: "minimize", hidden: menu.isMedia || !(card && card.data_.scale > 1) },
+        { label: "Resize…", key: "", action: "resize", icon: "scaling", hidden: menu.isMedia },
         { label: "Preview", key: "Space", action: "preview", icon: "eye" },
-        { label: "Print…", key: "", action: "print", icon: "printer" },
+        { label: "Print…", key: "", action: "print", icon: "printer", hidden: menu.isMedia },
         { sep: true },
         { label: "Move to Trash", key: "", action: "trash", icon: "trash", danger: true },
         { sep: true },

@@ -128,6 +128,7 @@ class Snip:
         # editor_object_shadows turns them on
         (self.tmp / "cfg/snip/config.toml").write_text(
             f'[general]\nexport_dir = "{self.export}"\nsounds = false\n{extra}\n[annotate]\nobject_shadows = false\n'
+            f'[recording]\nexport_dir = "{self.export}"\n'
         )
 
     def start(self):
@@ -1524,6 +1525,96 @@ def history_restore_then_copy(s, env):
     assert types == ["image/png"], ("the image is on the clipboard", types)
     data = subprocess.run(["wl-paste", "-t", "image/png"], capture_output=True, timeout=5).stdout
     assert data[:8] == b"\x89PNG\r\n\x1a\n" and png_size_bytes(data) == (rec["width"], rec["height"]), (len(data), data[:16])
+
+
+def make_clip(path, seconds=2, size="320x200", audio=True):
+    """A synthetic recording: ffmpeg's test pattern (and a tone)."""
+    args = ["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", f"testsrc2=size={size}:rate=30:duration={seconds}"]
+    if audio:
+        args += ["-f", "lavfi", "-i", f"sine=duration={seconds}", "-c:a", "aac", "-shortest"]
+    if str(path).endswith(".gif"):
+        args += ["-vf", "fps=10"]
+    else:
+        args += ["-c:v", "libx264", "-pix_fmt", "yuv420p"]
+    subprocess.run(args + [str(path)], check=True)
+
+
+@case
+def recordings_in_history(s, env):
+    """REC-12/13, HIS-01: a video or GIF opened in Snip is a capture like a screenshot: its
+    card shows its first frame and length, Copy offers the file, Save keeps it as it is,
+    History files it under Videos or GIFs, and Space plays it."""
+    from PIL import Image
+    s.cli("close-all"); time.sleep(0.3)
+    clip, gif = s.tmp / "clip.mp4", s.tmp / "loop.gif"
+    make_clip(clip)
+    make_clip(gif, seconds=1, size="160x100", audio=False)
+    vid = s.json("open", str(clip))["result"]
+    assert (vid["media"], vid["width"], vid["height"]) == ("video", 320, 200), vid
+    assert 1900 <= vid["duration"] <= 2100 and vid["path"].endswith("source.mp4"), vid
+    assert Image.open(vid["thumb"]).size == (320, 200), "its first frame is the poster"
+    g = s.json("open", str(gif))["result"]
+    assert (g["media"], g["width"], g["height"]) == ("gif", 160, 100) and g["path"].endswith("source.gif"), g
+    assert clip.exists() and gif.exists(), "the user's files stay where they were"
+
+    s.cli("copy", vid["id"])
+    assert wait_for(lambda: "text/uri-list" in sh("wl-paste", "-l", check=False).stdout.split(), 3), "Copy offers the video as a file"
+    types = sh("wl-paste", "-l", check=False).stdout.split()
+    assert "image/png" not in types, types
+    path = sh("wl-paste", "-n", "-t", "text/plain;charset=utf-8", check=False).stdout
+    assert path.endswith(".mp4") and Path(path).read_bytes() == clip.read_bytes(), path
+    s.cli("copy", g["id"])
+    assert wait_for(lambda: "image/gif" in sh("wl-paste", "-l", check=False).stdout.split(), 3), "a GIF also as image/gif"
+
+    there = set(s.export.iterdir()) if s.export.exists() else set()
+    saved = Path(s.json("save", vid["id"])["result"])
+    try:
+        assert saved.suffix == ".mp4" and saved.read_bytes() == clip.read_bytes(), "saved as it is"
+    finally:
+        for f in (set(s.export.iterdir()) if s.export.exists() else set()) - there:
+            f.unlink()
+
+    s.cli("close-all"); time.sleep(0.4)
+    s.cli("history")
+    assert wait_for(lambda: history_state(s)["open"], 3)
+    try:
+        def pick(name):
+            n = len(s.traces("history_where"))
+            s.debug("ui", "history", "where", name)
+            assert wait_for(lambda: len(s.traces("history_where")) > n, 2)
+            b = s.traces("history_where")[-1]
+            s.move(b["x"], b["y"]); time.sleep(0.1); s.click()
+        shown = lambda: history_state(s)["items"]
+        pick("filter-videos")
+        assert wait_for(lambda: shown() == [vid["id"]], 2), ("Videos", shown())
+        pick("filter-gifs")
+        assert wait_for(lambda: shown() == [g["id"]], 2), ("GIFs", shown())
+        pick("filter-screenshots")
+        assert wait_for(lambda: vid["id"] not in shown() and g["id"] not in shown(), 2), ("Screenshots", shown())
+    finally:
+        s.debug("ui", "history", "keys", "{Escape}")
+        wait_for(lambda: not history_state(s)["open"], 2)
+
+    s.json("restore", vid["id"])
+    assert wait_for(lambda: vid["id"] in s.status()["cards"], 3)
+    time.sleep(0.6)
+    n = len(s.traces("qa_where"))
+    s.debug("ui", "qa-where", "card:" + vid["id"])
+    assert wait_for(lambda: len(s.traces("qa_where")) > n, 2)
+    c = s.traces("qa_where")[-1]
+    s.move(c["x"] + 1, c["y"]); s.move(c["x"], c["y"]); time.sleep(0.5)
+    s.debug("ui", "qa-keys", " ")                                  # Space: the preview plays it
+    assert wait_for(lambda: layer_mapped("snip-preview"), 3), "the preview opens"
+    time.sleep(1.0)
+    shot = s.tmp / "playing.png"
+    sh("grim", "-o", OUT, str(shot))
+    im = Image.open(shot).convert("RGB")
+    W, H = im.size
+    colours = {im.getpixel((W // 2 + dx, H // 2 + dy)) for dx in range(-40, 41, 20) for dy in range(-20, 21, 20)}
+    assert len(colours) > 3, ("the video draws in the preview (the test pattern is colourful)", colours)
+    s.click()                                                      # any click closes the preview
+    assert wait_for(lambda: not layer_mapped("snip-preview"), 3)
+    s.cli("close-all")
 
 
 @case

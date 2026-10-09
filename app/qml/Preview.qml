@@ -1,18 +1,19 @@
 import QtQuick
 import QtQuick.Effects
 import QtQuick.Window
+import QtMultimedia
 import org.kde.layershell as LayerShell
 import Snip.Core
 
-// Space on a card (QAO-03): a large preview of the capture. Any click,
-// Space or Esc closes it.
+// Space on a card (QAO-03): a large preview of the capture; a recording
+// plays (a GIF animates). Any click, Space or Esc closes it.
 Window {
     id: pv
     property var card: null
     property string output: ""
 
     function open(c) { card = c; output = c.output || output || Qt.application.screens[0].name }
-    function close() { card = null }
+    function close() { player.stop(); card = null }
 
     visible: card !== null && output !== ""
     color: "transparent"
@@ -47,13 +48,37 @@ Window {
             blur: Theme.shadowBlur
             color: Theme.shadow
         }
+        readonly property string media: pv.card ? (pv.card.media || "image") : "image"
         Image {
+            visible: frameBox.media === "image"
             anchors.fill: parent
-            source: pv.card ? "file://" + pv.card.path : ""
+            source: pv.card && frameBox.media === "image" ? "file://" + pv.card.path : ""
             fillMode: Image.PreserveAspectFit
             asynchronous: true
             mipmap: true
             sourceSize.width: Math.round(parent.width * Screen.devicePixelRatio)
+        }
+        AnimatedImage {
+            visible: frameBox.media === "gif"
+            anchors.fill: parent
+            source: pv.card && frameBox.media === "gif" ? "file://" + pv.card.path : ""
+            fillMode: Image.PreserveAspectFit
+            playing: visible
+        }
+        MediaPlayer {
+            id: player
+            objectName: "preview-player"
+            source: pv.card && frameBox.media === "video" ? "file://" + pv.card.path : ""
+            videoOutput: video
+            audioOutput: AudioOutput {}
+            loops: MediaPlayer.Infinite
+            onSourceChanged: if (source != "") play()
+        }
+        VideoOutput {
+            id: video
+            visible: frameBox.media === "video"
+            anchors.fill: parent
+            fillMode: VideoOutput.PreserveAspectFit
         }
     }
 
