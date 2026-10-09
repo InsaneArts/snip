@@ -486,7 +486,11 @@ impl Inner {
     }
 
     fn record_status(&self, mut extra: Value) {
-        let state = self.recording.lock().unwrap().as_ref().map(|r| r.state.name());
+        // gsr takes about 0.4 s to start: until its first frame, not recording yet
+        let state = self.recording.lock().unwrap().as_ref().map(|r| match (r.state, r.run.as_ref()) {
+            (State::Recording, Some(run)) if !run.rolling => "launching",
+            (s, _) => s.name(),
+        });
         let Some(state) = state else { return };
         extra["state"] = json!(state);
         let j = extra.to_string();
@@ -551,13 +555,6 @@ impl Inner {
 
     /// Stop a take's recorder; its file is finished (kept) or deleted.
     fn record_end_run(&self, mut run: Run, keep: bool) -> Option<PathBuf> {
-        self.wl(snip_wayland::Request::KeepAwake(false));
-        if run.covered {
-            self.desktop("show");
-        }
-        if run.hooks.is_some() {
-            let _ = snip_hypr::eval(snip_hypr::keys::RECORDING_OFF_LUA);
-        }
         match run.child.as_mut() {
             Some(child) => {
                 if keep {
@@ -576,6 +573,14 @@ impl Inner {
                 }
             }
             None => {}
+        }
+        // only once gsr has stopped: none of this may end up in the video
+        self.wl(snip_wayland::Request::KeepAwake(false));
+        if run.covered {
+            self.desktop("show");
+        }
+        if run.hooks.is_some() {
+            let _ = snip_hypr::eval(snip_hypr::keys::RECORDING_OFF_LUA);
         }
         let ts = PathBuf::from(format!("{}.ts", run.file.display()));
         let _ = std::fs::remove_file(ts);
@@ -607,9 +612,10 @@ impl Inner {
         };
         let Some(mut rec) = rec else { return };
         let recording = rec.run.is_some();
+        // gsr first: the HUD (the camera, the keys) stays until the file is finished
+        let file = rec.run.take().and_then(|run| self.record_end_run(run, keep));
         self.ui(|e| e.record_close());
         let _ = snip_hypr::eval(&snip_hypr::keys::session_lua("", false, ""));
-        let file = rec.run.take().and_then(|run| self.record_end_run(run, keep));
         if recording && self.cfg().recording.dnd {
             self.dnd(false);
         }
