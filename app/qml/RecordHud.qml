@@ -79,6 +79,7 @@ Window {
         mic = s.mic || ""
         system = !!s.system
         dim = s.dim !== false
+        if (!mediaDevices) mediaDevices = mediaDevicesComponent.createObject(hud)
         camera = s.camera || ""
         cameraShape = s.cameraShape || "circle"
         cameraSize = s.cameraSize || "medium"
@@ -135,10 +136,13 @@ Window {
         system = on
         Engine.setSetting("recording.system_audio", JSON.stringify(on))
     }
-    // the cameras there are (by name); a test card stands in for one in tests
-    MediaDevices { id: mediaDevices }
+    // the cameras there are (by name); a test card stands in for one in tests.
+    // Asked for when the HUD first opens: from then on QtMultimedia's device
+    // lists watch cameras and sound devices, which Snip needn't unless it records
+    property var mediaDevices: null
+    Component { id: mediaDevicesComponent; MediaDevices {} }
     readonly property var cameras: (fakeCamera ? [{ name: "Test camera", device: null }] : [])
-                                   .concat(mediaDevices.videoInputs.map(d => ({ name: d.description, device: d })))
+                                   .concat(mediaDevices ? mediaDevices.videoInputs.map(d => ({ name: d.description, device: d })) : [])
     readonly property var cameraEntry: cameras.find(c => c.name === camera) || null
     function setCamera(name) {
         camera = name
