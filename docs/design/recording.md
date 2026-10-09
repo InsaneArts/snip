@@ -59,7 +59,9 @@ history card ─ Edit Video… ─▶ VideoEditor window ─▶ media::export (f
 - `-w WxH+X+Y` in global logical pixels (or `-w DP-2` for a whole output), `-c mp4 -k auto -q very_high -f 60 -fm cfr -cursor yes`.
 - Sound: `-a "default_output|<mic>"` for one mixed track, or one `-a` per track; AAC.
 - `-ipc <socket>` for pause and stop; `stop` answers once the file is finished.
-- `-write-first-frame-ts yes`: the timer starts at the first frame. gsr takes 0.35–0.5 s to start, which the countdown hides.
+- `-write-first-frame-ts yes`: the timer starts at the first frame. gsr takes 0.35–0.5 s to start, after the countdown: until its first frame the HUD shows "launching", not "recording". (A paused pre-roll during the countdown would hide it, but gsr lets one frame through before it applies the pause: [review](../research/recording-2026-10/review.md) C1.)
+- `-fallback-cpu-encoding yes`: x264 when the graphics card's encoder can't start. `-s` (the largest size) only when the area is bigger: gsr scales up to fit too.
+- At stop, gsr stops first; only then do the HUD, the desktop cover and the hooks go, so none of them is in the last frames.
 - `-ffmpeg-opts flush_packets=1;frag_duration=1000000`: a killed recorder leaves fragments Snip recovers (checked live: 116 of about 150 frames back after a SIGKILL).
 - `-exclude-metadata yes`: no device names in the file.
 - It runs by its full path in its own process group, so Omarchy's indicator, ALT+PRINT and its menu never see or stop it (D44). Its messages go to a log file, never a pipe: with Snip gone, a write to the pipe would kill it mid-save.
@@ -114,6 +116,16 @@ history card ─ Edit Video… ─▶ VideoEditor window ─▶ media::export (f
 - **Privacy:** the hook sees every key, password fields and the lock screen included. By default only command keys are shown (modifiers, and keys pressed with Ctrl, Alt or Super). Nothing is shown while a private window (1Password, Bitwarden) or the polkit prompt has focus, or while the screen is locked.
 - **Drawing:** in the HUD layer, inside the area, so they are recorded. A click outside the area draws nothing (it isn't recorded); paused, nothing is sent.
 - **Tests:** the Lua module passes the research's mock of Hyprland 0.56.2's Lua (32 checks: install twice, the command-key filter, clicks, mute, the watchdog, a config reload, the user's own SUPER+drag bind left alone). In the nested e2e, real clicks go through the hook; keys come as the hook sends them, since no real keyboard types there.
+
+## What the review left open
+
+The [review](../research/recording-2026-10/review.md) (06:05, against the code then) found these still to do:
+- e2e can't see what ends up in a video: the test recorder makes its clip at Stop. A stub that grabs the nested output (grim) would show the camera, rings and keys are in it and the controls aren't.
+- A display gsr can't record (HEADLESS-1) is still offered: a preflight against `gpu-screen-recorder --list-monitors` would grey it out.
+- An area's size is rounded where gsr truncates, so an odd width can get a black column.
+- The saved microphone is a PipeWire node name, which changes with the card's profile.
+- Hyprland's event connection isn't reconnected if it drops (64 queued events): keys would stop until Snip restarts.
+- gsr 6.1.3 is in Arch: it flushes the last frames at stop and aligns audio differently; the timings here are 6.1.0's.
 
 ## Open questions for the product owner
 
