@@ -27,6 +27,10 @@ The panel (D49, 2026-10-10), at once over the whole screen, then in the middle o
 
 ![The recording panel](recording-panel.png)
 
+Its toggles, off and on, dark and light: on, the icon sits on a soft accent square (as Full screen's does); off, a source is crossed out (no microphone, no computer audio, no camera), and clicks and keys go grey.
+
+![The panel's toggles](recording-panel-toggles.png)
+
 Recording: the frame turns red; the controls sit outside the area.
 
 ![The recording controls](recording-controls.png)
