@@ -16,8 +16,8 @@ use super::{card_json, Inner};
 use cxx_qt_lib::QString;
 
 impl Inner {
-    /// Open a recording in the video editor: what it holds, and its frames
-    /// along the timeline (off the UI thread: about a second).
+    /// Open a recording in the video editor: what it holds at once, then its
+    /// frames along the timeline once they're made (about a second).
     pub fn video_open(self: &Arc<Self>, id: &str) {
         let (me, id) = (self.clone(), id.to_string());
         std::thread::spawn(move || {
@@ -29,18 +29,21 @@ impl Inner {
                 Ok(p) => p,
                 Err(e) => return me.toast(format!("Can't open the video: {e}")),
             };
-            let dir = paths::cache_dir().join("video").join(&id);
-            let _ = std::fs::remove_dir_all(&dir);
-            let thumbs = media::thumbnails(&rec.source, p.duration_ms, 12, 72, &dir).unwrap_or_default();
             let j = json!({
                 "id": id, "path": rec.source, "poster": Store::poster(&rec), "title": rec.title.clone().unwrap_or_else(|| "Recording".into()),
                 "duration": p.duration_ms, "fps": if p.fps > 0.0 { p.fps } else { 30.0 }, "width": p.width, "height": p.height,
-                "tracks": p.audio_tracks, "thumbs": thumbs, "bytes": rec.source.metadata().map_or(0, |m| m.len()),
+                "tracks": p.audio_tracks, "bytes": rec.source.metadata().map_or(0, |m| m.len()),
                 "output": me.cursor_output(),
             })
             .to_string();
-            trace::trace("video_open", &format!("\"id\":\"{id}\",\"tracks\":{},\"thumbs\":{}", p.audio_tracks, thumbs.len()));
+            trace::trace("video_open", &format!("\"id\":\"{id}\",\"tracks\":{}", p.audio_tracks));
             me.ui(move |e| e.video_editor_open(&QString::from(j.as_str())));
+            let dir = paths::cache_dir().join("video").join(&id);
+            let _ = std::fs::remove_dir_all(&dir);
+            let thumbs = media::thumbnails(&rec.source, p.duration_ms, 12, 72, &dir).unwrap_or_default();
+            trace::trace("video_thumbs", &format!("\"id\":\"{id}\",\"thumbs\":{}", thumbs.len()));
+            let t = json!(thumbs).to_string();
+            me.ui(move |e| e.video_thumbs(&QString::from(id.as_str()), &QString::from(t.as_str())));
         });
     }
 
