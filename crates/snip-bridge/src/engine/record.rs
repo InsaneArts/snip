@@ -285,7 +285,9 @@ impl Inner {
             ipc: ipc.clone(),
         };
         let size = ((rec.local.w as f64 * rec.scale).round() as u32, (rec.local.h as f64 * rec.scale).round() as u32);
-        let spec = Spec { cpu: !record::gpu_can_encode(size.0, size.1), ..spec };
+        // the largest size only to shrink it: gsr scales up to fit too
+        let max_size = spec.max_size.filter(|&(w, h)| size.0 > w || size.1 > h);
+        let spec = Spec { cpu: !record::gpu_can_encode(size.0, size.1), max_size, ..spec };
         let child = if fake() {
             None
         } else {
