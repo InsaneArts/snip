@@ -194,6 +194,9 @@ impl Inner {
             // a GIF if asked, else what was chosen last (REC-02)
             "output": output, "x": local.x, "y": local.y, "w": local.w, "h": local.h, "whole": whole, "gif": gif || cfg.kind == "gif",
             "mics": if now { vec![] } else { self.audio_inputs() }, "mic": cfg.mic, "system": cfg.system_audio, "dim": cfg.dim, "now": now,
+            "camera": cfg.camera, "cameraShape": cfg.camera_shape, "cameraSize": cfg.camera_size, "cameraMirror": cfg.camera_mirror,
+            // tests: a test card stands in for a camera (the suite's machine has none)
+            "fakeCamera": std::env::var("SNIP_CAMERA").is_ok_and(|v| v == "fake"),
         })
         .to_string();
         self.ui(move |e| e.record_open(&QString::from(j.as_str())));

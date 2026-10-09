@@ -15,7 +15,7 @@ Sources: the six research reports in [research/recording-2026-10/](../research/r
 | **While recording** | A pill: stop with the time and a level meter, pause/resume, restart and delete (each asks first), a drag grip | Stop with the time, pause/resume, restart, discard; **outside the area**, since KMS capture records whatever is on screen (macOS left CleanShot's pill out of the capture). Hidden for a whole-output recording, where the menu and `snip record stop` stop it |
 | **After** | Quick Access card (length, size, sound); double-click opens the editor; a GIF is made after Stop | The same card (first frame, length); double-click or Edit Video… opens the editor; a GIF is made after Stop |
 | **Editor** | Trim (in and out only), dimensions, quality (7 steps), audio: as is / mono / mute / volume 0–200 %, Trim Only or Trim & Convert, **Replace** or **Save as New**, an estimated size | Trim, **cuts in the middle** (Split at the playhead, Cut a part), each track's volume (0 mutes it; several are mixed into one), mono, MP4 or **GIF**, quality (4 steps) and size, Replace or Save as New, an estimated size |
-| **Camera** | Devices; Small/Medium/Large/Huge (scaled to the area); Circle/Square/Rectangle/Vertical; mirrored by default; drag anywhere, any time; a click fills the area | Planned (below) |
+| **Camera** | Devices; Small/Medium/Large/Huge (scaled to the area); Circle/Square/Rectangle/Vertical; mirrored by default; drag anywhere, any time; a click fills the area | The same, from the toolbar's Camera menu (below) |
 | **Clicks, keys** | Highlight clicks (size, colour, outline or filled, animated); keystrokes (size, 6 positions, dark or light, command keys only by default) | Planned (below) |
 | **Safety** | Crash recovery; a low-disk warning (no auto-stop); mic muted or unplugged: Continue Without Audio or Stop | Recovery at start; **stops and keeps** below 1 GB free or when its display goes away. Mic warnings planned |
 
@@ -30,6 +30,10 @@ The toolbar, once the area is chosen (outside it, as is all of the HUD):
 Recording: the frame turns red; the controls sit outside the area.
 
 ![The recording controls](recording-controls.png)
+
+The camera (a test card stands in for one): its menu; Large and Vertical; a click fills the area; while recording.
+
+![The camera bubble](recording-camera.png)
 
 The video editor: two splits, the middle part cut (dimmed, "1.5 s"), a trim (the orange handles).
 
@@ -80,19 +84,20 @@ history card ─ Edit Video… ─▶ VideoEditor window ─▶ media::export (f
 | Settings › Recording; Record Screen in Snip's menu | REC-06 (part), REC-12/13 | ✅ built |
 | Video editor: split, cut, trim, track volumes, mono, MP4 or GIF, Replace or Save as New | VED-01…03 | ✅ built |
 | Safety: recovery, low disk, display unplugged | REC-14 (part) | ✅ built |
-| Camera bubble | REC-08 | planned (below) |
+| Camera bubble | REC-08 | ✅ built; a real camera is untested (none here) |
 | Click highlights and keystrokes | REC-09/10 | planned (below) |
 | Controls: Restart and Delete ask first, a level meter, Alt+Return records a GIF, Snip's menu icon shows the time | REC-05, REC-06 | planned |
 | Mic muted or unplugged warnings; keep the screen awake; pause while locked | REC-14 | planned |
 | Editor: a scrubbing proxy, keyframe thumbnails at once, a smooth playhead | VED-01 | planned |
 | Privacy-safe mode; true window capture | REC-15, P2 | later |
 
-## Camera bubble (REC-08), planned
+## Camera bubble (REC-08)
 
 - **Where:** inside the HUD layer, which already covers the output: no new window and no window rules. It sits inside the recorded area, so it is recorded as seen, and its own input region lets it be dragged before and during the recording.
 - **Look:** Circle (default), Square, Rectangle, Vertical. Small, Medium, Large, Huge, scaled to the recorded area (Omarchy's sizes are 18, 25 and 33.75 % of its height). 40 px from the bottom-right corner to start; dragged anywhere after. Mirrored by default. A click fills the area with the camera; another click brings it back.
 - **Camera:** Qt opens V4L2 devices directly (no PipeWire path in Qt 6.11). The bubble picks an uncompressed format of at most about 640×480: Qt decodes MJPEG on the CPU, up to 23 % of a core at 1080p. It hides itself if the camera fails, is in use, or stops sending frames, since whatever it shows is recorded.
-- **Tests:** there is no camera on the reference machine. A test feed stands in for it in e2e (shape, size, drag, fill); the device path needs a real camera.
+- **Settings:** the camera (by its name), shape, size and mirror are kept in `[recording]`; where it was dragged is kept for that recording only.
+- **Tests:** there is no camera on the reference machine. `SNIP_CAMERA=fake` puts a test card in the list (e2e: the menu, sizes, shapes, the circle's mask on screen, the drag, the fill, recording). The device path (V4L2 formats, unplugging, "in use") needs a real camera.
 
 ## Clicks and keystrokes (REC-09/10), planned
 

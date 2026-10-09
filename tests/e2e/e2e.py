@@ -116,6 +116,7 @@ class Snip:
             SNIP_NO_TRAY="1",
             # KMS capture can't see the nested Hyprland: ffmpeg's test pattern stands in for gsr
             SNIP_RECORDER="fake",         # no second Snip icon in the user's bar (D-Bus is shared)
+            SNIP_CAMERA="fake",           # there's no camera here: a test card stands in for one
             QT_FORCE_STDERR_LOGGING="1",
         )
         (self.tmp / "cfg/snip").mkdir(parents=True)
@@ -1743,6 +1744,81 @@ def record_with_the_hud(s, env):
     r, code = finish(p, timeout=5)
     assert code != 0 or not r.get("ok"), r
     assert wait_for(lambda: not record_hud(s)["open"], 2)
+
+
+@case
+def record_camera(s, env):
+    """REC-08: the camera, as CleanShot shows it: chosen in the toolbar, a bubble inside the
+    area (so it is recorded) at the bottom right; Small to Huge and four shapes from its menu;
+    dragged anywhere in the area; a click fills the area with it and another brings it back;
+    it stays while recording. (A test card stands in for a camera: there is none here.)"""
+    from PIL import Image
+    s.cli("close-all"); time.sleep(0.3)
+    sc = env.monitor()["scale"]
+
+    def shot():
+        f = s.tmp / "camera.png"
+        sh("grim", "-o", OUT, str(f))
+        im = Image.open(f).convert("RGB")
+        return lambda x, y: im.getpixel((round(x * sc), round(y * sc)))
+
+    def card(px):                                    # the test card: blue to green, no red
+        r, g, b = px
+        return r < 90 and g > 90 and b > 120
+
+    p = s.bg("record")
+    time.sleep(0.6)
+    s.drag(300, 200, 1100, 650)
+    assert wait_for(lambda: record_hud(s)["phase"] == "ready", 3), record_hud(s)
+    h = record_hud(s)
+    assert "Test camera" in h["cameras"] and h["camera"] is None, h
+    record_click(s, "record-camera-button")
+    assert wait_for(lambda: record_hud(s)["camerasOpen"], 2), "its menu opens"
+    record_click(s, "record-camera:1")               # 0 is "No camera"
+    assert wait_for(lambda: record_hud(s)["camera"] is not None and record_hud(s)["cameraReady"], 3), record_hud(s)
+    h = record_hud(s)
+    ax, ay, aw, ah = h["area"]
+    x, y, w, hh = h["camera"]
+    assert abs(w - ah * 0.25) <= 1 and w == hh, ("Medium: a quarter of the area's height", h["camera"])
+    assert (x + w, y + hh) == (ax + aw - 40, ay + ah - 40), ("40 px in from the bottom right", h["camera"], h["area"])
+    assert 'camera = "Test camera"' in (s.tmp / "cfg/snip/config.toml").read_text(), "chosen for next time"
+    time.sleep(0.3)
+    px = shot()
+    assert card(px(x + w / 2, y + hh * 0.15)) and not card(px(x + 3, y + 3)), "a circle: the card inside, not in its corner"
+    # Large, and Vertical (9:16)
+    record_click(s, "record-camera-button")
+    assert wait_for(lambda: record_hud(s)["camerasOpen"], 2)
+    record_click(s, "record-camera-size=large")
+    assert wait_for(lambda: record_hud(s)["cameraSize"] == "large", 2)
+    record_click(s, "record-camera-shape=vertical")
+    assert wait_for(lambda: record_hud(s)["cameraShape"] == "vertical", 2)
+    record_click(s, "record-camera-button")          # the menu closes
+    assert wait_for(lambda: not record_hud(s)["camerasOpen"], 2)
+    h = record_hud(s)
+    x, y, w, hh = h["camera"]
+    assert (h["cameraSize"], h["cameraShape"]) == ("large", "vertical") and abs(hh - ah * 0.3375 * 1.4) <= 1, h
+    assert abs(w / hh - 9 / 16) < 0.02, h["camera"]
+    # dragged to the top left, kept inside the area
+    s.drag(x + w / 2, y + hh / 2, ax - 200, ay - 200, steps=8)
+    assert wait_for(lambda: record_hud(s)["camera"][:2] == [ax, ay], 2), ("stopped at the area's corner", record_hud(s)["camera"], h["area"])
+    # a click fills the area with it; another brings it back where it was
+    record_click(s, "record-camera")
+    assert wait_for(lambda: record_hud(s)["camera"] == [ax, ay, aw, ah], 2), record_hud(s)["camera"]
+    time.sleep(0.3)
+    px = shot()
+    assert card(px(ax + 6, ay + 6)) and card(px(ax + aw - 6, ay + ah - 6)), "the card fills the area, corners too"
+    record_click(s, "record-camera")
+    assert wait_for(lambda: record_hud(s)["camera"][:2] == [ax, ay] and not record_hud(s)["cameraFull"], 2), record_hud(s)
+    # it stays while recording, inside the area (the controls stay outside)
+    record_click(s, "record-go")
+    assert wait_for(lambda: record_hud(s)["phase"] == "recording", 5), record_hud(s)
+    assert record_hud(s)["camera"] is not None, "the camera is recorded"
+    s.json("record", "stop")
+    r, code = finish(p, timeout=20)
+    assert code == 0 and r["result"]["media"] == "video", r
+    assert wait_for(lambda: not record_hud(s)["open"], 3)
+    s.cli("close-all")
+    s.write_config("")                               # no camera for the cases after
 
 
 @case
