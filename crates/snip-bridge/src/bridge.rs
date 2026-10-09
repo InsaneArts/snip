@@ -258,10 +258,12 @@ pub mod qobject {
         fn scroll_auto(self: Pin<&mut Engine>);
         #[qinvokable]
         fn scroll_cancel(self: Pin<&mut Engine>);
-        /// Recording (REC): the toolbar's Record (gif: 1 GIF, 0 video, -1 as
-        /// chosen before), the countdown's end, and the controls
+        /// Recording (REC): the panel's Record Video or GIF (gif: 1 GIF, 0
+        /// video, -1 as opened) for the area chosen on it (logical px from
+        /// the output's corner; w = 0: as opened), the countdown's end, and
+        /// the controls
         #[qinvokable]
-        fn record_start(self: Pin<&mut Engine>, gif: i32);
+        fn record_start(self: Pin<&mut Engine>, gif: i32, x: i32, y: i32, w: i32, h: i32);
         #[qinvokable]
         fn record_go(self: Pin<&mut Engine>);
         #[qinvokable]
@@ -419,9 +421,9 @@ pub mod qobject {
         fn scroll_status(self: Pin<&mut Engine>, json: &QString);
         #[qsignal]
         fn scroll_close(self: Pin<&mut Engine>);
-        /// Recording (REC): the area is chosen ({output, x, y, w, h, whole,
-        /// gif, mics, mic, system, dim}), how it's going ({state, seconds |
-        /// elapsed}), it ended
+        /// Recording (REC): the panel opens ({output, x, y, w, h, ow, oh, gif,
+        /// windows, mics, mic, system, dim, ...}), how it's going
+        /// ({state, seconds | elapsed}), it ended
         #[qsignal]
         fn record_open(self: Pin<&mut Engine>, json: &QString);
         #[qsignal]
@@ -1006,9 +1008,9 @@ impl qobject::Engine {
         }
     }
 
-    fn record_start(self: Pin<&mut Self>, gif: i32) {
+    fn record_start(self: Pin<&mut Self>, gif: i32, x: i32, y: i32, w: i32, h: i32) {
         if let Some(i) = self.inner() {
-            i.record_start((gif >= 0).then_some(gif == 1));
+            i.record_start((gif >= 0).then_some(gif == 1), (w > 0 && h > 0).then(|| Rect::new(x, y, w, h)));
         }
     }
 

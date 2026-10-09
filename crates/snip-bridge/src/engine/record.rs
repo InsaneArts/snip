@@ -28,7 +28,7 @@ use snip_ipc::Response;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum State {
-    /// the area is chosen; the toolbar waits for Record
+    /// the panel is open: the area is chosen on it, Record waits
     Ready,
     /// the countdown before it starts (REC-03)
     Countdown,
@@ -190,7 +190,7 @@ fn reap(child: &mut Child, limit: Duration) {
 
 impl Inner {
     /// The microphones gsr can record (REC-02's picker): its own names, and
-    /// whether each is muted (REC-14: the toolbar says so before recording).
+    /// whether each is muted (REC-14: the panel says so before recording).
     pub fn audio_inputs(&self) -> Vec<Value> {
         let mut out = vec![json!({ "id": "default_input", "label": "Default microphone" })];
         if fake() {
@@ -211,8 +211,8 @@ impl Inner {
         out
     }
 
-    /// The area is chosen (physical px of `output`): show the frame and the
-    /// toolbar, ready to record. `now` (scripts) skips the toolbar.
+    /// Show the panel (D49) over `area` (physical px of `output`), ready to
+    /// record. `now` (scripts) skips the panel.
     pub(super) fn record_open(self: &Arc<Self>, output: String, area: Rect, scale: f64, waiter: Option<Waiter>, gif: bool, now: bool) {
         if self.recording.lock().unwrap().is_some() {
             return reply(waiter, Response::err("a recording is already open"));
@@ -226,30 +226,38 @@ impl Inner {
         let (app, title) = self.window_meta_at(&output, area, s);
         trace::trace("record_open", &format!("\"output\":{},\"area\":[{},{},{},{}],\"gif\":{gif}", js(&output), local.x, local.y, local.w, local.h));
         *self.recording.lock().unwrap() = Some(Rec { output: output.clone(), logical, local, scale: s, gif, waiter, app, title, state: State::Ready, run: None });
-        if !now {
-            let _ = snip_hypr::eval(&snip_hypr::keys::session_lua(&crate::bridge::app_id(), true, "record"));
-        }
         let cfg = self.cfg().recording;
-        let whole = local == Rect::new(0, 0, o.w, o.h);
+        // the windows on this output, front-most first, for Space (local px)
+        let windows: Vec<Value> = if now {
+            vec![]
+        } else {
+            snip_hypr::visible_windows()
+                .into_iter()
+                .map(|c| (Rect::new(c.x - o.x, c.y - o.y, c.w, c.h), c.title))
+                .filter(|(r, _)| r.x < o.w && r.y < o.h && r.x + r.w > 0 && r.y + r.h > 0)
+                .map(|(r, title)| json!({ "x": r.x, "y": r.y, "w": r.w, "h": r.h, "title": title }))
+                .collect()
+        };
         let j = json!({
-            // a GIF if asked, else what was chosen last (REC-02)
-            "output": output, "x": local.x, "y": local.y, "w": local.w, "h": local.h, "scale": s, "whole": whole, "gif": gif || cfg.kind == "gif",
+            // `gif`: what Enter records
+            "output": output, "x": local.x, "y": local.y, "w": local.w, "h": local.h, "ow": o.w, "oh": o.h, "scale": s, "gif": gif,
             "mics": if now { vec![] } else { self.audio_inputs() }, "mic": cfg.mic, "system": cfg.system_audio, "dim": cfg.dim, "now": now,
             "camera": cfg.camera, "cameraShape": cfg.camera_shape, "cameraSize": cfg.camera_size, "cameraMirror": cfg.camera_mirror,
-            "clicks": cfg.highlight_clicks, "keys": cfg.show_keystrokes,
+            "clicks": cfg.highlight_clicks, "keys": cfg.show_keystrokes, "windows": windows,
             // tests: a test card stands in for a camera (the suite's machine has none)
             "fakeCamera": std::env::var("SNIP_CAMERA").is_ok_and(|v| v == "fake"),
         })
         .to_string();
         self.ui(move |e| e.record_open(&QString::from(j.as_str())));
-        // scripts: no toolbar and no countdown, the frame and controls only
+        // scripts: no panel and no countdown, the frame and controls only
         if now {
             self.record_go();
         }
     }
 
-    /// Record (the toolbar's button, or Enter): the countdown first, if set.
-    pub fn record_start(self: &Arc<Self>, gif: Option<bool>) {
+    /// Record, for `area` (logical px from the output's corner: chosen on
+    /// the HUD), as a GIF or not: the countdown first, if set.
+    pub fn record_start(self: &Arc<Self>, gif: Option<bool>, area: Option<Rect>) {
         let seconds = self.cfg().recording.countdown.min(10);
         {
             let mut r = self.recording.lock().unwrap();
@@ -257,9 +265,18 @@ impl Inner {
             if let Some(g) = gif {
                 rec.gif = g;
             }
+            let o = self.outputs.lock().unwrap().iter().find(|o| o.name == rec.output).map(|o| o.logical);
+            if let (Some(a), Some(o)) = (area, o) {
+                let (x, y) = (a.x.clamp(0, o.w - 2), a.y.clamp(0, o.h - 2));
+                rec.local = Rect::new(x, y, a.w.clamp(2, o.w - x), a.h.clamp(2, o.h - y));
+                rec.logical = Rect::new(o.x + rec.local.x, o.y + rec.local.y, rec.local.w, rec.local.h);
+                let s = rec.scale;
+                let phys = |v: i32| (v as f64 * s).round() as i32;
+                (rec.app, rec.title) = self.window_meta_at(&rec.output, Rect::new(phys(x), phys(y), phys(rec.local.w), phys(rec.local.h)), s);
+                trace::trace("record_area", &format!("\"area\":[{},{},{},{}]", rec.local.x, rec.local.y, rec.local.w, rec.local.h));
+            }
             rec.state = if seconds > 0 { State::Countdown } else { State::Ready };
         }
-        let _ = snip_hypr::eval(&snip_hypr::keys::session_lua("", false, ""));
         if seconds > 0 {
             self.record_status(json!({ "seconds": seconds }));
         } else {
@@ -435,7 +452,7 @@ impl Inner {
         std::thread::spawn(move || me.record_finish(true));
     }
 
-    /// Throw this take away (REC-05's trash), or close the toolbar.
+    /// Throw this take away (REC-05's trash), or close the panel.
     pub fn record_discard(self: &Arc<Self>) {
         let me = self.clone();
         std::thread::spawn(move || me.record_finish(false));
@@ -462,7 +479,7 @@ impl Inner {
     }
 
     /// `snip record area|fullscreen` (API-01): record this at once, no
-    /// overlay or toolbar. `rect` is logical px on the monitor.
+    /// panel. `rect` is logical px on the monitor.
     pub fn record_area(self: &Arc<Self>, monitor: Option<String>, rect: Option<[i32; 4]>, gif: bool, waiter: Waiter) -> Result<(), String> {
         let output = monitor.filter(|m| self.output_names().contains(m)).or_else(|| self.cursor_output()).ok_or("no output")?;
         let o = self.outputs.lock().unwrap().iter().find(|o| o.name == output).map(|o| o.logical).ok_or("no such output")?;
@@ -477,7 +494,7 @@ impl Inner {
     }
 
     /// The Record hotkey (or `snip record`): stop the recording that runs,
-    /// else choose an area to record.
+    /// close the panel, or open it.
     pub fn record_toggle(self: &Arc<Self>, gif: bool, waiter: Option<Waiter>) {
         let state = self.recording.lock().unwrap().as_ref().map(|r| r.state);
         match state {
@@ -485,9 +502,26 @@ impl Inner {
                 reply(waiter, Response::ok(json!({ "stopping": true })));
                 self.record_stop();
             }
+            // SEL-09: pressed again while the panel is up, it closes it
+            Some(State::Ready) => {
+                reply(waiter, cancelled());
+                self.record_cancel();
+            }
             Some(_) => reply(waiter, Response::err("a recording is already open")),
-            None => self.begin(if gif { "record-gif" } else { "record" }, None, None, waiter, 0, None),
+            None => self.record_setup(gif, waiter),
         }
+    }
+
+    /// Record Screen (D49, CleanShot's): its panel at once, over the whole
+    /// output under the pointer; the area (or a window) is chosen on it.
+    fn record_setup(self: &Arc<Self>, gif: bool, waiter: Option<Waiter>) {
+        // tests: the test output only, as for the overlays
+        let output = std::env::var("SNIP_OUTPUTS").ok().filter(|s| !s.is_empty()).or_else(|| self.cursor_output());
+        let o = output.as_ref().and_then(|n| self.outputs.lock().unwrap().iter().find(|o| &o.name == n).map(|o| o.logical));
+        let (Some(output), Some(o)) = (output, o) else { return reply(waiter, Response::err("no output")) };
+        let scale = self.output_scale(&output);
+        let phys = |v: i32| (v as f64 * scale).round() as i32;
+        self.record_open(output, Rect::new(0, 0, phys(o.w), phys(o.h)), scale, waiter, gif, false);
     }
 
     /// Where things stand, for `snip status` and tests.
@@ -634,7 +668,6 @@ impl Inner {
         // gsr first: the HUD (the camera, the keys) stays until the file is finished
         let file = rec.run.take().and_then(|run| self.record_end_run(run, keep));
         self.ui(|e| e.record_close());
-        let _ = snip_hypr::eval(&snip_hypr::keys::session_lua("", false, ""));
         if recording && self.cfg().recording.dnd {
             self.dnd(false);
         }
@@ -745,7 +778,7 @@ impl Inner {
         }
     }
 
-    /// Close without recording (Esc, or Cancel in the toolbar).
+    /// Close without recording (Esc on the panel).
     pub fn record_cancel(self: &Arc<Self>) {
         let ready = self.recording.lock().unwrap().as_ref().is_some_and(|r| matches!(r.state, State::Ready | State::Countdown));
         if ready {
@@ -755,7 +788,6 @@ impl Inner {
 
     fn record_close(self: &Arc<Self>, _keep: bool) {
         let rec = self.recording.lock().unwrap().take();
-        let _ = snip_hypr::eval(&snip_hypr::keys::session_lua("", false, ""));
         self.ui(|e| e.record_close());
         if let Some(rec) = rec {
             reply(rec.waiter, cancelled());

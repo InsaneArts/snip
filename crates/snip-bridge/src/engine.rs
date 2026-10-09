@@ -341,9 +341,6 @@ impl Inner {
                 let paused = self.record_state()["state"] == "paused";
                 self.record_pause(!paused);
             }
-            "record-go" => self.record_start(None),
-            "record-gif-go" => self.record_start(Some(true)),
-            "record-cancel" => self.record_cancel(),
             "timer-area" | "timer-fullscreen" => {
                 let delay = self.cfg().capture.timer_seconds;
                 self.begin(&id["timer-".len()..], None, None, None, delay, None)
@@ -398,7 +395,7 @@ impl Inner {
             return;
         }
         match mode {
-            "area" | "window" | "text" | "all-in-one" | "insert" | "pick" | "area-pin" | "scroll" | "record" | "record-gif" => {
+            "area" | "window" | "text" | "all-in-one" | "insert" | "pick" | "area-pin" | "scroll" => {
                 // SEL-09: the capture hotkey while the overlay is up cancels it.
                 if let Some(s) = self.session.lock().unwrap().take() {
                     reply(s.waiter, cancelled());
@@ -421,8 +418,7 @@ impl Inner {
                 let monitor = monitor.or_else(|| std::env::var("SNIP_OUTPUTS").ok().filter(|s| !s.is_empty()));
                 let outputs = monitor.filter(|m| self.output_names().contains(m)).map(|m| vec![m]);
                 // the eyedropper reads the frozen pixels, so it always freezes
-                // recording is chosen over the live screen, as CleanShot does
-                if (self.cfg().capture.freeze && !mode.starts_with("record")) || mode == "pick" {
+                if self.cfg().capture.freeze || mode == "pick" {
                     self.pending.lock().unwrap().insert(req, Pending::Overlay { mode, waiter, snap, cursor, delay });
                     self.capture_clean(req, Source::Outputs(outputs), cursor);
                 } else {
@@ -779,11 +775,6 @@ impl Inner {
             frames::clear();
             return self.scroll_open(output, rect, scale, s.waiter, &s.clients);
         }
-        if s.mode.starts_with("record") {
-            frames::clear();
-            let scale = self.output_scale(&output);
-            return self.record_open(output, rect, scale, s.waiter, s.mode == "record-gif", false);
-        }
         // Capture Area & Pin (PIN-01): an area, pinned where it was
         let kind = if s.mode == "text" || s.mode == "insert" || (s.mode == "area-pin" && kind == "area") { s.mode.clone() } else { kind };
         if kind == "area" || kind == "area-pin" {
@@ -853,12 +844,6 @@ impl Inner {
             let scale = frames::get(&output).map(|f| f.scale).unwrap_or(1.0);
             frames::clear();
             return self.scroll_open(output, rect, scale, s.waiter, &s.clients);
-        }
-        if s.mode.starts_with("record") {
-            // REC-01: a window is recorded as its area on screen
-            frames::clear();
-            let scale = self.output_scale(&output);
-            return self.record_open(output, rect, scale, s.waiter, s.mode == "record-gif", false);
         }
         if s.mode == "insert" {
             // for an editor: the window as it is on screen

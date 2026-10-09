@@ -79,6 +79,7 @@ qt_add_qml_module(snipd
     app/qml/DesktopCover.qml
     app/qml/RecordHud.qml
     app/qml/CameraBubble.qml
+    app/qml/PanelCell.qml
     app/qml/VideoEditor.qml
     app/qml/editor.js
   RESOURCES
