@@ -310,7 +310,7 @@ A normal floating window (Hyprland rule: float, centred, with optional pin / alw
 | ID | Feature | Pri | Notes |
 |---|---|---|---|
 | SET-01 | Config file `~/.config/snip/config.toml` as the source of truth, reloaded live | P0 | Omarchy convention: config lives in files and the user can edit it. |
-| SET-02 | Settings window with tabs: General, Shortcuts, Quick Access, Screenshots, Recording, Annotate, Advanced, About | P0 | It writes the same TOML file. |
+| SET-02 | Settings window with tabs: General, Shortcuts, Quick Access, Screenshots, Recording, Annotate, Advanced, About | P0 | It writes the same TOML file. General › Appearance: the Omarchy theme's colours (default), or Snip's own Dark or Light (D48). |
 | SET-03 | After Capture rules (Screenshot column, Recording column): show QAO, copy, save, annotate, pin, open video editor. **Defaults follow §5.0: only "Show QAO" is on.** At least one rule must stay on. A setting "Save also copies to clipboard" (default **on**) controls the decided Save behaviour. | P0 |
 | SET-04 | File name template with tokens (`%y %m %n %d %w %H %M %S %p %t %a %r %i`), illegal-character stripping, UTC option, `@2x` suffix option | P0 | `%t` is the window title and `%a` the app class, both from Hyprland. `general.utc_time`; `general.scale_suffix` adds the capture's own scale ("@2x", "@1.25x"; nothing at 1×), which history keeps per capture. |
 | SET-05 | Export folder (default `$XDG_PICTURES_DIR/Screenshots`, `$XDG_VIDEOS_DIR/Screencasts`) | P0 | |

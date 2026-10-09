@@ -193,7 +193,30 @@ pub fn ui_font() -> String {
 
 fn tokens(name: &str, dir: &Path) -> serde_json::Value {
     let colors = dir.join("colors.toml");
-    let p = resolve(&colors);
+    tokens_from(name, &resolve(&colors), gradient(&colors), first_background(dir))
+}
+
+/// Snip's own looks (D48), when it doesn't follow Omarchy: CleanShot's on
+/// macOS, neutral greys and the system blue.
+pub fn builtin(dark: bool, rounding: u32) -> serde_json::Value {
+    let colors: &[(&str, &str)] = if dark {
+        &[("background", "#1e1e1e"), ("foreground", "#f5f5f7"), ("accent", "#0a84ff"), ("color1", "#ff453a"), ("color2", "#32d74b"), ("color3", "#ffd60a"), ("mode", "dark")]
+    } else {
+        &[("background", "#f5f5f7"), ("foreground", "#1d1d1f"), ("accent", "#007aff"), ("color1", "#ff3b30"), ("color2", "#28a745"), ("color3", "#e6a700"), ("mode", "light")]
+    };
+    let p: HashMap<String, String> = colors.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+    // the wallpaper is the desktop's, whatever Snip's colours
+    let wallpaper = std::fs::canonicalize(current_dir().join("background")).ok().map(|p| p.to_string_lossy().into_owned());
+    let mut v = tokens_from(if dark { "snip-dark" } else { "snip-light" }, &p, vec![], wallpaper);
+    // white on the system blue, as macOS has it (the contrast rule picks black)
+    v["onAccent"] = serde_json::json!("#ffffff");
+    v["radius"] = serde_json::json!(rounding);
+    v["fontUi"] = serde_json::json!(ui_font());
+    v["fontMono"] = serde_json::json!("monospace");
+    v
+}
+
+fn tokens_from(name: &str, p: &HashMap<String, String>, grad: Vec<String>, wallpaper: Option<String>) -> serde_json::Value {
     let get = |k: &str| p.get(k).and_then(|v| parse_hex(v));
     let bg = get("background").unwrap_or(Rgb(0.08, 0.08, 0.1));
     let fg0 = get("foreground").unwrap_or(Rgb(0.9, 0.9, 0.9));
@@ -207,7 +230,6 @@ fn tokens(name: &str, dir: &Path) -> serde_json::Value {
     let (success, success_fb) = by_hue(&palette, 130.0, bg, Rgb(0.2, 0.7, 0.35));
     let (warning, warning_fb) = by_hue(&palette, 42.0, bg, Rgb(0.93, 0.66, 0.15));
     let surface = if light { mix(bg, Rgb(1.0, 1.0, 1.0), 0.35) } else { mix(bg, fg0, 0.06) };
-    let grad = gradient(&colors);
 serde_json::json!({
         "name": name,
         "mode": if light { "light" } else { "dark" },
@@ -222,7 +244,7 @@ serde_json::json!({
         "warning": hex(warning),
         "signature": if grad.is_empty() { vec![hex(accent)] } else { grad },
         "scrim": if light { "#59000000" } else { "#73000000" },
-        "wallpaper": first_background(dir),
+        "wallpaper": wallpaper,
         "report": {
             "text_contrast": (contrast(text, bg) * 100.0).round() / 100.0,
             "text_adjusted": text_adj,
@@ -256,4 +278,20 @@ pub fn themes_json() -> String {
         out.push(tokens(&name, &dirs[&name]));
     }
     serde_json::to_string(&out).unwrap_or_else(|_| "[]".into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn snips_own_looks_are_dark_and_light() {
+        let (d, l) = (builtin(true, 8), builtin(false, 8));
+        assert_eq!((d["name"].as_str(), d["mode"].as_str(), l["mode"].as_str()), (Some("snip-dark"), Some("dark"), Some("light")));
+        assert_eq!((d["accent"].as_str(), l["accent"].as_str(), d["radius"].as_u64()), (Some("#0a84ff"), Some("#007aff"), Some(8)));
+        assert_eq!((d["onAccent"].as_str(), l["onAccent"].as_str()), (Some("#ffffff"), Some("#ffffff")));
+        for t in [&d, &l] {
+            assert!(t["report"]["text_contrast"].as_f64().unwrap() >= 4.5 && t["report"]["accent_adjusted"] == false, "{t}");
+        }
+    }
 }
