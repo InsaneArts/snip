@@ -2200,7 +2200,7 @@ def tray_menu(s, env):
         assert wait_for(lambda: tray_state(s)["open"], 2), "the menu opens"
         st = tray_state(s)
         items = dict(st["items"])
-        assert list(items) == ["all-in-one", "area", "previous", "fullscreen", "window", "timer-area", "scroll", "text",
+        assert list(items) == ["all-in-one", "area", "previous", "fullscreen", "window", "timer-area", "scroll", "text", "record",
                                "open", "edit-clipboard", "pin", "history", "restore", "desktop-toggle", "settings", "about", "quit"], st["items"]
         assert items["area"] == "Super+Shift+4" and items["fullscreen"] == "", items
         x, y, w, h = st["menu"]

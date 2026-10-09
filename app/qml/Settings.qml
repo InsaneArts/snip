@@ -28,6 +28,7 @@ Window {
         { id: "shortcuts", label: "Shortcuts", icon: "keyboard" },
         { id: "quick-access", label: "Quick Access", icon: "layers" },
         { id: "screenshots", label: "Screenshots", icon: "camera" },
+        { id: "recording", label: "Recording", icon: "video" },
         { id: "annotate", label: "Annotate", icon: "pencil" },
         { id: "advanced", label: "Advanced", icon: "sliders" },
         { id: "about", label: "About", icon: "info" },
@@ -444,6 +445,41 @@ Window {
                 Section {
                     label: "Self-timer"
                     NumberBox { key: "capture.timer_seconds"; from: 1; to: 60; suffix: "seconds" }
+                }
+            }
+
+            // Recording (REC)
+            Column {
+                visible: win.tab === "recording"
+                spacing: 22
+                Section {
+                    label: "Video"
+                    Choice { key: "recording.fps"; options: [[24, "24 fps"], [30, "30 fps"], [60, "60 fps"]] }
+                    Choice { key: "recording.quality"; options: [["medium", "Medium"], ["high", "High"], ["very_high", "Very high"], ["ultra", "Ultra"]] }
+                    Choice { key: "recording.max_size"; options: [["", "Original size"], ["2160p", "2160p"], ["1440p", "1440p"], ["1080p", "1080p"], ["720p", "720p"]] }
+                    Note { text: "MP4 (H.264), encoded on the graphics card." }
+                }
+                Section {
+                    label: "While recording"
+                    Check { key: "recording.show_cursor"; text: "Show the pointer" }
+                    Check { key: "recording.dim"; text: "Dim the screen outside the area" }
+                    Check { key: "recording.dnd"; text: "Turn on Do Not Disturb" }
+                    NumberBox { key: "recording.countdown"; from: 0; to: 10; prefix: "Count down"; suffix: "seconds first (0: none)" }
+                }
+                Section {
+                    label: "Audio"
+                    Check { key: "recording.separate_tracks"; text: "The microphone and the computer's sound on separate tracks" }
+                    Note { text: "For other video editors. Choose the sources in the recording toolbar." }
+                }
+                Section {
+                    label: "GIF"
+                    NumberBox { key: "recording.gif_fps"; from: 5; to: 30; suffix: "frames a second" }
+                    NumberBox { key: "recording.gif_width"; from: 200; to: 2000; prefix: "At most"; suffix: "px wide" }
+                }
+                Section {
+                    label: "Save to"
+                    Field { key: "recording.export_dir"; placeholder: "~/Videos/Screencasts" }
+                    Note { text: "Where Save writes recordings. Screenshots go to their own folder." }
                 }
             }
 
