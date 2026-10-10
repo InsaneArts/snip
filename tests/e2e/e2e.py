@@ -640,6 +640,98 @@ def window_pick_on_scratchpad(s, env):
 
 
 @case
+def area_enter_mid_drag_takes_the_area(s, env):
+    """SEL-09: Enter while dragging takes the area as dragged, not the whole monitor."""
+    p = s.bg("area"); time.sleep(0.5)
+    s.move(100, 100); s.debug("down"); s.move(200, 150); s.move(300, 200)
+    time.sleep(0.2)
+    s.key("Return"); s.debug("up")
+    try:
+        r, code = finish(p, timeout=6)
+    except subprocess.TimeoutExpired:
+        s.key("Escape"); finish(p, timeout=5)
+        raise AssertionError("Enter took nothing")
+    assert code == 0 and (r["result"]["width"], r["result"]["height"]) == (250, 125), (r["result"]["width"], r["result"]["height"])
+
+
+@case
+def crosshair_points_where_the_area_starts(s, env):
+    """SEL-04/05: the crosshair, its readout and the magnifier show the pixel a selection
+    starting there starts at (at 1.25, (102, 102) logical is 127.5: pixel 128)."""
+    p = s.bg("area"); time.sleep(0.5)
+    s.move(102, 102); time.sleep(0.2)
+    n = len(s.traces("overlay_state")); s.debug("ui", "state")
+    assert wait_for(lambda: len(s.traces("overlay_state")) > n, 2)
+    cursor = s.traces("overlay_state")[-1]["cursor"]
+    s.drag(102, 102, 302, 302)
+    r, code = finish(p, timeout=6)
+    start = s.traces("finish_area")[-1]["rect"][:2]
+    assert cursor == start, ("the crosshair's pixel", cursor, "the area's corner", start)
+
+
+@case
+def area_space_move_into_an_edge_keeps_its_size(s, env):
+    """SEL-07: Space moves the selection; pushed into the screen's edge it stops there, and
+    after Space the drag goes on from where the corner is: the size doesn't collapse."""
+    p = s.bg("area"); time.sleep(0.5)
+    s.move(500, 500); s.debug("down"); s.move(550, 550); s.move(600, 600)
+    s.key("space", "keydown"); s.move(300, 600); s.move(0, 600); s.key("space", "keyup")
+    s.move(1, 600); s.move(2, 600); s.debug("up")
+    r, code = finish(p, timeout=6)
+    w, h = r["result"]["width"], r["result"]["height"]
+    assert w >= 120 and h == 125, ("about the 100 x 100 moved, not a strip", w, h)
+
+
+@case
+def window_mode_skips_windows_behind_a_fullscreen_one(s, env):
+    """CAP-05: window mode picks what's seen: a fullscreen window hides the rest of its
+    workspace, so a click over a hidden window captures the fullscreen one."""
+    cmd = "foot --title=snip-e2e-cover --app-id=snip-e2e-cover sh -c 'printf cover; sleep 3600'"
+    ws = env.monitor()["activeWorkspace"]["id"]
+    hypr_eval(f'hl.dispatch(hl.dsp.exec_cmd([[{cmd}]], {{ workspace = "{ws} silent" }}))')
+    try:
+        assert wait_for(lambda: any(c["class"] == "snip-e2e-cover" for c in hypr_json("clients")), 5), "it opens"
+        c = next(c for c in hypr_json("clients") if c["class"] == "snip-e2e-cover")
+        hypr_eval(f'hl.dispatch(hl.dsp.window.fullscreen({{ mode = "fullscreen", window = "address:{c["address"]}" }}))')
+        assert wait_for(lambda: next(x for x in hypr_json("clients") if x["class"] == "snip-e2e-cover")["fullscreen"] == 2, 3), "fullscreen"
+        time.sleep(0.4)
+        w = env.win
+        mon = env.monitor()
+        p = s.bg("window"); time.sleep(0.5)
+        s.move(w["at"][0] - mon["x"] + 40, w["at"][1] - mon["y"] + 40); time.sleep(0.2); s.click()
+        r, code = finish(p, timeout=8)
+        assert code == 0 and r["result"].get("app") == "snip-e2e-cover", (r["result"].get("kind"), r["result"].get("app"))
+    finally:
+        subprocess.run(["pkill", "-f", "app-id=snip-e2e-cover"], check=False)
+        time.sleep(0.5)
+
+
+@case
+def area_live_leaves_the_cards_out(s, env):
+    """CAP-10, D18: with the screen not frozen (capture.freeze = false) the area is taken
+    live, after the overlay; Snip's cards step aside for it too."""
+    cfg = s.tmp / "cfg/snip/config.toml"
+    before = cfg.read_text()
+    try:
+        assert "[capture]" not in before, before
+        cfg.write_text(before + "\n[capture]\nfreeze = false\n")
+        time.sleep(0.8)
+        s.cli("close-all"); time.sleep(0.4)
+        r0, _ = area(s, 0, 560, 600, 860)              # where cards sit, none there
+        png = s.tmp / "live.png"
+        noise_png(png, 400, 300, seed=13)
+        open_card(s, png); time.sleep(0.8)
+        r1, _ = area(s, 0, 560, 600, 860)
+        from PIL import Image
+        a = Image.open(r0["result"]["source"]).convert("RGB").tobytes()
+        b = Image.open(r1["result"]["source"]).convert("RGB").tobytes()
+        assert a == b, "the card was captured"
+    finally:
+        cfg.write_text(before); time.sleep(0.8)
+        s.cli("close-all")
+
+
+@case
 def previous_area(s, env):
     r, _ = area(s, 200, 200, 400, 300)
     prev = s.json("previous")
@@ -2042,6 +2134,34 @@ def record_panel_gap_is_part_of_the_panel(s, env):
 
 
 @case
+def record_panel_edges_and_typed_sizes(s, env):
+    """D49: a jittery click doesn't become the area Full screen goes back to; handles stay
+    on screen at its edges; a typed width counts when the field is left, not only on Enter."""
+    s.cli("close-all"); time.sleep(0.3)
+    p = record_panel(s)
+    area = lambda: record_hud(s)["area"]
+    try:
+        assert record_hud(s)["whole"], "it opens on the whole screen"
+        s.move(400, 300); s.debug("down"); s.move(402, 301); s.debug("up"); time.sleep(0.3)
+        record_click(s, "record-full")
+        assert wait_for(lambda: not record_hud(s)["whole"], 2)
+        a = area()
+        assert a[2] >= 16 and a[3] >= 16, ("an area, not the click", a)
+        s.drag(0, 200, 400, 500)
+        assert wait_for(lambda: area() == [0, 200, 400, 300], 2), area()
+        b = where(s, "record", "record-handle-l")
+        assert b["x"] >= 0, ("the left handle is on screen", b)
+        record_click(s, "record-w"); time.sleep(0.2)
+        s.debug("ui", "record", "keys", "{ctrl+a}320")
+        record_click(s, "record-h"); time.sleep(0.2)
+        assert wait_for(lambda: area()[2] == 320, 2), ("the typed width counts", area())
+    finally:
+        s.debug("ui", "record", "keys", "{Escape}")
+        s.debug("ui", "record", "keys", "{Escape}")
+        finish(p, timeout=5)
+
+
+@case
 def record_panel_shows_what_is_on(s, env):
     """D49: on the panel, a toggle that's on has a soft accent square behind its icon (the
     icon never moves); a source that's off is crossed out: no microphone, no computer
@@ -3040,6 +3160,22 @@ def scrolling_capture_browser(s, env):
         assert len(foot) == 1 and foot[0][1] == h - 1, ("the footer once, at the bottom", foot)
     finally:
         os.kill(c["pid"], 15)
+
+
+@case
+def scroll_panel_stays_outside_the_area(s, env):
+    """SCR-01: the scrolling capture's panel is never in the area (it would be stitched into
+    the capture): beside it, else under or over it."""
+    p = s.bg("scroll"); time.sleep(0.5)
+    try:
+        s.drag(0, 100, 1536, 500)                                 # the full width: no room beside
+        hud = lambda: (s.debug("ui", "scroll", "state"), wait_for(lambda: s.traces("scroll_hud"), 2), s.traces("scroll_hud")[-1])[2]
+        assert wait_for(lambda: hud()["open"] and hud()["phase"] == "ready", 3), "the frame and panel show"
+        c = where(s, "scroll", "scroll-panel")
+        assert c["x"] >= 0 and not (100 <= c["y"] <= 500), ("outside the area", c)
+    finally:
+        hypr_eval('hl.dispatch(hl.dsp.global("snip-e2e:scroll-cancel"))')
+        finish(p, timeout=6)
 
 
 @case

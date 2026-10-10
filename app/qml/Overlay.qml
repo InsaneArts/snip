@@ -53,6 +53,9 @@ Window {
     property bool moving: false                  // Space held while dragging (SEL-07)
     property point p0
     property point lastMouse
+    // after a Space move, the pointer's offset from the corner it drags: a move
+    // stopped by the screen's edge doesn't snap that corner to the pointer
+    property point grab: Qt.point(0, 0)
     property rect raw: Qt.rect(0, 0, 0, 0)       // logical selection as dragged
     property int pick: -1                        // Tab-picked window (SEL-06)
 
@@ -72,7 +75,8 @@ Window {
     readonly property bool crosshair: hovered && !c.windowMode && !dragging
                                       && (c.crosshairMode === "always" || (c.crosshairMode === "ctrl" && c.ctrlHeld)
                                           || (!!c.session && c.session.mode === "pick"))     // the eyedropper
-    readonly property point cursorPhys: Qt.point(Math.floor(mouse.x * s), Math.floor(mouse.y * s))
+    // the pixel a selection starting here starts at (toPhys rounds its edges)
+    readonly property point cursorPhys: Qt.point(Math.min(fw - 1, Math.round(mouse.x * s)), Math.min(fh - 1, Math.round(mouse.y * s)))
     readonly property color magnifierColor: mag.centre
 
     // Logical -> physical with edges rounded independently (Hyprland's
@@ -154,7 +158,7 @@ Window {
             raw = Qt.rect(nx, ny, raw.width, raw.height)
             return
         }
-        let dx = mouse.x - p0.x, dy = mouse.y - p0.y
+        let dx = mouse.x - grab.x - p0.x, dy = mouse.y - grab.y - p0.y
         if (c.altHeld) {     // square (CleanShot's Alt, D32): as big as fits, an edge too
             const rx = c.ctrlHeld ? Math.min(p0.x, width - p0.x) : dx < 0 ? p0.x : width - p0.x
             const ry = c.ctrlHeld ? Math.min(p0.y, height - p0.y) : dy < 0 ? p0.y : height - p0.y
@@ -176,6 +180,14 @@ Window {
         lastMouse = mouse
         return true
     }
+    function endMove() {
+        if (!moving) return
+        moving = false
+        // the corner the pointer drags is the one across from p0
+        const cx = raw.x === p0.x ? raw.x + raw.width : raw.x
+        const cy = raw.y === p0.y ? raw.y + raw.height : raw.y
+        grab = Qt.point(mouse.x - cx, mouse.y - cy)
+    }
 
     function cycle(step) {
         if (wins.length === 0) return
@@ -193,6 +205,12 @@ Window {
     function confirm() {
         if (c.session && c.session.mode === "pick") {
             c.finishPick(win)
+        } else if (selecting) {
+            // mid-drag: the area as it is now (copied: phys follows raw)
+            const r = Qt.rect(phys.x, phys.y, phys.width, phys.height)
+            pressed = false; dragging = false; moving = false
+            raw = Qt.rect(0, 0, 0, 0)
+            if (r.width >= 2 && r.height >= 2) c.finishArea(win, r, "area")
         } else if (hoverWin) {
             if (c.windowMode && c.session.mode !== "text" && c.session.toplevel)
                 c.finishWindow(win, hoverWin, winPhys(hoverWin))
@@ -401,6 +419,7 @@ Window {
         onPressed: (m) => {
             if (m.button === Qt.RightButton) { win.c.cancel(); return }
             win.pressed = true
+            win.grab = Qt.point(0, 0)
             win.p0 = Qt.point(m.x, m.y)
             win.mouse = win.p0
             win.raw = Qt.rect(m.x, m.y, 0, 0)

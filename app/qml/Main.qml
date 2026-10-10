@@ -130,7 +130,7 @@ QtObject {
         if (e.key === Qt.Key_Control) { ctrlHeld = false; if (w.dragging) w.recompute() }
         else if (e.key === Qt.Key_Shift) { shiftHeld = false; if (w.dragging) w.recompute() }
         else if (e.key === Qt.Key_Alt) { altHeld = false; if (w.dragging) w.recompute() }
-        else if (e.key === Qt.Key_Space && !e.isAutoRepeat) { w.moving = false; spaceHeld = false }
+        else if (e.key === Qt.Key_Space && !e.isAutoRepeat) { w.endMove(); spaceHeld = false }
     }
 
     // ---------------------------------------------------------------- engine events
@@ -255,6 +255,7 @@ QtObject {
             Engine.log("overlay_state", JSON.stringify({ open: overlayOpen, shown: overlayShown, windowMode: windowMode,
                 spaceHeld: spaceHeld, active: o ? o.outputName : null, pressed: o ? o.pressed : null,
                 dragging: o ? o.dragging : null, moving: o ? o.moving : null, hovered: o ? o.hovered : null,
+                cursor: o ? [o.cursorPhys.x, o.cursorPhys.y] : null,
                 size: o ? o.sizeText(o.phys) : null }).slice(1, -1))
             return
         }
