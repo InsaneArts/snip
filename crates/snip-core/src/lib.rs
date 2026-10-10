@@ -10,6 +10,7 @@ pub mod frame;
 pub mod geometry;
 pub mod history;
 pub mod media;
+pub mod meter;
 pub mod naming;
 pub mod ocr;
 pub mod paths;
