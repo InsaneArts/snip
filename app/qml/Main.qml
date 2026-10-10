@@ -188,6 +188,8 @@ QtObject {
         function onRecordStatus(json) { root.recordHud.status(JSON.parse(json)) }
         function onRecordClose() { root.recordHud.close(); root.captureFinished() }
         function onRecordInput(json) { root.recordHud.input(JSON.parse(json)) }
+        function onRecordLevel(level) { root.recordHud.micLevel = level }
+        function onRecordMic(mic, muted) { root.recordHud.micHeard(mic, muted) }
         // the video editor (VED)
         function onVideoEditorOpen(json) { root.openVideoEditor(JSON.parse(json)) }
         function onVideoExportStatus(id, json) { const v = root.videoEditors[id]; if (v) v.exportStatus(JSON.parse(json)) }

@@ -426,6 +426,13 @@ pub mod qobject {
         /// x, y} in the output's logical px, or {kind: "key", code, down, label}
         #[qsignal]
         fn record_input(self: Pin<&mut Engine>, json: &QString);
+        /// D53: the chosen microphone's level (0–1), about 30 times a second
+        /// while the panel shows it or an area take records it.
+        #[qsignal]
+        fn record_level(self: Pin<&mut Engine>, level: f64);
+        /// D53: the chosen microphone's mute switch, at first and when it changes.
+        #[qsignal]
+        fn record_mic(self: Pin<&mut Engine>, mic: &QString, muted: bool);
         /// The video editor (VED): a recording to edit ({id, path, duration,
         /// fps, width, height, tracks, bytes, title, output}), its timeline's
         /// frames (a list of files) a moment later, and an export's {progress}

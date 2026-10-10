@@ -96,6 +96,7 @@ Window {
         gif = !!s.gif
         mics = s.mics || []
         mic = s.mic || ""
+        micLevel = 0
         system = !!s.system
         dim = s.dim !== false
         if (!mediaDevices) mediaDevices = mediaDevicesComponent.createObject(hud)
@@ -326,6 +327,10 @@ Window {
     }
     // REC-14: a muted microphone records silence; said before it starts
     readonly property bool micMuted: { const m = mics.find(x => x.id === mic); return !!(m && m.muted) }
+    // D53: how loud the chosen microphone is (0–1), while Snip listens to it
+    property real micLevel: 0
+    // its mute switch changed while the panel shows it
+    function micHeard(id, muted) { mics = mics.map(m => m.id === id ? Object.assign({}, m, { muted: muted }) : m) }
     function clock(ms) {
         const t = Math.floor(ms / 1000), m = Math.floor(t / 60), s = t % 60
         return m + ":" + String(s).padStart(2, "0")
@@ -775,6 +780,7 @@ Window {
                         // a GIF has no sound
                         opacity: hud.gif && (modelData[0] === "record-mic" || modelData[0] === "record-system") ? 0.4 : 1
                         warn: modelData[0] === "record-mic" && hud.micMuted && !hud.gif ? Qt.rgba(Theme.warning.r, Theme.warning.g, Theme.warning.b, 0.3) : "transparent"
+                        level: modelData[0] === "record-mic" && modelData[4] ? hud.micLevel : -1
                         onTapped: {
                             switch (modelData[0]) {
                             case "record-mic": if (!hud.gif) hud.micsOpen = !hud.micsOpen; break
@@ -1046,12 +1052,29 @@ Window {
             spacing: 4
             // stop, with the time recorded
             Rectangle {
+                id: stopPill
                 objectName: "record-stop"
                 anchors.verticalCenter: parent.verticalCenter
                 width: stopRow.implicitWidth + 20
                 height: 28
                 radius: 14
                 color: stopHover.hovered ? Qt.lighter(Theme.danger, 1.1) : Theme.danger
+                // D53: the microphone's level fills it from the bottom, darker:
+                // the time stays readable (lighter, white on pale red fades)
+                Item {
+                    objectName: "record-stop:level"
+                    visible: hud.phase === "recording" && hud.micLevel > 0
+                    anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                    height: stopPill.height * Math.min(1, hud.micLevel)
+                    clip: true
+                    Rectangle {
+                        anchors.bottom: parent.bottom
+                        width: stopPill.width
+                        height: stopPill.height
+                        radius: stopPill.radius
+                        color: Qt.darker(Theme.danger, 1.3)
+                    }
+                }
                 Row {
                     id: stopRow
                     anchors.centerIn: parent
@@ -1115,7 +1138,7 @@ Window {
         case "where": Engine.log("record_where", JSON.stringify(Probe.where(hud, a[1])).slice(1, -1)); break
         case "keys": Platform.sendKeys(hud, a.slice(1).join(" ")); break
         case "state":
-            Engine.log("record_hud", JSON.stringify({ open: visible, phase: phase, gif: gif, mic: mic, system: system, whole: whole,
+            Engine.log("record_hud", JSON.stringify({ open: visible, phase: phase, gif: gif, mic: mic, system: system, whole: whole, level: micLevel, micMuted: micMuted,
                                                     time: hud.clock(elapsed), area: [area.x, area.y, area.width, area.height],
                                                     panel: panel.visible ? [panel.x, panel.y, panel.width, panel.height] : null,
                                                     picking: picking, drawing: drawing, windows: windows.length, hint: hint.visible ? hintText.text : "",
