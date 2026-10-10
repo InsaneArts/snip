@@ -1437,7 +1437,11 @@ Window {
             }
             onDoubleClicked: (m) => {
                 const i = itemAt(ed.toImage(m.x, m.y))
-                if (i >= 0 && ed.doc.items[i].kind === "text") ed.startText(null, i)
+                if (i < 0 || ed.doc.items[i].kind !== "text") return
+                // the second press began a move, whose release would let the
+                // text go: Enter then added the changed text as a second one
+                gesture = ""; ed.draft = null
+                ed.startText(null, i)
             }
             onWheel: (w) => {
                 if (w.modifiers & Qt.ControlModifier) {

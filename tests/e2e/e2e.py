@@ -3870,6 +3870,28 @@ def editor_keyboard(s, env):
 
 
 @case
+def editor_double_click_changes_a_text(s, env):
+    """ANN-05: double-clicking a text changes it. With any tool but Text, Enter left the text
+    as it was and added the changed one over it: two texts."""
+    from PIL import Image
+    png = s.tmp / "retext.png"
+    Image.new("RGB", (500, 260), "white").save(png)
+    s.json("edit", str(png))
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    time.sleep(0.3)
+    w, mon, st = editor_window(), env.monitor(), editor_state(s)
+    at = lambda ix, iy: (w["at"][0] - mon["x"] + st["originX"] + ix * st["k"], w["at"][1] - mon["y"] + st["originY"] + iy * st["k"])
+    s.debug("ui", "editor", "text", 60, 120, "Hello")
+    s.debug("ui", "editor", "tool", "select")
+    s.move(*at(75, 132)); s.click(); time.sleep(0.05); s.click()
+    assert wait_for(lambda: editor_state(s)["editingText"], 2), "a double-click changes the text"
+    s.debug("ui", "editor", "keys", " there{Return}")
+    items = editor_state(s)["items"]
+    assert [i["text"] for i in items] == ["Hello there"], items
+    close_editor(s)
+
+
+@case
 def editor_text_emoji(s, env):
     """ANN-05: the blue smiley above the text being typed opens an emoji picker (Omarchy's
     list); searching and Return insert the emoji at the caret, and typing goes on."""
