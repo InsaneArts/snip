@@ -1152,9 +1152,11 @@ impl Inner {
         std::thread::Builder::new()
             .name("snip-index".into())
             .spawn(move || loop {
-                // wake on a new capture, or every 10 minutes for older ones
+                // wake on a new capture, or every 10 minutes for older ones; a
+                // burst is read once it settles (an edit is written back 0.7 s
+                // after each change, and each write drops the capture's text)
                 let _ = rx.recv_timeout(Duration::from_secs(600));
-                while rx.try_recv().is_ok() {}
+                while rx.recv_timeout(Duration::from_secs(3)).is_ok() {}
                 if !me.cfg().ocr.index_history {
                     continue;
                 }
