@@ -44,11 +44,15 @@ pub struct Decoded {
     pub bpp: usize,
 }
 
+fn cache() -> &'static Mutex<Vec<(String, Arc<Decoded>)>> {
+    static CACHE: OnceLock<Mutex<Vec<(String, Arc<Decoded>)>>> = OnceLock::new();
+    CACHE.get_or_init(Default::default)
+}
+
 /// The image at `path`, decoded once: a Pixelate region asks for new tiles
 /// on every pointer move.
 pub fn decoded(path: &str) -> Option<Arc<Decoded>> {
-    static CACHE: OnceLock<Mutex<Vec<(String, Arc<Decoded>)>>> = OnceLock::new();
-    let cache = CACHE.get_or_init(Default::default);
+    let cache = cache();
     if let Some(d) = cache.lock().unwrap().iter().find(|(p, _)| p == path).map(|(_, d)| d.clone()) {
         return Some(d);
     }
@@ -58,4 +62,9 @@ pub fn decoded(path: &str) -> Option<Arc<Decoded>> {
     c.insert(0, (path.to_string(), d.clone()));
     c.truncate(2);
     Some(d)
+}
+
+/// The decoded images, once no editor needs them (up to ~100 MB each).
+pub fn forget_decoded() {
+    cache().lock().unwrap().clear();
 }
