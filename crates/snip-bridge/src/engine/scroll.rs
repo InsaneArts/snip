@@ -22,7 +22,7 @@ use snip_core::trace::{self, js};
 use snip_hypr::Client;
 use snip_wayland::{Request as Wl, Source};
 
-use super::{cancelled, reply, Inner, Pending, Waiter};
+use super::{cancelled, reply, Inner, Job, Pending};
 use cxx_qt_lib::QString;
 use snip_ipc::Response;
 
@@ -39,7 +39,7 @@ pub(super) struct Scroll {
     /// the area: physical px on the output, and global logical px
     area: Rect,
     logical: (f64, f64, f64, f64),
-    waiter: Option<Waiter>,
+    job: Job,
     app: Option<String>,
     title: Option<String>,
     state: Arc<AtomicU8>,
@@ -48,7 +48,7 @@ pub(super) struct Scroll {
 
 impl Inner {
     /// The area is chosen: show the frame and panel, ready to start.
-    pub(super) fn scroll_open(self: &Arc<Self>, output: String, rect: Rect, scale: f64, waiter: Option<Waiter>, clients: &[Client]) {
+    pub(super) fn scroll_open(self: &Arc<Self>, output: String, rect: Rect, scale: f64, job: Job, clients: &[Client]) {
         let o = self.outputs.lock().unwrap().iter().find(|o| o.name == output).map(|o| o.logical).unwrap_or_default();
         let s = if scale > 0.0 { scale } else { 1.0 };
         let logical = (o.x as f64 + rect.x as f64 / s, o.y as f64 + rect.y as f64 / s, rect.w as f64 / s, rect.h as f64 / s);
@@ -64,9 +64,9 @@ impl Inner {
         let (app, title) = self.window_meta_at(&output, rect, s);
         trace::trace("scroll_open", &format!("\"output\":{},\"rect\":[{},{},{},{}],\"window\":{}", js(&output), rect.x, rect.y, rect.w, rect.h, window.is_some()));
         let state = Arc::new(AtomicU8::new(READY));
-        if let Some(old) = self.scroll.lock().unwrap().replace(Scroll { output: output.clone(), source, window, area: rect, logical, waiter, app, title, state, auto: false }) {
+        if let Some(old) = self.scroll.lock().unwrap().replace(Scroll { output: output.clone(), source, window, area: rect, logical, job, app, title, state, auto: false }) {
             old.state.store(CANCEL, Ordering::Relaxed);
-            reply(old.waiter, cancelled());
+            reply(old.job.waiter, cancelled());
         }
         super::hypr("session_keys", snip_hypr::keys::session_keys(&crate::bridge::app_id(), true));
         let l = snip_core::geometry::physical_to_logical(rect, s);
@@ -87,7 +87,7 @@ impl Inner {
                 // a bug must not leave the frame, the panel and Enter/Esc behind
                 if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| me.clone().scroll_run(state))).is_err() {
                     if let Some(s) = me.scroll_close() {
-                        reply(s.waiter, Response::err("scrolling capture failed"));
+                        reply(s.job.waiter, Response::err("scrolling capture failed"));
                     }
                     me.toast("Scrolling capture failed");
                 }
@@ -128,7 +128,7 @@ impl Inner {
         // a running session ends on its own thread; one not started ends here
         if ready {
             if let Some(s) = self.scroll_close() {
-                reply(s.waiter, cancelled());
+                reply(s.job.waiter, cancelled());
             }
         }
     }
@@ -244,7 +244,7 @@ impl Inner {
         let _ = std::fs::remove_file(preview_path(preview_n));
         trace::trace("scroll_end", &format!("\"frames\":{frames},\"height\":{},\"cancelled\":{cancelled_}", stitcher.as_ref().map_or(0, |s| s.height())));
         let Some(st) = stitcher.filter(|_| !cancelled_) else {
-            return reply(s.waiter, cancelled());
+            return reply(s.job.waiter, cancelled());
         };
         self.play("shutter");
         let (w, h, rgba) = st.image();
@@ -253,7 +253,7 @@ impl Inner {
         let png = encode::encode_png(&data, w, h, alpha);
         let scale = if s.logical.2 > 0.0 { w as f64 / s.logical.2 } else { 1.0 };
         let meta = CaptureMeta { kind: "scroll".into(), scale, output: s.output.clone(), app: s.app, title: s.title };
-        self.ingest(png, w, h, meta, &s.output, s.waiter);
+        self.ingest(png, w, h, meta, &s.output, s.job);
     }
 }
 

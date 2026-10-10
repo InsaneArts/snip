@@ -4,6 +4,7 @@ The shared language of this project. Use these words in code, commits, PRs and c
 
 - **Capture**: one screenshot (or, from M4, recording). Born in **history**; the user's folders only see it on **Save**.
 - **Capture lifecycle**: capture → history only; **Copy** → clipboard only; **Save** → export folder and clipboard (decision D10).
+- **Capture job**: one capture as it was asked for (a key, `snip`, a menu): who waits for it, the pointer, the self-timer, its own action (`--action`), line breaks and Shift. It travels through the overlay, a countdown or a live capture to the capture (`Job` in the engine), so nothing it asked reaches the next capture.
 - **History**: Snip's private store of every capture (`~/.local/share/snip/history`, SQLite index with full-text search of the text in each capture).
 - **Card**: a Quick Access card, the floating thumbnail after a capture. The **stack** is all cards; the newest is on top. CleanShot calls it the Quick Access Overlay (**QAO**).
 - **Frost**: a card's hover look, the blurred, tinted thumbnail under the Copy/Save buttons.
