@@ -4,6 +4,7 @@ import QtQuick.Effects
 import QtMultimedia
 import Snip.Core
 import "editor.js" as Ed
+import "probe.js" as Probe
 
 // The video editor (VED-01…03), laid out as CleanShot 5's (D50): the file's
 // name and Export along the top; a sidebar of sections (Audio, Background)
@@ -934,15 +935,6 @@ Window {
     }
 
     // ---------------------------------------------------------------- tests
-    function find(item, name) {
-        if (item.objectName === name && item.visible) return item
-        for (const c of item.children) {
-            if (!c.visible) continue
-            const f = find(c, name)
-            if (f) return f
-        }
-        return null
-    }
     function debug(a) {
         switch (a[0]) {
         case "split": split(Number(a[1])); break
@@ -953,13 +945,7 @@ Window {
         case "bg": setBg(JSON.parse(a.slice(1).join(" "))); break
         case "keys": Platform.sendKeys(ve, a.slice(1).join(" ")); break
         case "export": exportIt(a[1] === "replace"); break
-        case "where": {
-            const it = find(contentItem, a[1])
-            for (let q = it; q; q = q.parent) if (q.forceLayout) q.forceLayout()
-            const p = it ? it.mapToItem(contentItem, it.width / 2, it.height / 2) : null
-            Engine.log("video_where", JSON.stringify({ name: a[1], x: p ? p.x : -1, y: p ? p.y : -1 }).slice(1, -1))
-            break
-        }
+        case "where": Engine.log("video_where", JSON.stringify(Probe.where(ve, a[1])).slice(1, -1)); break
         case "state":
             Engine.log("video_state", JSON.stringify({ id: info.id, duration: duration, cuts: cuts, cut: parts.filter(p => p.cut).map(p => [p.a, p.b]),
                                                      in: inMs, out: outMs, kept: kept, keptMs: keptMs, selected: selected, volumes: volumes,

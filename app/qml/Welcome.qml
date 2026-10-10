@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Window
 import Snip.Core
+import "probe.js" as Probe
 
 // First-run setup (OMA-02): Snip's keys, start at login, the bar icon. It
 // opens by itself on Snip's first start (until Get Started) and with `snip
@@ -222,25 +223,10 @@ Window {
     }
 
     // tests
-    function find(item, name) {
-        if (item.objectName === name && item.visible) return item
-        for (const c of item.children) {
-            const f = c.visible ? find(c, name) : null
-            if (f) return f
-        }
-        return null
-    }
     function debug(a) {
         switch (a[0]) {
         case "close": close(); break
-        case "where": {
-            const it = find(contentItem, a[1])
-            // laid out first: just after a change, rows and columns still hold old places
-            for (let q = it; q; q = q.parent) if (q.forceLayout) q.forceLayout()
-            const p = it ? it.mapToItem(contentItem, it.width / 2, it.height / 2) : null
-            Engine.log("welcome_where", JSON.stringify({ name: a[1], x: p ? p.x : -1, y: p ? p.y : -1 }).slice(1, -1))
-            break
-        }
+        case "where": Engine.log("welcome_where", JSON.stringify(Probe.where(wel, a[1])).slice(1, -1)); break
         case "state":
             Engine.log("welcome_state", JSON.stringify({ open: visible, st: st, error: error }).slice(1, -1))
             break

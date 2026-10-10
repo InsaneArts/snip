@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Window
 import org.kde.layershell as LayerShell
 import Snip.Core
+import "probe.js" as Probe
 
 // Snip's menu in the bar (OMA-08, D35): CleanShot's, in its order (from its
 // MainMenu.nib), less what Snip hasn't got yet (Check for Updates); Hide
@@ -93,26 +94,11 @@ Window {
     }
 
     // tests
-    function find(item, name) {
-        if (item.objectName === name && item.visible) return item
-        for (const c of item.children) {
-            const f = c.visible ? find(c, name) : null
-            if (f) return f
-        }
-        return null
-    }
     function debug(a) {
         switch (a[0]) {
         case "open": open(); break
         case "keys": Platform.sendKeys(tray, a.slice(1).join(" ")); break
-        case "where": {
-            const it = find(contentItem, a[1])
-            // laid out first: just after a change, rows and columns still hold old places
-            for (let q = it; q; q = q.parent) if (q.forceLayout) q.forceLayout()
-            const p = it ? it.mapToItem(contentItem, it.width / 2, it.height / 2) : null
-            Engine.log("tray_where", JSON.stringify({ name: a[1], x: p ? p.x : -1, y: p ? p.y : -1 }).slice(1, -1))
-            break
-        }
+        case "where": Engine.log("tray_where", JSON.stringify(Probe.where(tray, a[1])).slice(1, -1)); break
         case "state":
             Engine.log("tray_state", JSON.stringify({ open: visible, output: output,
                                                      menu: [menu.x, menu.y, menu.width, menu.height],

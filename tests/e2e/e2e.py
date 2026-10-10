@@ -250,6 +250,15 @@ def layer_mapped(namespace):
     return any(l["namespace"] == namespace for v in hypr_json("layers").values() for ls in v["levels"].values() for l in ls)
 
 
+def where(s, window, name):
+    """A window's probe (probe.js): where its control `name` is, {"x", "y"} in logical px
+    of the window (a layer's: of its output); -1, -1 when it isn't shown."""
+    n = len(s.traces(window + "_where"))
+    s.debug("ui", window, "where", name)
+    assert wait_for(lambda: len(s.traces(window + "_where")) > n, 2), f"no {window}_where for {name}"
+    return s.traces(window + "_where")[-1]
+
+
 def wait_for(fn, timeout=5.0, step=0.1):
     end = time.time() + timeout
     while time.time() < end:
@@ -674,10 +683,7 @@ def text_lines_and_links(s, env):
         return s.traces("link_prompt")[-1]
 
     def click(name):
-        n = len(s.traces("link_where"))
-        s.debug("ui", "link", "where", name)
-        assert wait_for(lambda: len(s.traces("link_where")) > n, 2)
-        b = s.traces("link_where")[-1]
+        b = where(s, "link", name)
         assert b["x"] >= 0, (name, "isn't shown")
         s.move(b["x"], b["y"]); s.click()
 
@@ -890,19 +896,16 @@ def card_scale_resize_print(s, env):
     assert (rec["width"], rec["height"], rec["scale"]) == (250, 150, 1.25), rec
     time.sleep(0.6)                                                # the card slides in
 
-    def where(name):
-        n = len(s.traces("qa_where"))
-        s.debug("ui", "qa-where", name)
-        assert wait_for(lambda: len(s.traces("qa_where")) > n, 2)
-        return s.traces("qa_where")[-1]
+    def qa_at(name):
+        return where(s, "qa", name)
 
     def click(name):
-        b = where(name)
+        b = qa_at(name)
         assert b["x"] >= 0, (name, "isn't shown")
         s.move(b["x"], b["y"]); time.sleep(0.15); s.click()
 
     def menu():
-        card = where("card:" + rec["id"])
+        card = qa_at("card:" + rec["id"])
         s.move(card["x"] + 1, card["y"]); s.move(card["x"], card["y"]); time.sleep(0.3); s.click(right=True)
         assert wait_for(lambda: layer_mapped("snip-dismiss"), 2), "the menu opens"
 
@@ -912,7 +915,7 @@ def card_scale_resize_print(s, env):
     menu(); click("menu:scale-1x")
     assert wait_for(lambda: (record()["width"], record()["height"], record()["scale"]) == (200, 120, 1.0), 3), record()
     menu()
-    assert where("menu:scale-1x")["x"] < 0, "at 1× there's nothing to scale"
+    assert qa_at("menu:scale-1x")["x"] < 0, "at 1× there's nothing to scale"
     click("menu:resize")
     click("resize-w")
     s.debug("ui", "qa-keys", "{ctrl+a}100")
@@ -954,10 +957,7 @@ def pin_corner_resize(s, env):
     mon = env.monitor()
 
     def corner(name):
-        n = len(s.traces("pin_where"))
-        s.debug("ui", "pin", "where", name)
-        assert wait_for(lambda: len(s.traces("pin_where")) > n, 2)
-        b, w = s.traces("pin_where")[-1], pin_windows()[0]
+        b, w = where(s, "pin", name), pin_windows()[0]
         return w["at"][0] - mon["x"] + b["x"], w["at"][1] - mon["y"] + b["y"]
 
     def box():
@@ -1450,10 +1450,7 @@ def settings_state(s, key=""):
 
 def settings_click(s, env, name):
     """Click a control of the settings window with the pointer, as a hand does."""
-    n = len(s.traces("settings_where"))
-    s.debug("ui", "settings", "where", name)
-    assert wait_for(lambda: len(s.traces("settings_where")) > n, 2), "no settings_where"
-    p = s.traces("settings_where")[-1]
+    p = where(s, "settings", name)
     assert p["x"] >= 0, (name, "isn't shown")
     w, mon = settings_client(), env.monitor()
     s.move(w["at"][0] - mon["x"] + p["x"], w["at"][1] - mon["y"] + p["y"])
@@ -1471,10 +1468,7 @@ def history_selection_ring(s, env):
     s.cli("history")
     assert wait_for(lambda: history_state(s)["open"], 3)
     try:
-        n = len(s.traces("history_where"))
-        s.debug("ui", "history", "where", "thumb:0")
-        assert wait_for(lambda: len(s.traces("history_where")) > n, 2)
-        b = s.traces("history_where")[-1]
+        b = where(s, "history", "thumb:0")
         s.move(b["x"], b["y"]); time.sleep(0.1); s.click()
         assert wait_for(lambda: history_state(s)["current"] == 0, 2), "selected"
         s.move(b["x"] + 400, b["y"] + 400); time.sleep(0.4)        # the pointer off it
@@ -1502,10 +1496,7 @@ def history_restore_then_copy(s, env):
     assert wait_for(lambda: history_state(s)["open"], 3)
 
     def hist_click(name):
-        n = len(s.traces("history_where"))
-        s.debug("ui", "history", "where", name)
-        assert wait_for(lambda: len(s.traces("history_where")) > n, 2)
-        b = s.traces("history_where")[-1]
+        b = where(s, "history", name)
         assert b["x"] >= 0, (name, "isn't shown")
         s.move(b["x"], b["y"]); time.sleep(0.15); s.click()
 
@@ -1516,10 +1507,7 @@ def history_restore_then_copy(s, env):
     s.debug("ui", "history", "keys", "{Escape}")
     assert wait_for(lambda: not history_state(s)["open"], 2)
     time.sleep(0.6)                                                # the card slides in
-    n = len(s.traces("qa_where"))
-    s.debug("ui", "qa-where", "card:" + rec["id"])
-    assert wait_for(lambda: len(s.traces("qa_where")) > n, 2)
-    c = s.traces("qa_where")[-1]
+    c = where(s, "qa", "card:" + rec["id"])
     s.move(c["x"] + 1, c["y"]); s.move(c["x"], c["y"]); time.sleep(0.4)
     copied = len(s.traces("copied"))
     s.move(c["x"], c["y"] - 20); time.sleep(0.2); s.click()        # the card's Copy
@@ -1582,10 +1570,7 @@ def recordings_in_history(s, env):
     assert wait_for(lambda: history_state(s)["open"], 3)
     try:
         def pick(name):
-            n = len(s.traces("history_where"))
-            s.debug("ui", "history", "where", name)
-            assert wait_for(lambda: len(s.traces("history_where")) > n, 2)
-            b = s.traces("history_where")[-1]
+            b = where(s, "history", name)
             s.move(b["x"], b["y"]); time.sleep(0.1); s.click()
         shown = lambda: history_state(s)["items"]
         pick("filter-videos")
@@ -1601,10 +1586,7 @@ def recordings_in_history(s, env):
     s.json("restore", vid["id"])
     assert wait_for(lambda: vid["id"] in s.status()["cards"], 3)
     time.sleep(0.6)
-    n = len(s.traces("qa_where"))
-    s.debug("ui", "qa-where", "card:" + vid["id"])
-    assert wait_for(lambda: len(s.traces("qa_where")) > n, 2)
-    c = s.traces("qa_where")[-1]
+    c = where(s, "qa", "card:" + vid["id"])
     s.move(c["x"] + 1, c["y"]); s.move(c["x"], c["y"]); time.sleep(0.5)
     s.debug("ui", "qa-keys", " ")                                  # Space: Quick Look plays it
     assert wait_for(lambda: quick_look_window(), 3), "Quick Look opens"
@@ -1645,16 +1627,13 @@ def quick_look_and_open_with(s, env):
     make_clip(clip, seconds=3, size="640x360")
     make_clip(gif, seconds=1, size="320x180", audio=False)
 
-    def where(name):
-        n = len(s.traces("qa_where"))
-        s.debug("ui", "qa-where", name)
-        assert wait_for(lambda: len(s.traces("qa_where")) > n, 2)
-        return s.traces("qa_where")[-1]
+    def qa_at(name):
+        return where(s, "qa", name)
 
     def click(card, name):
-        c = where("card:" + card)
+        c = qa_at("card:" + card)
         s.move(c["x"] + 1, c["y"]); s.move(c["x"], c["y"]); time.sleep(0.5)    # its corners show
-        b = where(name)
+        b = qa_at(name)
         assert b["x"] >= 0, (name, "isn't shown")
         s.move(b["x"], b["y"]); time.sleep(0.15); s.click()
 
@@ -1769,10 +1748,7 @@ def record_hud(s):
 
 
 def record_click(s, name):
-    n = len(s.traces("record_where"))
-    s.debug("ui", "record", "where", name)
-    assert wait_for(lambda: len(s.traces("record_where")) > n, 2)
-    b = s.traces("record_where")[-1]
+    b = where(s, "record", name)
     assert b["x"] >= 0, (name, "isn't shown")
     s.move(b["x"], b["y"]); time.sleep(0.1); s.click()
 
@@ -1880,10 +1856,7 @@ def record_panel_chooses_the_area(s, env):
     s.drag(200, 150, 800, 550)
     assert wait_for(lambda: area() == [200, 150, 600, 400], 2), area()
     time.sleep(0.2)
-    n = len(s.traces("record_where"))
-    s.debug("ui", "record", "where", "record-handle-br")
-    assert wait_for(lambda: len(s.traces("record_where")) > n, 2)
-    b = s.traces("record_where")[-1]
+    b = where(s, "record", "record-handle-br")
     assert (b["x"], b["y"]) == (803, 553), ("on the frame, just outside the corner", b)
     s.drag(803, 553, 903, 603)
     assert wait_for(lambda: area() == [200, 150, 700, 450], 2), ("the corner's handle resizes it", area())
@@ -1994,10 +1967,7 @@ def record_stops_from_the_bar(s, env):
     time.sleep(0.8)
 
     def menu_click(name):
-        n = len(s.traces("tray_where"))
-        s.debug("ui", "tray", "where", name)
-        assert wait_for(lambda: len(s.traces("tray_where")) > n, 2)
-        b = s.traces("tray_where")[-1]
+        b = where(s, "tray", name)
         assert b["x"] >= 0, (name, "isn't in the menu")
         s.move(b["x"], b["y"]); time.sleep(0.1); s.click()
 
@@ -2284,10 +2254,7 @@ def video_state(s):
 
 
 def video_point(s, env, name):
-    n = len(s.traces("video_where"))
-    s.debug("ui", "video", "where", name)
-    assert wait_for(lambda: len(s.traces("video_where")) > n, 2)
-    p = s.traces("video_where")[-1]
+    p = where(s, "video", name)
     assert p["x"] >= 0, (name, "isn't shown")
     w, mon = video_editor_window(), env.monitor()
     return w["at"][0] - mon["x"] + p["x"], w["at"][1] - mon["y"] + p["y"]
@@ -2463,10 +2430,7 @@ def history_filters(s, env):
     assert wait_for(lambda: history_state(s)["open"], 3)
 
     def pick(name):
-        n = len(s.traces("history_where"))
-        s.debug("ui", "history", "where", name)
-        assert wait_for(lambda: len(s.traces("history_where")) > n, 2)
-        b = s.traces("history_where")[-1]
+        b = where(s, "history", name)
         assert b["x"] >= 0, (name, "isn't shown")
         s.move(b["x"], b["y"]); time.sleep(0.1); s.click()
 
@@ -2510,10 +2474,7 @@ def welcome_state(s):
 
 
 def welcome_click(s, env, name):
-    n = len(s.traces("welcome_where"))
-    s.debug("ui", "welcome", "where", name)
-    assert wait_for(lambda: len(s.traces("welcome_where")) > n, 2), "no welcome_where"
-    p = s.traces("welcome_where")[-1]
+    p = where(s, "welcome", name)
     assert p["x"] >= 0, (name, "isn't shown")
     w, mon = welcome_client(), env.monitor()
     s.move(w["at"][0] - mon["x"] + p["x"], w["at"][1] - mon["y"] + p["y"])
@@ -2775,10 +2736,7 @@ def scrolling_capture_auto(s, env):
         assert wait_for(lambda: scroll_hud(s)["open"], 3), "the frame and panel show"
 
         def click(name):
-            n = len(s.traces("scroll_where"))
-            s.debug("ui", "scroll", "where", name)
-            assert wait_for(lambda: len(s.traces("scroll_where")) > n, 2)
-            b = s.traces("scroll_where")[-1]
+            b = where(s, "scroll", name)
             assert b["x"] >= 0, (name, "isn't shown")
             s.move(b["x"], b["y"]); s.click()
 
@@ -2972,10 +2930,7 @@ def tray_menu(s, env):
 
         s.debug("ui", "tray", "open")
         assert wait_for(lambda: tray_state(s)["open"], 2)
-        n = len(s.traces("tray_where"))
-        s.debug("ui", "tray", "where", "menu:settings")
-        assert wait_for(lambda: len(s.traces("tray_where")) > n, 2)
-        p = s.traces("tray_where")[-1]
+        p = where(s, "tray", "menu:settings")
         s.move(p["x"], p["y"]); s.click()
         assert wait_for(lambda: settings_client(), 5), "Settings… opens Settings"
         assert not tray_state(s)["open"], "and the menu is gone"
@@ -2983,10 +2938,7 @@ def tray_menu(s, env):
         assert wait_for(lambda: not settings_client(), 2)
         s.debug("ui", "tray", "open")
         assert wait_for(lambda: tray_state(s)["open"], 2)
-        n = len(s.traces("tray_where"))
-        s.debug("ui", "tray", "where", "menu:about")
-        assert wait_for(lambda: len(s.traces("tray_where")) > n, 2)
-        p = s.traces("tray_where")[-1]
+        p = where(s, "tray", "menu:about")
         s.move(p["x"], p["y"]); s.click()
         assert wait_for(lambda: settings_client() and settings_state(s)["tab"] == "about", 5), "About Snip opens its tab"
     finally:
@@ -3036,10 +2988,7 @@ def history_window(s, env):
 
 def history_click(s, name):
     """Click a control of the history band with the pointer."""
-    n = len(s.traces("history_where"))
-    s.debug("ui", "history", "where", name)
-    assert wait_for(lambda: len(s.traces("history_where")) > n, 2), "no history_where"
-    p = s.traces("history_where")[-1]
+    p = where(s, "history", name)
     assert p["x"] >= 0, (name, "isn't shown")
     s.move(p["x"], p["y"]); s.click()
 
@@ -4553,10 +4502,7 @@ def file_dialogs_answer_who_asked(s, env):
             s.move(300, 5)                                              # on the bar, as the icon's click
             s.debug("ui", "tray", "open")
             assert wait_for(lambda: tray_state(s)["open"], 2)
-            n = len(s.traces("tray_where"))
-            s.debug("ui", "tray", "where", "menu:" + item)
-            assert wait_for(lambda: len(s.traces("tray_where")) > n, 2)
-            p = s.traces("tray_where")[-1]
+            p = where(s, "tray", "menu:" + item)
             s.move(p["x"], p["y"]); s.click()
             assert wait_for(opened, 5), item + "… opens the chosen file"
     finally:
