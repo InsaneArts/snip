@@ -1626,12 +1626,17 @@ def pin_lock(s, env):
 
 @case
 def editor_pins(s, env):
-    """The editor's pin button: the edits are written back, then the result is pinned."""
+    """The editor's pin button pins the image, edited or not: the edits are written back
+    first. With nothing edited it pinned nothing."""
     from PIL import Image
     png = s.tmp / "edpin.png"
     Image.new("RGB", (300, 200), "white").save(png)
     s.json("edit", str(png))
     assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    s.debug("ui", "editor", "flush", "pin")                              # nothing edited
+    assert wait_for(lambda: pin_windows(), 5), "the editor pins the image as it is"
+    s.debug("ui", "close-pins")
+    assert wait_for(lambda: not pin_windows(), 3)
     s.debug("ui", "editor", "bg", '{"kind":"color","value":"#10a050","padding":20,"shadow":0,"radius":0,"inset":0}')
     s.debug("ui", "editor", "flush", "pin")
     assert wait_for(lambda: pin_windows(), 5), "the editor pins its result"
