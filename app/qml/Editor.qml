@@ -458,6 +458,7 @@ Window {
             Engine.log("print", JSON.stringify({ id: captureId, pdf: Platform.printImage(capture.source, capture.title || "Snip") }).slice(1, -1))
             return
         }
+        if (what === "pin" && !ran) Engine.pin(captureId)
         if (what === "copy" && !ran) Engine.copy(captureId)
         if (what === "save" && !ran) Engine.save(captureId)
         if (what === "copy" || what === "save") {
