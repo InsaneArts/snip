@@ -10,8 +10,6 @@ use std::sync::{mpsc, Arc, Mutex, OnceLock, RwLock};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use cxx_qt::CxxQtThread;
-use cxx_qt_lib::QString;
 use serde_json::{json, Value};
 
 use snip_core::config::{AfterCapture, Appearance, ClipboardMode, Config, OpenLinks, Retention};
@@ -24,8 +22,8 @@ use snip_hypr::Client;
 use snip_ipc::{Request as Ctl, Response};
 use snip_wayland::{CaptureResult, Event, Features, Frame, OutputInfo, Request as Wl, Source};
 
-use crate::bridge::qobject::Engine;
 use crate::frames;
+use crate::ui::{Ui, UiOut};
 
 mod record;
 mod scroll;
@@ -95,7 +93,8 @@ struct Countdown {
 }
 
 pub struct Inner {
-    qt: CxxQtThread<Engine>,
+    /// what the UI is told (Engine's signals, in snipd)
+    ui: Box<dyn UiOut>,
     wl: OnceLock<snip_wayland::Handle>,
     pub store: Store,
     cfg: RwLock<Config>,
@@ -197,14 +196,14 @@ fn png_size(b: &[u8]) -> Option<(u32, u32)> {
 }
 
 impl Inner {
-    pub fn new(qt: CxxQtThread<Engine>) -> Result<Arc<Self>, String> {
+    pub fn new(ui: Box<dyn UiOut>) -> Result<Arc<Self>, String> {
         let (cfg, err) = Config::load();
         if let Some(e) = &err {
             trace::warn("config_error", &format!("\"msg\":{}", js(e)));
         }
         let store = Store::open(&paths::history_dir(), paths::data_dir().join("counter")).map_err(|e| e.to_string())?;
         Ok(Arc::new(Self {
-            qt,
+            ui,
             wl: OnceLock::new(),
             store,
             cfg: RwLock::new(cfg),
@@ -244,22 +243,21 @@ impl Inner {
         self.cfg.read().unwrap().clone()
     }
 
-    fn ui(&self, f: impl FnOnce(std::pin::Pin<&mut Engine>) + Send + 'static) {
-        let _ = self.qt.queue(f);
+    fn ui(&self, ui: Ui) {
+        self.ui.tell(ui);
     }
 
     /// A short confirmation on the monitor the user is looking at.
     pub fn toast(&self, text: impl Into<String>) {
         let t = text.into();
         let out = self.cursor_output().unwrap_or_default();
-        self.ui(move |e| e.toast(&QString::from(t.as_str()), &QString::from(out.as_str())));
+        self.ui(Ui::Toast { text: t, output: out });
     }
 
     /// A result shown on the card itself (CleanShot's "Link copied" style).
     fn card_status(&self, id: &str, status: &str, detail: &str) {
         trace::trace("card_status", &format!("\"id\":\"{id}\",\"status\":\"{status}\",\"detail\":{}", js(detail)));
-        let (id, status, detail) = (id.to_string(), status.to_string(), detail.to_string());
-        self.ui(move |e| e.card_status(&QString::from(id.as_str()), &QString::from(status.as_str()), &QString::from(detail.as_str())));
+        self.ui(Ui::CardStatus { id: id.into(), status: status.into(), detail: detail.into() });
     }
 
     fn next(&self) -> u64 {
@@ -361,16 +359,16 @@ impl Inner {
                 let delay = self.cfg().capture.timer_seconds;
                 self.begin(&id["timer-".len()..], None, None, None, delay, None)
             }
-            "restore" => self.ui(|e| e.cards_command(&QString::from("restore"))),
-            "close-all" => self.ui(|e| e.cards_command(&QString::from("close-all"))),
+            "restore" => self.ui(Ui::CardsCommand("restore".into())),
+            "close-all" => self.ui(Ui::CardsCommand("close-all".into())),
             "history" => self.open_history(),
-            "settings" => self.ui(|e| e.settings_open(&QString::from(""))),
-            "pins-toggle" => self.ui(|e| e.pins_command(&QString::from("toggle"))),
-            "pins-close" => self.ui(|e| e.pins_command(&QString::from("close"))),
+            "settings" => self.ui(Ui::SettingsOpen("".into())),
+            "pins-toggle" => self.ui(Ui::PinsCommand("toggle".into())),
+            "pins-close" => self.ui(Ui::PinsCommand("close".into())),
             "desktop-toggle" => {
                 self.desktop("toggle");
             }
-            "pins-unlock" => self.ui(|e| e.pins_command(&QString::from("unlock"))),
+            "pins-unlock" => self.ui(Ui::PinsCommand("unlock".into())),
             "edit-clipboard" => {
                 let me = self.clone();
                 std::thread::spawn(move || {
@@ -410,7 +408,7 @@ impl Inner {
         if let Some(c) = self.countdown.lock().unwrap().take() {
             reply(c.job.waiter, cancelled());
             reply(job.waiter, cancelled());
-            self.ui(|e| e.countdown_cancel());
+            self.ui(Ui::CountdownCancel);
             return;
         }
         match mode {
@@ -420,7 +418,7 @@ impl Inner {
                     reply(s.job.waiter, cancelled());
                     reply(job.waiter, cancelled());
                     frames::clear();
-                    self.ui(|e| e.cancel_requested());
+                    self.ui(Ui::CancelRequested);
                     return;
                 }
                 if self.pending.lock().unwrap().values().any(|p| matches!(p, Pending::Overlay { .. })) {
@@ -582,7 +580,7 @@ impl Inner {
         let wallpaper = std::fs::canonicalize(theme::current_dir().join("background")).ok();
         let j = json!({ "hidden": hidden, "wallpaper": wallpaper, "outputs": outputs }).to_string();
         trace::trace("desktop", &j[1..j.len() - 1]);
-        self.ui(move |e| e.desktop_cover(&QString::from(j.as_str())));
+        self.ui(Ui::DesktopCover(j));
     }
 
     pub fn desktop_is_hidden(&self) -> bool {
@@ -625,7 +623,7 @@ impl Inner {
         }
         self.deferred.lock().unwrap().insert(req, (source, cursor));
         trace::trace("capture_deferred", &format!("\"req\":{req}"));
-        self.ui(move |e| e.prepare_capture(req as i32));
+        self.ui(Ui::PrepareCapture(req as i32));
         // never stall a capture on a stuck UI: QML answers within its own
         // 250 ms (Platform.afterFrames), so this only goes when it can't
         let me = self.clone();
@@ -667,7 +665,7 @@ impl Inner {
         // The stack comes back now, except for a selection: then it returns
         // when the overlay closes (QML), so it can't flash in between.
         if !matches!(p, Pending::Overlay { .. }) || r.frames.is_empty() {
-            self.ui(|e| e.capture_done());
+            self.ui(Ui::CaptureDone);
         }
         if !r.failed.is_empty() {
             trace::warn("capture_failed", &format!("\"which\":{}", js(&r.failed.join(","))));
@@ -782,11 +780,7 @@ impl Inner {
         trace::trace("session", &format!("\"json\":{session}"));
         frames::publish(frames_);
         *self.session.lock().unwrap() = Some(Session { mode, clients: snap.clients, job });
-        self.ui(move |mut e| {
-            e.as_mut().set_session(QString::from(session.as_str()));
-            e.as_mut().set_epoch(epoch as i32);
-            e.as_mut().frames_ready(epoch as i32);
-        });
+        self.ui(Ui::Session { json: session, epoch: epoch as i32 });
     }
 
     /// The user finished a selection (physical px of `output`), with Shift
@@ -844,7 +838,7 @@ impl Inner {
         let r = shown.unwrap_or(Rect::new(-1, -1, 0, 0));
         trace::trace("countdown", &format!("\"output\":{},\"seconds\":{seconds}", js(&out)));
         *self.countdown.lock().unwrap() = Some(c);
-        self.ui(move |e| e.countdown(&QString::from(out.as_str()), r.x, r.y, r.w, r.h, seconds as i32));
+        self.ui(Ui::Countdown { output: out, rect: r, seconds: seconds as i32 });
     }
 
     /// The countdown reached zero and is off screen: capture now.
@@ -1019,7 +1013,7 @@ impl Inner {
             OpenLinks::Always => self.open_link(&url),
             OpenLinks::Ask => {
                 let out = self.cursor_output().unwrap_or_default();
-                self.ui(move |e| e.link_offer(&QString::from(url.as_str()), &QString::from(out.as_str())));
+                self.ui(Ui::LinkOffer { url, output: out });
             }
         }
     }
@@ -1196,7 +1190,7 @@ impl Inner {
         j["scale"] = json!(scale);
         let s = j.to_string();
         trace::trace("auto_background", &format!("\"id\":\"{}\"", rec.id));
-        self.ui(move |e| e.background_auto(&QString::from(s.as_str())));
+        self.ui(Ui::BackgroundAuto(s));
         true
     }
 
@@ -1252,7 +1246,7 @@ impl Inner {
         self.cards.lock().unwrap().push((rec.id.clone(), output.to_string()));
         self.closed.lock().unwrap().retain(|i| i != &rec.id);
         let j = card_json(rec, output).to_string();
-        self.ui(move |e| e.card_add(&QString::from(j.as_str())));
+        self.ui(Ui::CardAdd(j));
     }
 
     /// A capture back in Quick Access, unless its card is there already:
@@ -1270,7 +1264,7 @@ impl Inner {
     /// Show the history window on the monitor with the pointer.
     pub fn open_history(&self) {
         let out = self.cursor_output().unwrap_or_default();
-        self.ui(move |e| e.history_open(&QString::from(out.as_str())));
+        self.ui(Ui::HistoryOpen(out));
     }
 
     /// The history window (HIS-01, HIS-05): the newest captures, or the ones
@@ -1425,7 +1419,7 @@ impl Inner {
             let out = self.cards.lock().unwrap().iter().find(|(i, _)| i == id).map(|(_, o)| o.clone()).unwrap_or_default();
             let j = card_json(&rec, &out).to_string();
             let id = id.to_string();
-            self.ui(move |e| e.card_update(&QString::from(id.as_str()), &QString::from(j.as_str())));
+            self.ui(Ui::CardUpdate { id, json: j });
         }
         Ok(path)
     }
@@ -1443,7 +1437,7 @@ impl Inner {
             let out = self.cards.lock().unwrap().iter().find(|(i, _)| i == id).map(|(_, o)| o.clone()).unwrap_or_default();
             let j = card_json(&rec, &out).to_string();
             let id = id.to_string();
-            self.ui(move |e| e.card_update(&QString::from(id.as_str()), &QString::from(j.as_str())));
+            self.ui(Ui::CardUpdate { id, json: j });
         }
         Ok(path)
     }
@@ -1589,7 +1583,7 @@ impl Inner {
         }
         let s = j.to_string();
         trace::trace("pin_open", &format!("\"id\":\"{id}\""));
-        self.ui(move |e| e.pin_open(&QString::from(s.as_str())));
+        self.ui(Ui::PinOpen(s));
         Ok(j)
     }
 
@@ -1615,7 +1609,7 @@ impl Inner {
         })
         .to_string();
         trace::trace("editor_open", &format!("\"id\":\"{id}\""));
-        self.ui(move |e| e.editor_open(&QString::from(j.as_str())));
+        self.ui(Ui::EditorOpen(j));
     }
 
     /// `snip edit FILE` (ANN-19): the file becomes a capture (the user's file
@@ -1642,8 +1636,7 @@ impl Inner {
                     }
                     return;
                 }
-                let (id, action) = (id.clone(), action.clone());
-                me.ui(move |e| e.editor_done(&QString::from(id.as_str()), &QString::from(action.as_str()), ok, &QString::from(detail.as_str())));
+                me.ui(Ui::EditorDone { id: id.clone(), action: action.clone(), ok, detail });
             };
             let Some(r) = crate::edits::take(token) else { return done(false, "nothing was rendered".into()) };
             let opaque = r.rgba.chunks_exact(4).all(|p| p[3] == 255);
@@ -1662,7 +1655,7 @@ impl Inner {
             let out = me.cards.lock().unwrap().iter().find(|(i, _)| i == &id).map(|(_, o)| o.clone()).unwrap_or_default();
             let j = card_json(&rec, &out).to_string();
             let cid = id.clone();
-            me.ui(move |e| e.card_update(&QString::from(cid.as_str()), &QString::from(j.as_str())));
+            me.ui(Ui::CardUpdate { id: cid, json: j });
             trace::trace("edited", &format!("\"id\":\"{id}\",\"w\":{},\"h\":{},\"ms\":{:.1}", r.width, r.height, trace::ms_since(t0)));
             let res = match action.as_str() {
                 "copy" => me.copy(&id),
@@ -1713,7 +1706,7 @@ impl Inner {
                     let out = me.cards.lock().unwrap().iter().find(|(i, _)| i == &id).map(|(_, o)| o.clone()).unwrap_or_default();
                     let j = card_json(&rec, &out).to_string();
                     trace::trace("transformed", &format!("\"id\":\"{id}\",\"op\":{},\"w\":{w},\"h\":{h}", js(&op)));
-                    me.ui(move |e| e.card_update(&QString::from(id.as_str()), &QString::from(j.as_str())));
+                    me.ui(Ui::CardUpdate { id, json: j });
                 }
                 Err(e) => me.toast(format!("Could not change the capture: {e}")),
             }
@@ -1769,7 +1762,7 @@ impl Inner {
                 .unwrap_or_default();
             trace::trace("editor_words", &format!("\"n\":{},\"ms\":{:.0}", words.len(), trace::ms_since(t0)));
             let j = serde_json::to_string(&words).unwrap_or_else(|_| "[]".into());
-            me.ui(move |e| e.editor_words(&QString::from(path.as_str()), &QString::from(j.as_str())));
+            me.ui(Ui::EditorWords { path, json: j });
         });
     }
 
@@ -1828,7 +1821,7 @@ impl Inner {
         let me = self.clone();
         std::thread::spawn(move || {
             let path = rx.recv().ok().filter(|r| r.ok).and_then(|r| r.result.as_str().map(String::from)).unwrap_or_default();
-            me.ui(move |e| e.editor_screenshot(token, &QString::from(path.as_str())));
+            me.ui(Ui::EditorScreenshot { token, path });
         });
     }
 
@@ -1840,7 +1833,7 @@ impl Inner {
         let me = self.clone();
         std::thread::spawn(move || {
             let c = rx.recv().ok().filter(|r| r.ok).and_then(|r| r.result.as_str().map(String::from)).unwrap_or_default();
-            me.ui(move |e| e.editor_color(token, &QString::from(c.as_str())));
+            me.ui(Ui::EditorColor { token, color: c });
         });
     }
 
@@ -2031,7 +2024,7 @@ impl Inner {
             "version": env!("SNIP_VERSION"),
         })
         .to_string();
-        self.ui(move |mut e| e.as_mut().set_settings(QString::from(j.as_str())));
+        self.ui(Ui::Settings(j));
     }
 
     pub fn push_theme(&self) {
@@ -2045,7 +2038,7 @@ impl Inner {
         t["roundingPower"] = json!(snip_hypr::option_float("decoration:rounding_power").unwrap_or(2.0));
         let j = t.to_string();
         trace::trace("theme", &format!("\"name\":{}", t["name"]));
-        self.ui(move |mut e| e.as_mut().set_theme(QString::from(j.as_str())));
+        self.ui(Ui::Theme(j));
     }
 
     pub fn sweep(&self) {
@@ -2103,11 +2096,11 @@ impl Inner {
                 Response::ok(Value::Null)
             }
             Ctl::Welcome => {
-                self.ui(|e| e.welcome_open());
+                self.ui(Ui::WelcomeOpen);
                 Response::ok(Value::Null)
             }
             Ctl::Settings { tab } => {
-                self.ui(move |e| e.settings_open(&QString::from(tab.unwrap_or_default().as_str())));
+                self.ui(Ui::SettingsOpen(tab.unwrap_or_default()));
                 Response::ok(Value::Null)
             }
             Ctl::Desktop { action } => self.desktop(&action),
@@ -2145,7 +2138,7 @@ impl Inner {
             },
             Ctl::Pins { action } => match action.as_str() {
                 "toggle" | "close" | "unlock" => {
-                    self.ui(move |e| e.pins_command(&QString::from(action.as_str())));
+                    self.ui(Ui::PinsCommand(action));
                     Response::ok(Value::Null)
                 }
                 _ => Response::err("pins: toggle, close or unlock"),
@@ -2176,11 +2169,11 @@ impl Inner {
             },
             Ctl::RestoreLast => {
                 // QML decides: un-hide hidden cards, else reopen the last closed one
-                self.ui(|e| e.cards_command(&QString::from("restore")));
+                self.ui(Ui::CardsCommand("restore".into()));
                 Response::ok(Value::Null)
             }
             Ctl::CloseAll => {
-                self.ui(|e| e.cards_command(&QString::from("close-all")));
+                self.ui(Ui::CardsCommand("close-all".into()));
                 Response::ok(Value::Null)
             }
             Ctl::Status => Response::ok(self.status()),
@@ -2194,7 +2187,7 @@ impl Inner {
                 }
             }
             Ctl::Quit => {
-                self.ui(|e| e.quit_requested());
+                self.ui(Ui::QuitRequested);
                 Response::ok(Value::Null)
             }
             Ctl::Debug { op, args } => self.debug(&op, &args),
@@ -2251,7 +2244,7 @@ impl Inner {
             "ui" => {
                 // forward a command to QML (e.g. "key Escape", "key space", "finish")
                 let cmd = a.join(" ");
-                self.ui(move |e| e.debug_command(&QString::from(cmd.as_str())));
+                self.ui(Ui::DebugCommand(cmd));
                 Response::ok(Value::Null)
             }
             "sweep" => {
@@ -2354,6 +2347,127 @@ fn spawn_detached(cmd: &str, args: &[&str]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ui::Told;
+    use snip_core::editor_files::{self, File};
+
+    /// Engine tests share the process's environment (their files live in one
+    /// temp dir), so they run one at a time.
+    static SERIAL: Mutex<()> = Mutex::new(());
+
+    /// An engine without Qt, Wayland or Hyprland, its files in a temp dir;
+    /// and what it tells the UI. `auto`: a preset applied to new screenshots.
+    fn engine(auto: bool) -> (Arc<Inner>, Arc<Told>) {
+        static DIR: OnceLock<PathBuf> = OnceLock::new();
+        DIR.get_or_init(|| {
+            // one dir, emptied at each run
+            let d = std::env::temp_dir().join("snip-engine-tests");
+            let _ = std::fs::remove_dir_all(&d);
+            for (var, sub) in [("HOME", "home"), ("XDG_DATA_HOME", "data"), ("XDG_CONFIG_HOME", "config"), ("XDG_CACHE_HOME", "cache"), ("SNIP_RUNTIME_DIR", "run")] {
+                std::env::set_var(var, d.join(sub));
+            }
+            // never the user's session, notifications, browser or speakers
+            std::env::remove_var("HYPRLAND_INSTANCE_SIGNATURE");
+            std::env::set_var("SNIP_NO_PORTALS", "1");
+            let cfg = paths::config_dir();
+            std::fs::create_dir_all(&cfg).unwrap();
+            std::fs::write(cfg.join("config.toml"), "[general]\nsounds = false\n").unwrap();
+            d
+        });
+        let presets = if auto { r##"{"auto":"Green","presets":[{"name":"Green","bg":{"kind":"color","value":"#10a050","padding":40}}]}"## } else { "{}" };
+        editor_files::write(File::Backgrounds, presets).unwrap();
+        let told = Arc::new(Told::default());
+        (Inner::new(Box::new(told.clone())).unwrap(), told)
+    }
+
+    fn job(action: Option<AfterCapture>) -> Job {
+        Job { waiter: None, cursor: false, delay: 0, action, line_breaks: None, skip_preset: false }
+    }
+
+    /// An area screenshot as a selection makes one; its id.
+    fn capture(inner: &Arc<Inner>, job: Job) -> String {
+        let png = encode::encode_png(&[200u8; 3 * 8 * 6], 8, 6, false);
+        let meta = CaptureMeta { kind: "area".into(), scale: 1.0, output: "T".into(), app: None, title: None };
+        let (tx, rx) = mpsc::channel();
+        inner.ingest(png, 8, 6, meta, "T", Job { waiter: Some(tx), ..job });
+        rx.recv().unwrap().result["id"].as_str().unwrap().to_string()
+    }
+
+    /// The cards the UI was told to add, by id.
+    fn cards(told: &Told) -> Vec<String> {
+        let id = |j: &str| serde_json::from_str::<Value>(j).ok()?["id"].as_str().map(String::from);
+        told.0.lock().unwrap().iter().filter_map(|u| if let Ui::CardAdd(j) = u { id(j) } else { None }).collect()
+    }
+
+    fn backgrounds(told: &Told) -> usize {
+        told.0.lock().unwrap().iter().filter(|u| matches!(u, Ui::BackgroundAuto(_))).count()
+    }
+
+    /// Until the engine's own threads are done with it.
+    fn settle(inner: &Arc<Inner>) {
+        let t0 = std::time::Instant::now();
+        while Arc::strong_count(inner) > 1 && t0.elapsed() < Duration::from_secs(5) {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    #[test]
+    fn a_capture_shows_its_card_unless_its_own_action_runs_instead() {
+        let _one = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+        let (inner, told) = engine(false);
+        let plain = capture(&inner, job(None));
+        capture(&inner, job(Some(AfterCapture::Copy)));      // & Copy: copied, no card (CAP-02)
+        assert_eq!(cards(&told), [plain]);
+    }
+
+    #[test]
+    fn a_capture_keeps_its_own_action_while_its_background_is_drawn() {
+        let _one = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+        let (inner, told) = engine(true);
+        capture(&inner, job(Some(AfterCapture::Copy)));
+        let second = capture(&inner, job(None));
+        // both wait for their background (BG-03); then QML commits each
+        assert_eq!((backgrounds(&told), cards(&told).len()), (2, 0));
+        for (id, _) in inner.pending_bg.lock().unwrap().clone() {
+            inner.editor_commit(&id, 0, "{}".into(), "auto-bg".into());
+        }
+        settle(&inner);
+        assert_eq!(cards(&told), [second], "the first is copied, as it asked; only the second gets a card");
+    }
+
+    #[test]
+    fn shift_skips_the_preset_for_that_capture_only() {
+        let _one = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+        let (inner, told) = engine(true);
+        let skipped = capture(&inner, Job { skip_preset: true, ..job(None) });
+        capture(&inner, job(None));
+        assert_eq!((cards(&told), backgrounds(&told)), (vec![skipped], 1));
+    }
+
+    #[test]
+    fn closed_cards_come_back_newest_first() {
+        let _one = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+        let (inner, told) = engine(false);
+        let (a, b) = (capture(&inner, job(None)), capture(&inner, job(None)));
+        inner.card_closed(&a);
+        inner.card_closed(&b);
+        assert!(inner.restore_last().is_ok() && inner.restore_last().is_ok());
+        assert_eq!(inner.restore_last(), Err("nothing to restore".into()));
+        assert_eq!(cards(&told), [a.clone(), b.clone(), b, a]);
+    }
+
+    #[test]
+    fn a_capture_key_during_a_countdown_cancels_both() {
+        let _one = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+        let (inner, told) = engine(false);
+        *inner.outputs.lock().unwrap() = vec![OutputInfo { name: "T".into(), logical: Rect::new(0, 0, 800, 600), transform: 0 }];
+        let ((timer, timed), (key, keyed)) = (mpsc::channel(), mpsc::channel());
+        inner.begin("fullscreen", Some("T".into()), None, Some(timer), 3, None);
+        inner.begin("area", None, None, Some(key), 0, None);
+        assert_eq!(*told.0.lock().unwrap(), [Ui::Countdown { output: "T".into(), rect: Rect::new(-1, -1, 0, 0), seconds: 3 }, Ui::CountdownCancel]);
+        for rx in [timed, keyed] {
+            assert_eq!(rx.recv().unwrap().error.as_deref(), Some("cancelled"));
+        }
+    }
 
     #[test]
     fn percent_decoding_reverses_encoding() {

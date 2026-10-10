@@ -5,5 +5,6 @@ pub mod bridge;
 mod edits;
 mod engine;
 mod frames;
+mod ui;
 mod watch;
 mod welcome;

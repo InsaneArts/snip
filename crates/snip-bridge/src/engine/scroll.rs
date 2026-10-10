@@ -23,7 +23,7 @@ use snip_hypr::Client;
 use snip_wayland::{Request as Wl, Source};
 
 use super::{cancelled, reply, Inner, Job, Pending};
-use cxx_qt_lib::QString;
+use crate::ui::Ui;
 use snip_ipc::Response;
 
 const READY: u8 = 0;
@@ -71,7 +71,7 @@ impl Inner {
         super::hypr("session_keys", snip_hypr::keys::session_keys(&crate::bridge::app_id(), true));
         let l = snip_core::geometry::physical_to_logical(rect, s);
         let j = json!({ "output": output, "x": l.x, "y": l.y, "w": l.w, "h": l.h }).to_string();
-        self.ui(move |e| e.scroll_open(&QString::from(j.as_str())));
+        self.ui(Ui::ScrollOpen(j));
     }
 
     /// Start Capture: frames until Done or Cancel.
@@ -136,7 +136,7 @@ impl Inner {
     fn scroll_close(&self) -> Option<Scroll> {
         let s = self.scroll.lock().unwrap().take();
         super::hypr("session_keys", snip_hypr::keys::session_keys("", false));
-        self.ui(|e| e.scroll_close());
+        self.ui(Ui::ScrollClose);
         s
     }
 
@@ -235,7 +235,7 @@ impl Inner {
                 }
             }
             let j = j.to_string();
-            self.ui(move |e| e.scroll_status(&QString::from(j.as_str())));
+            self.ui(Ui::ScrollStatus(j));
             // about 12 frames a second: scrolling by hand is slower than that
             std::thread::sleep(Duration::from_millis(80).saturating_sub(t0.elapsed()));
         }

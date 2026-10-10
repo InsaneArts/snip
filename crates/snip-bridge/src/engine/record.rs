@@ -21,7 +21,7 @@ use snip_core::trace::{self, js};
 use snip_core::media;
 
 use super::{cancelled, card_json, reply, Inner, Waiter};
-use cxx_qt_lib::QString;
+use crate::ui::Ui;
 use snip_ipc::Response;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -154,7 +154,7 @@ impl Inner {
             "fakeCamera": std::env::var("SNIP_CAMERA").is_ok_and(|v| v == "fake"),
         })
         .to_string();
-        self.ui(move |e| e.record_open(&QString::from(j.as_str())));
+        self.ui(Ui::RecordOpen(j));
         // scripts: no panel and no countdown, the frame and controls only
         if now {
             self.record_go();
@@ -408,7 +408,7 @@ impl Inner {
         extra["state"] = json!(state);
         let j = extra.to_string();
         trace::trace("record_status", &j[1..j.len() - 1]);
-        self.ui(move |e| e.record_status(&QString::from(j.as_str())));
+        self.ui(Ui::RecordStatus(j));
     }
 
     /// Clicks and keys while `sid` records (REC-09/10): Hyprland's hooks send
@@ -451,7 +451,7 @@ impl Inner {
         };
         drop(r);
         let j = j.to_string();
-        self.ui(move |e| e.record_input(&QString::from(j.as_str())));
+        self.ui(Ui::RecordInput(j));
     }
 
     /// Stop a take's recorder (its file is finished, or deleted), then what
@@ -492,7 +492,7 @@ impl Inner {
         let dnd = rec.run.as_ref().is_some_and(|run| run.dnd);
         // gsr first: the HUD (the camera, the keys) stays until the file is finished
         let file = rec.run.take().and_then(|run| self.record_end_run(run, keep));
-        self.ui(|e| e.record_close());
+        self.ui(Ui::RecordClose);
         if dnd {
             self.dnd(false);
         }
@@ -605,7 +605,7 @@ impl Inner {
 
     fn record_close(self: &Arc<Self>, _keep: bool) {
         let rec = self.recording.lock().unwrap().take();
-        self.ui(|e| e.record_close());
+        self.ui(Ui::RecordClose);
         if let Some(rec) = rec {
             reply(rec.waiter, cancelled());
         }

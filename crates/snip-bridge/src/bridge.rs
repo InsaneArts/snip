@@ -526,7 +526,7 @@ impl qobject::Engine {
         }
         trace::init();
         let interactive = mode.to_string() == "interactive";
-        let inner = match Inner::new(self.qt_thread()) {
+        let inner = match Inner::new(Box::new(crate::ui::Qt(self.qt_thread()))) {
             Ok(i) => i,
             Err(e) => {
                 trace::error("start", &format!("\"msg\":{}", trace::js(&e)));
