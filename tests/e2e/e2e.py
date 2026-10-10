@@ -374,7 +374,9 @@ def first_overlay_is_warm(s, env):
     shown = s.traces("overlay_presented")[0]["t_ns"]
     ms = (shown - begin) / 1e6
     print(f"      first overlay: {ms:.1f} ms")
-    assert ms < 100, ms
+    # nested, the output draws at 15 fps while unfocused: a frame can add 67 ms
+    # (28-104 ms there; the cold path took ~145 ms even on a real output)
+    assert ms < (120 if OUT == Nested.OUTPUT else 100), ms
 
 
 @case
