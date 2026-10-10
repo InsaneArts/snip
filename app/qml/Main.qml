@@ -347,8 +347,11 @@ QtObject {
         if (open) { open.raise(); open.requestActivate(); return }
         const e = editorComponent.createObject(null, { capture: capture, controller: root })
         editors[capture.id] = e
-        e.finished.connect(() => { delete editors[capture.id]; e.destroy() })
+        e.finished.connect(() => { delete editors[capture.id]; e.destroy(); trim.restart() })
     }
+    // a big window just went (its pixels, its render thread's memory): give
+    // the memory back once it's destroyed
+    property Timer trim: Timer { interval: 1500; onTriggered: Platform.trimMemory() }
     // The video editor (VED): one window per recording, created like editors
     property var videoEditors: ({})
     property Component videoEditorComponent: Component { VideoEditor {} }
@@ -357,7 +360,7 @@ QtObject {
         if (open) { open.raise(); open.requestActivate(); return }
         const v = videoEditorComponent.createObject(null, { info: info, controller: root })
         videoEditors[info.id] = v
-        v.finished.connect(() => { delete videoEditors[info.id]; v.destroy() })
+        v.finished.connect(() => { delete videoEditors[info.id]; v.destroy(); trim.restart() })
     }
     // Pins (PIN-01): one window each, created directly like editors
     property var pins: []
@@ -371,7 +374,7 @@ QtObject {
     function openPin(capture) {
         const p = pinComponent.createObject(null, { capture: capture, controller: root, number: nextToken() })
         pins = pins.concat([p])
-        p.finished.connect(() => { pins = pins.filter(x => x !== p); p.destroy() })
+        p.finished.connect(() => { pins = pins.filter(x => x !== p); p.destroy(); trim.restart() })
     }
     function closePins() { for (const p of pins.slice()) p.close_() }
 

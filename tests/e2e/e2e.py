@@ -2363,6 +2363,35 @@ def video_editor(s, env):
 
 
 @case
+def video_editor_gives_memory_back(s, env):
+    """Closing the video editor gives its memory back: opened and closed four times,
+    snipd doesn't keep growing (glibc kept what the window's threads freed, until
+    snipd trims it)."""
+    clip = s.tmp / "mem.mp4"
+    make_clip(clip, seconds=6, size="1920x1080")
+    vid = s.json("open", str(clip))["result"]
+    mon = env.monitor()
+
+    def rss():
+        status = dict(l.split(":", 1) for l in open(f"/proc/{s.proc.pid}/status") if ":" in l)
+        return int(status["VmRSS"].split()[0]) // 1024
+
+    sizes = []
+    for _ in range(4):
+        s.debug("annotate", vid["id"])
+        assert wait_for(lambda: video_editor_window(), 8), "the editor opens"
+        time.sleep(2.0)
+        w = video_editor_window()
+        s.move(w["at"][0] - mon["x"] + w["size"][0] / 2, w["at"][1] - mon["y"] + 20); s.click(); time.sleep(0.3)
+        s.debug("ui", "video", "keys", "{Escape}")
+        assert wait_for(lambda: not video_editor_window(), 5), "Escape closes it"
+        time.sleep(3.0)
+        sizes.append(rss())
+    s.cli("close-all")
+    assert sizes[3] - sizes[1] <= 25, ("MB after each close", sizes)
+
+
+@case
 def video_editor_background(s, env):
     """D50: the video editor's Background section puts a background around the recording,
     as the Background tool does around a screenshot: in the preview at once, and in the
