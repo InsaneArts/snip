@@ -14,7 +14,7 @@ use snip_core::trace::{self, js};
 use snip_core::paths;
 
 use super::{card_json, Inner};
-use cxx_qt_lib::QString;
+use crate::ui::Ui;
 
 impl Inner {
     /// Open a recording in the video editor: what it holds at once, then its
@@ -39,13 +39,13 @@ impl Inner {
             })
             .to_string();
             trace::trace("video_open", &format!("\"id\":\"{id}\",\"tracks\":{}", p.audio_tracks));
-            me.ui(move |e| e.video_editor_open(&QString::from(j.as_str())));
+            me.ui(Ui::VideoEditorOpen(j));
             let dir = paths::cache_dir().join("video").join(&id);
             let _ = std::fs::remove_dir_all(&dir);
             let thumbs = media::thumbnails(&rec.source, p.duration_ms, 12, 72, &dir).unwrap_or_default();
             trace::trace("video_thumbs", &format!("\"id\":\"{id}\",\"thumbs\":{}", thumbs.len()));
             let t = json!(thumbs).to_string();
-            me.ui(move |e| e.video_thumbs(&QString::from(id.as_str()), &QString::from(t.as_str())));
+            me.ui(Ui::VideoThumbs { id, json: t });
         });
     }
 
@@ -60,7 +60,7 @@ impl Inner {
         std::thread::spawn(move || {
             let status = |j: Value| {
                 let (id, s) = (id.clone(), j.to_string());
-                me.ui(move |e| e.video_export_status(&QString::from(id.as_str()), &QString::from(s.as_str())));
+                me.ui(Ui::VideoExportStatus { id, json: s });
             };
             let Ok(rec) = me.store.get(&id) else { return status(json!({ "done": true, "ok": false, "error": "the recording is gone" })) };
             let keep: Vec<(f64, f64)> = spec["keep"].as_array().map(|a| a.iter().filter_map(|p| Some((p[0].as_f64()?, p[1].as_f64()?))).filter(|(a, b)| b > a).collect()).unwrap_or_default();
@@ -132,7 +132,7 @@ impl Inner {
                         let _ = std::fs::remove_dir_all(paths::drag_dir().join(&id));
                         let j = card_json(&r, &output).to_string();
                         let rid = r.id.clone();
-                        me.ui(move |e| e.card_update(&QString::from(rid.as_str()), &QString::from(j.as_str())));
+                        me.ui(Ui::CardUpdate { id: rid, json: j });
                         r
                     })
             } else {

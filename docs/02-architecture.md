@@ -439,7 +439,8 @@ snip/
 │  │                          toplevels, cursor session (wayland-client + calloop)
 │  ├─ snip-hypr/              Hyprland socket2 / eval / window cache / Lua rule and hook injection
 │  ├─ snip-ipc/               ctl.sock protocol (shared by daemon and CLI)
-│  ├─ snip-bridge/            cxx-qt QObjects and models exposed to QML
+│  ├─ snip-bridge/            cxx-qt QObjects and models exposed to QML; the engine tells
+│  │                          the UI through one seam (ui.rs: Qt's queue, or a list in tests)
 │  └─ snip-cli/               `snip` binary (no Qt)
 ├─ app/                       `snipd`: main.cpp, C++ QQuickItems, LayerShellQt windows,
 │  │                          DnD (KF6 KUrlMimeData), raw xdg-tag / hyprland-surface helpers
