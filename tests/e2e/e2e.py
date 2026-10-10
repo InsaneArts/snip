@@ -813,12 +813,13 @@ def latency(s, env):
     """Hotkey -> every overlay presented: p95 < 35 ms warm (SEL-01)."""
     times = []
     s.move(400, 300)   # Escape goes to the overlay under the pointer
+    n = len(s.traces())   # this case's presses only: earlier cases' may have opened nothing
     for i in range(12):
         hypr_eval('hl.dispatch(hl.dsp.global("snip-e2e:area"))')
         time.sleep(0.35)
         s.key("Escape")
         time.sleep(0.25)
-    ev = s.traces()
+    ev = s.traces()[n:]
     shortcuts = [e for e in ev if e["ev"] == "shortcut" and e.get("id") == "area"]
     for sc in shortcuts:
         pres = [e for e in ev if e["ev"] == "overlay_presented" and e["t_ns"] > sc["t_ns"]]
