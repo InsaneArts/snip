@@ -541,6 +541,22 @@ def hotkey_again_while_opening_cancels(s, env):
 
 
 @case
+def overlay_takes_the_pointer_at_once(s, env):
+    """SEL-01: the overlay takes the pointer as soon as it shows. Hyprland hands a new layer
+    pointer focus only on motion, so Snip nudges the pointer; else a press made without
+    moving first goes to the app underneath (a drag selects its text, not an area). In a
+    fresh snipd, one that has never moved a pointer itself."""
+    s.stop(); s.start(); time.sleep(1.5)
+    n = len(s.traces("pointer_nudged"))
+    p = s.bg("area")
+    try:
+        assert wait_for(lambda: len(s.traces("pointer_nudged")) > n, 3), "nudged"
+        assert s.traces("pointer_nudged")[-1]["moved"], "the nudge moved the pointer"
+    finally:
+        s.key("Escape"); finish(p, timeout=5)
+
+
+@case
 def area_alt_square_at_an_edge(s, env):
     """SEL-07 (D32): Alt makes a square, also where the screen's edge stops the drag: as
     big a square as fits, not one cut into a rectangle."""
