@@ -82,11 +82,22 @@ Window {
 
     Rectangle {
         id: panel
-        readonly property bool besideRight: hud.area.x + hud.area.width + 16 + width <= hud.width - 8
+        objectName: "scroll-panel"
+        // never in the area (it would be in the capture): beside it, else under
+        // or over it; with no room anywhere, the far corner
+        readonly property point at: {
+            const a = hud.area, w = width, h = height, g = 16
+            const sy = Math.max(8, Math.min(a.y, hud.height - h - 8)), cx = Math.max(8, Math.min(hud.width - w - 8, a.x + a.width / 2 - w / 2))
+            if (a.x + a.width + g + w <= hud.width - 8) return Qt.point(a.x + a.width + g, sy)
+            if (a.x - g - w >= 8) return Qt.point(a.x - g - w, sy)
+            if (a.y + a.height + g + h <= hud.height - 8) return Qt.point(cx, a.y + a.height + g)
+            if (a.y - g - h >= 8) return Qt.point(cx, a.y - g - h)
+            return Qt.point(a.x + a.width / 2 < hud.width / 2 ? hud.width - w - 8 : 8, hud.height - h - 8)
+        }
         width: 330
         height: col.implicitHeight + 24
-        x: besideRight ? hud.area.x + hud.area.width + 16 : Math.max(8, hud.area.x - 16 - width)
-        y: Math.max(8, Math.min(hud.area.y, hud.height - height - 8))
+        x: at.x
+        y: at.y
         radius: Math.max(10, Theme.radius)
         color: Theme.pillBg
         border.width: 1

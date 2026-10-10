@@ -876,7 +876,8 @@ impl Inner {
                 let me = self.clone();
                 std::thread::spawn(move || {
                     std::thread::sleep(Duration::from_millis(90));
-                    me.wl(Wl::Capture { request: req, source: Source::Outputs(Some(vec![output])), cursor });
+                    // Snip's cards step aside first, as for any capture
+                    me.capture_clean(req, Source::Outputs(Some(vec![output])), cursor);
                 });
             }
         }

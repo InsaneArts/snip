@@ -205,7 +205,8 @@ Window {
     function toggleFull() {
         if (!whole) return setArea(Qt.rect(0, 0, screenSize.width, screenSize.height))
         const s = screenSize
-        setArea(lastArea.width > 0 ? lastArea : Qt.rect(Math.round(s.width * 0.2), Math.round(s.height * 0.2), Math.round(s.width * 0.6), Math.round(s.height * 0.6)))
+        // a drag too small to keep never counts (a jittery click passed by it)
+        setArea(lastArea.width >= 16 && lastArea.height >= 16 ? lastArea : Qt.rect(Math.round(s.width * 0.2), Math.round(s.height * 0.2), Math.round(s.width * 0.6), Math.round(s.height * 0.6)))
     }
     function key(e) {
         if (phase === "countdown") {
@@ -471,8 +472,9 @@ Window {
             border.width: 2
             border.color: Theme.accent
             readonly property real out: hud.margin + 1
-            x: (modelData.includes("l") ? hud.area.x - out : modelData.includes("r") ? hud.area.x + hud.area.width + out : hud.area.x + hud.area.width / 2) - width / 2
-            y: (modelData.includes("t") ? hud.area.y - out : modelData.includes("b") ? hud.area.y + hud.area.height + out : hud.area.y + hud.area.height / 2) - height / 2
+            // on screen, also at its edges
+            x: Math.max(0, Math.min(hud.width - width, (modelData.includes("l") ? hud.area.x - out : modelData.includes("r") ? hud.area.x + hud.area.width + out : hud.area.x + hud.area.width / 2) - width / 2))
+            y: Math.max(0, Math.min(hud.height - height, (modelData.includes("t") ? hud.area.y - out : modelData.includes("b") ? hud.area.y + hud.area.height + out : hud.area.y + hud.area.height / 2) - height / 2))
             MouseArea {
                 anchors.fill: parent
                 anchors.margins: -6
@@ -742,13 +744,15 @@ Window {
                                 font.pixelSize: 13
                                 font.features: { "tnum": 1 }
                                 selectByMouse: true
-                                onAccepted: {
+                                // Enter, or leaving the field (a click on Record, the other field)
+                                function commit() {
                                     const n = Number(text)
+                                    if (!acceptableInput || n === px) return
                                     if (sizeRow.modelData === "w") hud.setSize(n, Math.round(hud.area.height))
                                     else hud.setSize(Math.round(hud.area.width), n)
-                                    keyboard.forceActiveFocus()
                                 }
-                                onActiveFocusChanged: if (!activeFocus) text = Qt.binding(() => px)
+                                onAccepted: { commit(); keyboard.forceActiveFocus() }
+                                onActiveFocusChanged: if (!activeFocus) { commit(); text = Qt.binding(() => px) }
                                 Keys.onEscapePressed: keyboard.forceActiveFocus()
                             }
                         }
