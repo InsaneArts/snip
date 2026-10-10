@@ -65,11 +65,52 @@ struct Job {
     skip_preset: bool,
 }
 
+/// What a capture's frame becomes: a screenshot (kept in history), pinned,
+/// read, or a file for an editor. A selection's is decided once, by `of`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Kind {
+    Area,
+    Window,
+    Fullscreen,
+    /// Capture Area & Pin (PIN-01): an area, pinned where it was
+    AreaPin,
+    /// Capture Text (CAP-09): read and copied, not kept
+    Text,
+    /// for an editor (ANN-12): a file to add, not a capture in history
+    Insert,
+}
+
+impl Kind {
+    /// A selection in the overlay's `mode`, of what was `picked` there
+    /// ("area", "window", "fullscreen").
+    fn of(mode: &str, picked: &str) -> Kind {
+        match (mode, picked) {
+            ("text", _) => Kind::Text,
+            ("insert", _) => Kind::Insert,
+            ("area-pin", "area") => Kind::AreaPin,
+            (_, "window") => Kind::Window,
+            (_, "fullscreen") => Kind::Fullscreen,
+            _ => Kind::Area,
+        }
+    }
+
+    /// The kind history keeps.
+    fn stored(self) -> &'static str {
+        match self {
+            Kind::Area | Kind::AreaPin => "area",
+            Kind::Window => "window",
+            Kind::Fullscreen => "fullscreen",
+            Kind::Text => "text",
+            Kind::Insert => "insert",
+        }
+    }
+}
+
 enum Pending {
     /// Frames for a selection overlay (area / window / text)
     Overlay { mode: String, snap: JoinHandle<Snapshot>, job: Job },
     /// A rectangle (or the whole output when `rect` is None) of one output
-    Region { output: String, rect: Option<Rect>, kind: String, job: Job },
+    Region { output: String, rect: Option<Rect>, kind: Kind, job: Job },
     /// Every monitor, for one image (CAP-04)
     AllOutputs { job: Job },
     /// A clean window buffer (CAP-05)
@@ -88,7 +129,7 @@ struct Session {
 struct Countdown {
     output: String,
     rect: Option<Rect>,
-    kind: String,
+    kind: Kind,
     job: Job,
 }
 
@@ -458,13 +499,13 @@ impl Inner {
                     return;
                 };
                 if job.delay > 0 {
-                    self.start_countdown(Countdown { output, rect: None, kind: "fullscreen".into(), job }, None);
+                    self.start_countdown(Countdown { output, rect: None, kind: Kind::Fullscreen, job }, None);
                     return;
                 }
                 self.play("shutter");
                 let req = self.next();
                 let cursor = job.cursor;
-                self.pending.lock().unwrap().insert(req, Pending::Region { output: output.clone(), rect: None, kind: "fullscreen".into(), job });
+                self.pending.lock().unwrap().insert(req, Pending::Region { output: output.clone(), rect: None, kind: Kind::Fullscreen, job });
                 self.capture_clean(req, Source::Outputs(Some(vec![output])), cursor);
             }
             "previous" => {
@@ -485,7 +526,7 @@ impl Inner {
                 self.play("shutter");
                 let req = self.next();
                 let cursor = job.cursor;
-                self.pending.lock().unwrap().insert(req, Pending::Region { output: output.clone(), rect: Some(rect), kind: "area".into(), job });
+                self.pending.lock().unwrap().insert(req, Pending::Region { output: output.clone(), rect: Some(rect), kind: Kind::Area, job });
                 self.capture_clean(req, Source::Outputs(Some(vec![output])), cursor);
             }
             other => reply(job.waiter, Response::err(format!("unknown capture mode '{other}'"))),
@@ -505,7 +546,7 @@ impl Inner {
         *self.last_area.lock().unwrap() = Some((output.clone(), rect));
         self.play("shutter");
         let req = self.next();
-        self.pending.lock().unwrap().insert(req, Pending::Region { output: output.clone(), rect: Some(rect), kind: "area".into(), job });
+        self.pending.lock().unwrap().insert(req, Pending::Region { output: output.clone(), rect: Some(rect), kind: Kind::Area, job });
         self.capture_clean(req, Source::Outputs(Some(vec![output])), cursor);
     }
 
@@ -692,7 +733,7 @@ impl Inner {
                 };
                 let (uw, uh) = frame.upright_size();
                 let rect = rect.unwrap_or(Rect::new(0, 0, uw, uh));
-                self.finish_from_frame(&frame, rect, &kind, &output, job);
+                self.finish_from_frame(&frame, rect, kind, &output, job);
             }
             Pending::Scroll { .. } => {}
             Pending::AllOutputs { job } => {
@@ -718,7 +759,7 @@ impl Inner {
                     Some(f) => self.finish_window_frame(&f, &client, &output, shadow, job),
                     None => match fallback {
                         // no toplevel capture: what was on screen (frozen frame)
-                        Some(f) => self.finish_from_frame(&f, rect, "window", &output, job),
+                        Some(f) => self.finish_from_frame(&f, rect, Kind::Window, &output, job),
                         None => {
                             self.toast("Window capture failed");
                             reply(job.waiter, Response::err("capture failed"));
@@ -785,8 +826,8 @@ impl Inner {
 
     /// The user finished a selection (physical px of `output`), with Shift
     /// held as it ended when `skip_preset` (D32).
-    pub fn finish_area(self: &Arc<Self>, output: String, rect: Rect, kind: String, skip_preset: bool) {
-        trace::trace("finish_area", &format!("\"output\":{},\"rect\":[{},{},{},{}],\"kind\":{}", js(&output), rect.x, rect.y, rect.w, rect.h, js(&kind)));
+    pub fn finish_area(self: &Arc<Self>, output: String, rect: Rect, picked: String, skip_preset: bool) {
+        trace::trace("finish_area", &format!("\"output\":{},\"rect\":[{},{},{},{}],\"kind\":{}", js(&output), rect.x, rect.y, rect.w, rect.h, js(&picked)));
         let Some(mut s) = self.session.lock().unwrap().take() else { return };
         s.job.skip_preset = skip_preset;
         if s.mode == "scroll" {
@@ -794,28 +835,27 @@ impl Inner {
             frames::clear();
             return self.scroll_open(output, rect, scale, s.job, &s.clients);
         }
-        // Capture Area & Pin (PIN-01): an area, pinned where it was
-        let kind = if s.mode == "text" || s.mode == "insert" || (s.mode == "area-pin" && kind == "area") { s.mode.clone() } else { kind };
-        if kind == "area" || kind == "area-pin" {
+        let kind = Kind::of(&s.mode, &picked);
+        if matches!(kind, Kind::Area | Kind::AreaPin) {
             *self.last_area.lock().unwrap() = Some((output.clone(), rect));
             save_last_area(&output, rect);
         }
         // self-timer: the selected area is captured live after the countdown
-        if s.job.delay > 0 && kind != "text" && kind != "insert" {
+        if s.job.delay > 0 && !matches!(kind, Kind::Text | Kind::Insert) {
             let scale = frames::get(&output).map(|f| f.scale).unwrap_or(1.0);
             frames::clear();
             let shown = geometry::physical_to_logical(rect, scale);
             self.start_countdown(Countdown { output, rect: Some(rect), kind, job: s.job }, Some(shown));
             return;
         }
-        if kind != "text" {
+        if kind != Kind::Text {
             self.play("shutter");
         }
         match frames::get(&output) {
             Some(frame) => {
                 frames::clear();
                 let me = self.clone();
-                std::thread::spawn(move || me.finish_from_frame(&frame, rect, &kind, &output, s.job));
+                std::thread::spawn(move || me.finish_from_frame(&frame, rect, kind, &output, s.job));
             }
             None => {
                 // live mode (freeze off): re-capture once the overlay is gone
@@ -870,7 +910,7 @@ impl Inner {
             frames::clear();
             let me = self.clone();
             return match frame {
-                Some(f) => drop(std::thread::spawn(move || me.finish_from_frame(&f, rect, "insert", &output, s.job))),
+                Some(f) => drop(std::thread::spawn(move || me.finish_from_frame(&f, rect, Kind::Insert, &output, s.job))),
                 None => reply(s.job.waiter, Response::err("window not found")),
             };
         }
@@ -882,7 +922,7 @@ impl Inner {
                 let (m, (uw, uh)) = ((WINDOW_DESKTOP_MARGIN * f.scale).round() as i32, f.upright_size());
                 let around = Rect::new(rect.x - m, rect.y - m, rect.w + 2 * m, rect.h + 2 * m).intersect(&Rect::new(0, 0, uw, uh));
                 let me = self.clone();
-                std::thread::spawn(move || me.finish_from_frame(&f, around, "window", &output, s.job));
+                std::thread::spawn(move || me.finish_from_frame(&f, around, Kind::Window, &output, s.job));
                 return;
             }
         }
@@ -901,7 +941,7 @@ impl Inner {
             _ => match fallback {
                 Some(f) => {
                     let me = self.clone();
-                    std::thread::spawn(move || me.finish_from_frame(&f, rect, "window", &output, s.job));
+                    std::thread::spawn(move || me.finish_from_frame(&f, rect, Kind::Window, &output, s.job));
                 }
                 None => reply(s.job.waiter, Response::err("window not found")),
             },
@@ -923,8 +963,8 @@ impl Inner {
         frames::clear();
     }
 
-    fn finish_from_frame(self: &Arc<Self>, frame: &Frame, rect: Rect, kind: &str, output: &str, job: Job) {
-        if kind == "insert" {
+    fn finish_from_frame(self: &Arc<Self>, frame: &Frame, rect: Rect, kind: Kind, output: &str, job: Job) {
+        if kind == Kind::Insert {
             // for an editor (ANN-12): a file to add, not a capture in history
             let (data, w, h, alpha) = encode::crop_upright(frame, rect);
             let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
@@ -935,7 +975,7 @@ impl Inner {
                 Err(e) => Response::err(e.to_string()),
             });
         }
-        if kind == "text" {
+        if kind == Kind::Text {
             let (data, w, h, alpha) = encode::crop_upright(frame, rect);
             return reply(job.waiter, self.read_text(&data, w, h, alpha, frame.scale, job.line_breaks));
         }
@@ -951,8 +991,8 @@ impl Inner {
             &format!("\"w\":{},\"h\":{},\"crop_ms\":{:.2},\"encode_ms\":{:.2},\"bytes\":{}", e.width, e.height, e.crop_ms, e.encode_ms, e.png.len()),
         );
         let (app, title) = self.window_meta_at(output, rect, frame.scale);
-        let meta = CaptureMeta { kind: kind.trim_end_matches("-pin").into(), scale: frame.scale, output: output.into(), app, title };
-        if kind == "area-pin" {
+        let meta = CaptureMeta { kind: kind.stored().into(), scale: frame.scale, output: output.into(), app, title };
+        if kind == Kind::AreaPin {
             // where the area was, in layout px: the pin goes right there
             let origin = self.outputs.lock().unwrap().iter().find(|o| o.name == output).map(|o| (o.logical.x, o.logical.y)).unwrap_or((0, 0));
             let at = (origin.0 + (rect.x as f64 / frame.scale).round() as i32, origin.1 + (rect.y as f64 / frame.scale).round() as i32);
@@ -2368,6 +2408,8 @@ mod tests {
             // never the user's session, notifications, browser or speakers
             std::env::remove_var("HYPRLAND_INSTANCE_SIGNATURE");
             std::env::set_var("SNIP_NO_PORTALS", "1");
+            // as snipd has them: its ctl.sock lives in the runtime dir
+            std::fs::create_dir_all(paths::runtime_dir()).unwrap();
             let cfg = paths::config_dir();
             std::fs::create_dir_all(&cfg).unwrap();
             std::fs::write(cfg.join("config.toml"), "[general]\nsounds = false\n").unwrap();
@@ -2453,6 +2495,59 @@ mod tests {
         assert!(inner.restore_last().is_ok() && inner.restore_last().is_ok());
         assert_eq!(inner.restore_last(), Err("nothing to restore".into()));
         assert_eq!(cards(&told), [a.clone(), b.clone(), b, a]);
+    }
+
+    #[test]
+    fn a_selection_is_what_its_mode_makes_of_what_was_picked() {
+        for (mode, picked, kind) in [
+            ("area", "area", Kind::Area),
+            ("area", "window", Kind::Window),
+            ("area", "fullscreen", Kind::Fullscreen),
+            ("window", "window", Kind::Window),
+            ("area-pin", "area", Kind::AreaPin),
+            ("area-pin", "window", Kind::Window),
+            ("text", "window", Kind::Text),
+            ("insert", "area", Kind::Insert),
+        ] {
+            assert_eq!(Kind::of(mode, picked), kind, "{mode} / {picked}");
+        }
+        assert_eq!(Kind::AreaPin.stored(), "area");
+    }
+
+    /// A selection session in `mode` over a frozen 8 x 6 frame of output T.
+    fn select(inner: &Arc<Inner>, mode: &str, job: Job) {
+        let mut buf = snip_core::frame::ShmBuf::new(8, 6, snip_core::frame::PixelFormat::Xrgb8888).unwrap();
+        buf.bytes_mut().fill(180);
+        let frame = Frame { output: "T".into(), buf: Arc::new(buf), transform: Default::default(), scale: 1.0, logical: Rect::new(0, 0, 8, 6), epoch: 1 };
+        inner.open_session(mode.into(), 1, Snapshot::default(), vec![frame], job);
+    }
+
+    #[test]
+    fn a_finished_selection_becomes_its_kind() {
+        let _one = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+        let (inner, told) = engine(false);
+        let pins = || told.0.lock().unwrap().iter().filter(|u| matches!(u, Ui::PinOpen(_))).count();
+        select(&inner, "area", job(None));
+        inner.finish_area("T".into(), Rect::new(1, 1, 4, 3), "area".into(), false);
+        settle(&inner);
+        assert_eq!((cards(&told).len(), pins()), (1, 0), "an area: its card");
+        select(&inner, "area-pin", job(None));
+        inner.finish_area("T".into(), Rect::new(1, 1, 4, 3), "area".into(), false);
+        settle(&inner);
+        assert_eq!((cards(&told).len(), pins()), (1, 1), "Capture Area & Pin: a pin, no card");
+        // the self-timer: the area is shown, then captured live
+        select(&inner, "area", Job { delay: 2, ..job(None) });
+        inner.finish_area("T".into(), Rect::new(2, 2, 4, 4), "area".into(), false);
+        assert_eq!(told.0.lock().unwrap().last(), Some(&Ui::Countdown { output: "T".into(), rect: Rect::new(2, 2, 4, 4), seconds: 2 }));
+        inner.begin("area", None, None, None, 0, None); // a key cancels it
+        // for an editor: a file, not a capture
+        let (tx, rx) = mpsc::channel();
+        select(&inner, "insert", Job { waiter: Some(tx), ..job(None) });
+        inner.finish_area("T".into(), Rect::new(1, 1, 4, 3), "area".into(), false);
+        let file = rx.recv().unwrap().result.as_str().map(PathBuf::from).unwrap();
+        assert!(file.exists() && file.starts_with(paths::runtime_dir()), "{file:?}");
+        settle(&inner);
+        assert_eq!(cards(&told).len(), 1, "and no card");
     }
 
     #[test]
