@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Window
 import Snip.Core
+import "probe.js" as Probe
 
 // Snip's settings (SET-02), CleanShot's Settings window: a tab bar and a
 // form for each tab. Every change goes straight into config.toml with the
@@ -864,15 +865,6 @@ Window {
     }
 
     // ---------------------------------------------------------------- tests
-    function find(item, name) {
-        if (item.objectName === name && item.visible) return item
-        for (const c of item.children) {
-            if (!c.visible) continue
-            const f = find(c, name)
-            if (f) return f
-        }
-        return null
-    }
     function debug(a) {
         switch (a[0]) {
         case "tab": tab = a[1]; break
@@ -882,23 +874,7 @@ Window {
         case "press": recorded(parseInt(a[1]), parseInt(a[2])); break      // Qt modifiers, keycode
         case "use": setShortcut(pending.action, pending.spec); break
         case "restore": restoreDefaults(); break
-        case "where": {
-            // the centre of a control in the window (logical px), for a click;
-            // positioners lay out at the next frame: now, so it's where it'll be
-            const it = find(contentItem, a[1])
-            for (let p = it; p; p = p.parent) if (p.forceLayout) p.forceLayout()
-            if (it) {
-                // scrolled into view, as a hand would
-                const top = it.mapToItem(flick.contentItem, 0, 0).y
-                if (top < flick.contentY || top + it.height > flick.contentY + flick.height)
-                    flick.contentY = Math.max(0, Math.min(flick.contentHeight - flick.height, top - flick.height / 2))
-            }
-            // laid out first: just after a change, rows and columns still hold old places
-            for (let q = it; q; q = q.parent) if (q.forceLayout) q.forceLayout()
-            const p = it ? it.mapToItem(contentItem, it.width / 2, it.height / 2) : null
-            Engine.log("settings_where", JSON.stringify({ name: a[1], x: p ? p.x : -1, y: p ? p.y : -1 }).slice(1, -1))
-            break
-        }
+        case "where": Engine.log("settings_where", JSON.stringify(Probe.where(win, a[1], flick)).slice(1, -1)); break
         case "state":
             Engine.log("settings_state", JSON.stringify({ open: visible, tab: tab, error: cfgError, confirmClear: confirmClear,
                                                          version: controller.settings.version, value: a[1] ? value(a[1]) : null,

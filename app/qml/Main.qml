@@ -208,9 +208,8 @@ QtObject {
     function debug(cmd) {
         const a = cmd.split(" ")
         const w = activeOverlay
-        if (a[0] === "qa") { quickAccess.command(a[1]); return }
+        if (a[0] === "qa") { if (a[1] === "where") quickAccess.where(a[2]); else quickAccess.command(a[1]); return }
         if (a[0] === "qa-keys") { Platform.sendKeys(quickAccess, a.slice(1).join(" ")); return }
-        if (a[0] === "qa-where") { quickAccess.where(a[1]); return }
         if (a[0] === "save-as") { const card = quickAccess.cardById(a[1]); if (card) quickAccess.act("save-as", card); return }
         if (a[0] === "cancel-dialogs") { Platform.closeFileDialogs(); return }
         if (a[0] === "answer-dialog") { Platform.answerNextFileDialog(a.slice(1).join(" ")); return }

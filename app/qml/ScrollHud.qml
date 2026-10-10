@@ -3,6 +3,7 @@ import QtQuick.Window
 import QtQuick.Effects
 import org.kde.layershell as LayerShell
 import Snip.Core
+import "probe.js" as Probe
 
 // Scrolling capture (SCR-01, 02, 04, 05), CleanShot's: once the area is
 // chosen, a frame around it and a panel beside it. Ready: Start Capture
@@ -211,24 +212,9 @@ Window {
     }
 
     // tests: where a control is, in output logical px
-    function find(item, name) {
-        if (item.objectName === name && item.visible) return item
-        for (const c of item.children) {
-            if (!c.visible) continue
-            const f = find(c, name)
-            if (f) return f
-        }
-        return null
-    }
     function debug(a) {
         switch (a[0]) {
-        case "where": {
-            const it = find(contentItem, a[1])
-            for (let p = it; p; p = p.parent) if (p.forceLayout) p.forceLayout()
-            const p = it ? it.mapToItem(contentItem, it.width / 2, it.height / 2) : null
-            Engine.log("scroll_where", JSON.stringify({ name: a[1], x: p ? p.x : -1, y: p ? p.y : -1 }).slice(1, -1))
-            break
-        }
+        case "where": Engine.log("scroll_where", JSON.stringify(Probe.where(hud, a[1])).slice(1, -1)); break
         case "state":
             Engine.log("scroll_hud", JSON.stringify({ open: visible, phase: phase, height: stitched, step: step, auto: auto, paused: paused,
                                                      tips: tips, panel: [panel.x, panel.y, panel.width, panel.height] }).slice(1, -1))

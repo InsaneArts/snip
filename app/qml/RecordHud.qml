@@ -4,6 +4,7 @@ import QtQuick.Effects
 import QtMultimedia
 import org.kde.layershell as LayerShell
 import Snip.Core
+import "probe.js" as Probe
 
 // Screen recording (REC-01…05), CleanShot's (D49): Record Screen shows its
 // panel at once, over the whole screen: the size, Full screen and Select
@@ -1109,25 +1110,9 @@ Window {
     }
 
     // tests: where a control is (output logical px), and how things stand
-    function find(item, name) {
-        if (item.objectName === name && item.visible) return item
-        for (const c of item.children) {
-            if (!c.visible) continue
-            const f = find(c, name)
-            if (f) return f
-        }
-        return null
-    }
     function debug(a) {
         switch (a[0]) {
-        case "where": {
-            const it = find(contentItem, a[1])
-            // laid out first: just after a change, rows and columns still hold old places
-            for (let q = it; q; q = q.parent) if (q.forceLayout) q.forceLayout()
-            const p = it ? it.mapToItem(contentItem, it.width / 2, it.height / 2) : null
-            Engine.log("record_where", JSON.stringify({ name: a[1], x: p ? p.x : -1, y: p ? p.y : -1 }).slice(1, -1))
-            break
-        }
+        case "where": Engine.log("record_where", JSON.stringify(Probe.where(hud, a[1])).slice(1, -1)); break
         case "keys": Platform.sendKeys(hud, a.slice(1).join(" ")); break
         case "state":
             Engine.log("record_hud", JSON.stringify({ open: visible, phase: phase, gif: gif, mic: mic, system: system, whole: whole,
@@ -1135,7 +1120,7 @@ Window {
                                                     panel: panel.visible ? [panel.x, panel.y, panel.width, panel.height] : null,
                                                     picking: picking, drawing: drawing, windows: windows.length, hint: hint.visible ? hintText.text : "",
                                                     icons: ["record-mic", "record-system", "record-camera-button", "record-clicks", "record-keys"]
-                                                           .map(n => { const c = find(contentItem, n); return c ? (c.lit ? "+" : "") + c.shownIcon : "" }),
+                                                           .map(n => { const c = Probe.find(contentItem, n); return c ? (c.lit ? "+" : "") + c.shownIcon : "" }),
                                                     controls: controls.visible ? [controls.x, controls.y, controls.width, controls.height] : null,
                                                     camera: bubble.visible ? [bubble.x, bubble.y, bubble.width, bubble.height] : null,
                                                     cameraName: camera, cameraShape: cameraShape, cameraSize: cameraSize, cameraMirror: cameraMirror,

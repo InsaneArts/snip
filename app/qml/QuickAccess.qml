@@ -3,6 +3,7 @@ import QtQuick.Window
 import QtQuick.Effects
 import org.kde.layershell as LayerShell
 import Snip.Core
+import "probe.js" as Probe
 
 // The Quick Access stack (QAO-*), with CleanShot X's layout and motion
 // (measured from its demo videos; docs/design/qao-motion.md):
@@ -97,16 +98,9 @@ Window {
 
     // tests: where a named item is, in output px (the layer starts at the output's corner)
     function where(name) {
-        const find = (item) => {
-            if (item.objectName === name && item.visible) return item
-            for (const ch of item.children) { const f = ch.visible ? find(ch) : null; if (f) return f }
-            return null
-        }
-        const it = find(contentItem)
-        // laid out first: just after a change, rows and columns still hold old places
-        for (let q = it; q; q = q.parent) if (q.forceLayout) q.forceLayout()
-        const p = it ? it.mapToItem(contentItem, it.width / 2, it.height / 2) : null
-        Engine.log("qa_where", JSON.stringify({ name: name, x: p ? p.x + (qa.right ? Screen.width - qa.width : 0) : -1, y: p ? p.y : -1 }).slice(1, -1))
+        const p = Probe.where(qa, name)
+        if (p.x >= 0 && qa.right) p.x += Screen.width - qa.width
+        Engine.log("qa_where", JSON.stringify(p).slice(1, -1))
     }
 
     // Engine.cardStatus: show a result on that card

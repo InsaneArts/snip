@@ -3,6 +3,7 @@ import QtQuick.Window
 import QtQuick.Effects
 import org.kde.layershell as LayerShell
 import Snip.Core
+import "probe.js" as Probe
 
 // Capture history (HIS-01, 03, 05), CleanShot's: a band across the top of the
 // screen with large thumbnails, newest first. ←/→ or the wheel move, Enter or
@@ -413,29 +414,13 @@ Window {
     }
 
     // test hooks (snip debug ui history ...)
-    function find(item, name) {
-        if (item.objectName === name && item.visible) return item
-        for (const c of item.children) {
-            const f = c.visible ? find(c, name) : null
-            if (f) return f
-        }
-        return null
-    }
     function debug(a) {
         switch (a[0]) {
         case "keys": Platform.sendKeys(hist, a.slice(1).join(" ")); break
         case "annotate": annotate(current); break
         case "act": act(a[1], current); break
         case "clear": asking = "all"; break
-        case "where": {
-            // a control's centre on the output (logical px), for a click
-            const it = find(contentItem, a[1])
-            // laid out first: just after a change, rows and columns still hold old places
-            for (let q = it; q; q = q.parent) if (q.forceLayout) q.forceLayout()
-            const p = it ? it.mapToItem(contentItem, it.width / 2, it.height / 2) : null
-            Engine.log("history_where", JSON.stringify({ name: a[1], x: p ? p.x : -1, y: p ? p.y : -1 }).slice(1, -1))
-            break
-        }
+        case "where": Engine.log("history_where", JSON.stringify(Probe.where(hist, a[1])).slice(1, -1)); break
         case "state":
             Engine.log("history_state", JSON.stringify({ open: visible, items: items.map(i => i.id), current: current, query: query, filter: filter,
                                                         restored: Object.keys(restored), asking: asking, menu: menu.visible }).slice(1, -1))

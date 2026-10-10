@@ -83,6 +83,7 @@ qt_add_qml_module(snipd
     app/qml/VideoEditor.qml
     app/qml/QuickLook.qml
     app/qml/editor.js
+    app/qml/probe.js
   RESOURCES
     app/fonts/Nunito.ttf
     app/icons/snip.png
