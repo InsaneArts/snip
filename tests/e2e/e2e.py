@@ -2971,6 +2971,8 @@ def shortcut_recorder(s, env):
         assert next(x for x in settings_state(s)["shortcuts"] if x["id"] == "history")["keys"] == ["Super+Alt+O"]
 
         s.debug("ui", "settings", "record", "window")
+        s.debug("ui", "settings", "keys", "{shift+a}")                         # a capital A, for every app
+        assert settings_state(s)["recording"] == "window", "Shift alone isn't enough: it keeps listening"
         s.debug("ui", "settings", "keys", "{Escape}")
         st = settings_state(s)
         assert st["recording"] == "" and st["open"], ("Escape cancels recording, the window stays", st["recording"], st["open"])

@@ -113,7 +113,8 @@ Window {
                 return
             }
             const alone = (e.key >= Qt.Key_F1 && e.key <= Qt.Key_F35) || e.key === Qt.Key_Print || e.key === Qt.Key_Pause
-            if (!mods && !alone) { win.recordHint = "Hold Super, Ctrl, Alt or Shift with the key."; return }
+            // Shift alone isn't enough: Shift+A bound for Snip is a capital A no app gets
+            if (!(mods & ~Qt.ShiftModifier) && !alone) { win.recordHint = "Hold Super, Ctrl or Alt with the key."; return }
             win.recorded(mods, e.nativeScanCode)
         }
         onActiveFocusChanged: if (!activeFocus) win.stopRecording()
