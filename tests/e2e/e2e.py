@@ -507,6 +507,40 @@ def keyboard_flow(s, env):
 
 
 @case
+def hotkey_again_while_opening_cancels(s, env):
+    """SEL-09: the capture hotkey again cancels the selection, also while it's still
+    opening (the cards stepping aside first, D18): nothing opens, and the cards are back."""
+    from PIL import Image
+    s.cli("close-all"); time.sleep(0.3)
+    png = s.tmp / "opening.png"
+    noise_png(png, 400, 300, seed=11)
+    rec = open_card(s, png); time.sleep(0.8)
+    c = where(s, "qa", "card:" + rec["id"])
+    box = tuple(round(v * 1.25) for v in (c["x"] - 40, c["y"] - 30, c["x"] + 40, c["y"] + 30))
+
+    def card_pixels():
+        f = s.tmp / "opening-screen.png"
+        sh("grim", "-o", OUT, str(f))
+        return Image.open(f).convert("RGB").crop(box).tobytes()
+
+    before = card_pixels()
+    try:
+        p = s.bg("area")
+        hypr_eval('hl.dispatch(hl.dsp.global("snip-e2e:area"))')       # again, at once
+        try:
+            r, code = finish(p, timeout=5)
+        except subprocess.TimeoutExpired:
+            s.key("Escape"); finish(p, timeout=5)
+            raise AssertionError("the second press didn't cancel it: the selection opened")
+        assert code == 1 and r.get("error") == "cancelled", r
+        time.sleep(1.0)
+        assert s.status()["overlay"] is None, "nothing opened"
+        assert wait_for(lambda: card_pixels() == before, 3), "the cards are back"
+    finally:
+        s.cli("close-all")
+
+
+@case
 def previous_area(s, env):
     r, _ = area(s, 200, 200, 400, 300)
     prev = s.json("previous")
