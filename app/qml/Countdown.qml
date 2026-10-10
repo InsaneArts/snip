@@ -77,7 +77,7 @@ Window {
             drain.stop()
             cd.finishing = true
             cd.running = false
-            Platform.notifyNextFrame(cd)
+            Platform.afterFrames([cd], () => { if (cd.finishing) settle.start() })
         }
     }
     NumberAnimation { id: drain; target: cd; property: "progress"; from: 1; to: 0 }
@@ -90,13 +90,6 @@ Window {
         onTriggered: { cd.finishing = false; cd.holding = true; release.start(); Engine.countdownDone() }
     }
     Timer { id: release; interval: 600; onTriggered: cd.holding = false }
-    Connections {
-        target: Platform
-        function onFramePresented(w) {
-            if (w !== cd || !cd.finishing) return
-            settle.start()
-        }
-    }
 
     Item {
         anchors.fill: parent

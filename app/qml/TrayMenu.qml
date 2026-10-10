@@ -18,7 +18,6 @@ Window {
     property int barTop: 0                      // the bar's band (top or bottom)
     property int barBottom: 0
     property var keys: ({})                     // action → its key, as Settings shows it
-    property string pending: ""
     // REC-06: Snip's menu stops a recording that runs, and pauses it (D52)
     readonly property string recordPhase: controller ? controller.recordHud.phase : "closed"
     readonly property bool recording: ["countdown", "starting", "launching", "recording", "paused"].includes(recordPhase)
@@ -58,23 +57,15 @@ Window {
         const k = {}
         for (const s of JSON.parse(Engine.shortcuts() || "[]")) if (s.keys.length) k[s.id] = s.keys[0]
         keys = k
-        pending = ""
         menu.opacity = 1
         visible = true
         keyCatcher.forceActiveFocus()
     }
     function close() { visible = false }
-    function run(action) {
-        pending = action
+    // an entry runs once the menu is off screen, so it's never in a capture
+    function run(a) {
         menu.opacity = 0
-        Platform.notifyNextFrame(tray)
-    }
-    Connections {
-        target: Platform
-        function onFramePresented(w) {
-            if (w !== tray || tray.pending === "") return
-            const a = tray.pending
-            tray.pending = ""
+        Platform.afterFrames([tray], () => {
             tray.close()
             if (a === "quit") Qt.quit()
             else if (a === "about") tray.controller.openSettings("about")
@@ -85,7 +76,7 @@ Window {
                     else Engine.pinFile(path)
                 })
             } else Engine.runAction(a)
-        }
+        })
     }
 
     MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons; onPressed: tray.close() }

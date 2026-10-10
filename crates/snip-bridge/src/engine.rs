@@ -615,9 +615,9 @@ impl Inner {
     }
 
     /// Screen captures never contain Snip's own cards (CleanShot hides its
-    /// UI from captures). With cards on screen, QML unmaps the stack first and
-    /// calls `capture_ready` once that is committed. With Hide desktop clutter
-    /// (CAP-12) QML hides the pins as well.
+    /// UI from captures). With cards on screen, QML draws the stack
+    /// transparent first and calls `capture_ready` once that frame is on
+    /// screen. With Hide desktop clutter (CAP-12) the pins step aside too.
     fn capture_clean(self: &Arc<Self>, req: u64, source: Source, cursor: bool) {
         if self.cards.lock().unwrap().is_empty() && !self.cfg().capture.hide_desktop {
             self.wl(Wl::Capture { request: req, source, cursor });
@@ -626,10 +626,11 @@ impl Inner {
         self.deferred.lock().unwrap().insert(req, (source, cursor));
         trace::trace("capture_deferred", &format!("\"req\":{req}"));
         self.ui(move |e| e.prepare_capture(req as i32));
-        // never stall a capture on the UI: go anyway after 150 ms
+        // never stall a capture on a stuck UI: QML answers within its own
+        // 250 ms (Platform.afterFrames), so this only goes when it can't
         let me = self.clone();
         std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(150));
+            std::thread::sleep(Duration::from_millis(400));
             me.capture_ready(req);
         });
     }

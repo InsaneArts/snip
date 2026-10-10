@@ -56,9 +56,13 @@ public:
   Q_INVOKABLE QString hex(const QColor& c) const;
 
   // Emit framePresented(w) once a frame that reflects the scene as it is
-  // *now* has been swapped (committed to the compositor). Used to take
-  // Snip's own UI off screen before a capture.
+  // *now* has been swapped (committed to the compositor).
   Q_INVOKABLE void notifyNextFrame(QQuickWindow* w);
+  // Snip's surfaces step aside (D18: Snip is never in a capture): each
+  // draws itself transparent, then done() once every visible window in
+  // `windows` has swapped a frame of that, or after 250 ms if one draws
+  // nothing. Hidden windows aren't waited for.
+  Q_INVOKABLE void afterFrames(const QVariantList& windows, const QJSValue& done);
 
   // The editor's export (ANN-15): render `item` in its own coordinates
   // (its transform ignored) at exactly width x height pixels, one item unit

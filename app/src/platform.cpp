@@ -23,6 +23,7 @@
 #include <QQuickItemGrabResult>
 #include <QQuickWindow>
 #include <QRegion>
+#include <QTimer>
 #include <QUrl>
 #include <atomic>
 #include <cmath>
@@ -112,30 +113,38 @@ Platform::setMargins(QWindow* w, int left, int top, int right, int bottom)
     lw->setMargins(QMargins(left, top, right, bottom));
 }
 
+// `then`, on ctx's thread, once `w` has swapped a frame that reflects its
+// scene as it is now.
+static void
+onNextFrame(QObject* ctx, QQuickWindow* w, const std::function<void()>& then)
+{
+  // beforeSynchronizing runs with the GUI thread blocked, so a sync seen
+  // after this call carries the current state; its frameSwapped is ours.
+  auto synced = std::make_shared<std::atomic<bool>>(false);
+  auto conns = std::make_shared<QList<QMetaObject::Connection>>();
+  conns->append(QObject::connect(
+    w, &QQuickWindow::beforeSynchronizing, ctx, [synced]() { synced->store(true); }, Qt::DirectConnection));
+  conns->append(QObject::connect(
+    w,
+    &QQuickWindow::frameSwapped,
+    ctx,
+    [ctx, synced, conns, then]() {
+      if (!synced->load())
+        return;
+      for (const auto& c : *conns)
+        QObject::disconnect(c);
+      QMetaObject::invokeMethod(ctx, then, Qt::QueuedConnection);
+    },
+    Qt::DirectConnection));
+  w->update();
+}
+
 void
 Platform::notifyNextFrame(QQuickWindow* w)
 {
   if (!w)
     return;
-  // beforeSynchronizing runs with the GUI thread blocked, so a sync seen
-  // after this call carries the current state; its frameSwapped is ours.
-  auto synced = std::make_shared<std::atomic<bool>>(false);
-  auto conns = std::make_shared<QList<QMetaObject::Connection>>();
-  conns->append(connect(
-    w, &QQuickWindow::beforeSynchronizing, this, [synced]() { synced->store(true); }, Qt::DirectConnection));
-  conns->append(connect(
-    w,
-    &QQuickWindow::frameSwapped,
-    this,
-    [this, w, synced, conns]() {
-      if (!synced->load())
-        return;
-      for (const auto& c : *conns)
-        QObject::disconnect(c);
-      QMetaObject::invokeMethod(this, [this, w]() { Q_EMIT framePresented(w); }, Qt::QueuedConnection);
-    },
-    Qt::DirectConnection));
-  w->update();
+  onNextFrame(this, w, [this, w]() { Q_EMIT framePresented(w); });
 }
 
 QString
@@ -153,6 +162,37 @@ answer(QJSValue done, const QJSValueList& args)
   const QJSValue r = done.call(args);
   if (r.isError())
     qWarning("snip: an answer's callback failed: %s", qPrintable(r.toString()));
+}
+
+void
+Platform::afterFrames(const QVariantList& windows, const QJSValue& done)
+{
+  // answered once: by the last window's frame, or by the timeout
+  auto left = std::make_shared<int>(0);
+  auto answered = std::make_shared<bool>(false);
+  auto finish = [done, answered]() {
+    if (*answered)
+      return;
+    *answered = true;
+    answer(done, {});
+  };
+  for (const QVariant& v : windows) {
+    auto* w = qobject_cast<QQuickWindow*>(v.value<QObject*>());
+    if (!w || !w->isVisible())
+      continue;
+    ++*left;
+    onNextFrame(this, w, [left, finish]() {
+      if (--*left == 0)
+        finish();
+    });
+  }
+  if (*left == 0) {
+    finish();
+    return;
+  }
+  // a window that stopped drawing never swaps; a slow compositor (seen at
+  // 15 fps, nested) still swaps well within this
+  QTimer::singleShot(250, this, finish);
 }
 
 void

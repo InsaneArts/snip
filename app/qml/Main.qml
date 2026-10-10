@@ -141,13 +141,12 @@ QtObject {
         function onCountdown(output, x, y, w, h, seconds) { root.countdown.start(output, x, y, w, h, seconds) }
         function onCountdownCancel() { root.countdown.stop() }
         // Captures leave Snip's cards out, and with Hide desktop clutter (CAP-12)
-        // its pins too: the capture runs once each has drawn itself transparent.
+        // its pins too: each draws itself transparent, and the capture runs
+        // once all those frames are on screen.
         function onPrepareCapture(req) {
-            const pins = root.hideDesktop ? root.pins.filter(p => p.shown) : []
-            let waiting = 1 + pins.length
-            const ready = () => { if (--waiting === 0) Engine.captureReady(req) }
-            root.quickAccess.prepareCapture(ready)
-            for (const p of pins) p.hideForCapture(ready)
+            let wins = root.quickAccess.stepAside()
+            if (root.hideDesktop) for (const p of root.pins.filter(p => p.shown)) wins = wins.concat(p.stepAside())
+            Platform.afterFrames(wins, () => Engine.captureReady(req))
         }
         function onCaptureDone() { if (!root.overlayOpen) root.captureFinished() }
         function onCardAdd(card) { root.quickAccess.add(JSON.parse(card)) }
