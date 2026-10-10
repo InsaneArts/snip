@@ -224,32 +224,15 @@ Window {
 
     // Engine.prepareCapture: Snip's cards must not be in the capture. Hyprland
     // fades unmapped layers out (~150 ms, even with no_anim), so instead of
-    // unmapping, draw the stack fully transparent and let the capture go
-    // once that frame is on screen. The stack returns when the capture is
-    // done (or, for a selection, when the overlay closes).
-    property var captureReady: null          // called once the stack is off screen
-    property bool awaitSwap: false
-    function prepareCapture(ready) {
-        captureReady = ready
-        if (!visible) { ready(); return }
+    // unmapping, the stack draws itself fully transparent, and the capture
+    // goes once that frame is on screen (Platform.afterFrames). The stack
+    // returns when the capture is done (or, for a selection, when the
+    // overlay closes). Returns the windows to wait for.
+    function stepAside() {
+        if (!visible) return []
         capturing = true
-        awaitSwap = true
-        Platform.notifyNextFrame(qa)
-        captureGo.restart()     // fallback if the window draws nothing at all
+        return [qa]
     }
-    function releaseCapture() {
-        if (!awaitSwap) return
-        awaitSwap = false
-        captureGo.stop()
-        captureReady()
-    }
-    Connections {
-        target: Platform
-        function onFramePresented(w) { if (w === qa) qa.releaseCapture() }
-    }
-    // Only for a window that stopped drawing. A slow one (a busy or nested
-    // compositor) would otherwise be captured with its cards (seen at 15 fps).
-    Timer { id: captureGo; interval: 250; onTriggered: qa.releaseCapture() }
 
     // The window has shown a frame since it was (re)mapped.
     property bool presented: false

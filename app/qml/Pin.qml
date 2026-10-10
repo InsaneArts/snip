@@ -82,27 +82,12 @@ Window {
     readonly property bool shown: visible || (locked && lockLayer.visible)
 
     // CAP-12: with Hide desktop clutter, pins aren't in captures: drawn
-    // transparent, then `ready` once that frame is on screen
+    // transparent, and the capture waits for that frame of this window
     property bool capturing: false
-    property var captureReady: null
-    function hideForCapture(ready) {
+    function stepAside() {
         capturing = true
-        captureReady = ready
-        Platform.notifyNextFrame(locked ? lockLayer : pin)
-        captureGo.restart()             // if no frame comes
+        return [locked ? lockLayer : pin]
     }
-    function captureHidden() {
-        if (!captureReady) return
-        const ready = captureReady
-        captureReady = null
-        captureGo.stop()
-        ready()
-    }
-    Connections {
-        target: Platform
-        function onFramePresented(w) { if (w === pin || (pin.locked && w === pin.lockLayer)) pin.captureHidden() }
-    }
-    Timer { id: captureGo; interval: 250; onTriggered: pin.captureHidden() }
 
     // PIN-05: locked, the pin is a layer surface in the same place with an
     // empty input region (Hyprland ignores those on windows: spike S04), so

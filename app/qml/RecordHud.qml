@@ -127,9 +127,7 @@ Window {
                 phase = "countdown"
                 tick.restart()
             } else {
-                // none: record once the panel is off screen (D49)
-                phase = "starting"
-                Platform.notifyNextFrame(hud)
+                goWhenAside()       // none (D49)
             }
             return
         }
@@ -355,14 +353,14 @@ Window {
             hud.seconds -= 1
             if (hud.seconds <= 0) {
                 stop()
-                hud.phase = "starting"
-                Platform.notifyNextFrame(hud)
+                hud.goWhenAside()
             }
         }
     }
-    Connections {
-        target: Platform
-        function onFramePresented(w) { if (w === hud && hud.phase === "starting") Engine.recordGo() }
+    // record once the panel is off screen: it's never in the recording
+    function goWhenAside() {
+        phase = "starting"
+        Platform.afterFrames([hud], () => { if (hud.phase === "starting") Engine.recordGo() })
     }
     // the time recorded so far
     Timer {
