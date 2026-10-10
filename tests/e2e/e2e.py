@@ -2056,6 +2056,30 @@ def record_puts_dnd_back(s, env):
 
 
 @case
+def record_controls_stay_outside_the_area(s, env):
+    """REC-05: the controls never sit in the area (they'd be in the video): below or above
+    it, else beside it (a full-height area, such as a tiled window); with no room
+    anywhere, none, as for a whole-screen take (D52: the bar stops it)."""
+    def controls(x, y, w, h):
+        p = s.bg("record", "area", "--x", str(x), "--y", str(y), "--w", str(w), "--h", str(h), "--monitor", OUT)
+        try:
+            assert wait_for(lambda: record_hud(s)["phase"] == "recording", 6), record_hud(s)
+            time.sleep(0.3)
+            return where(s, "record", "record-controls")
+        finally:
+            s.cli("record", "discard", check=False)
+            finish(p, timeout=8)
+            time.sleep(0.4)
+
+    for area in ([300, 0, 900, 864], [20, 30, 700, 800], [300, 200, 600, 400]):
+        c = controls(*area)
+        x, y, w, h = area
+        assert c["x"] >= 0, ("shown", area)
+        assert not (x <= c["x"] <= x + w and y <= c["y"] <= y + h), ("outside the area", area, (c["x"], c["y"]))
+    assert controls(0, 0, 1536, 820)["x"] < 0, "no room anywhere: none"
+
+
+@case
 def record_controls_ask_first(s, env):
     """REC-05: Restart and Delete on the controls ask first, as CleanShot's do, and the
     recording goes on meanwhile; Cancel keeps it, Delete throws it away (no card)."""
