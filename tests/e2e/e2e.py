@@ -541,6 +541,36 @@ def hotkey_again_while_opening_cancels(s, env):
 
 
 @case
+def layers_appear_without_a_fade(s, env):
+    """Snip's layers show at once, whatever the layer animations are (Omarchy fades layers
+    in over 0.2-0.4 s): its rule must match their whole namespace (Hyprland 0.56). With a
+    3 s fade on, the window-mode overlay is fully dimmed 0.3 s after it shows."""
+    from PIL import Image
+
+    def lum():
+        f = s.tmp / "fade.png"
+        sh("grim", "-o", OUT, str(f))
+        b = Image.open(f).convert("L").crop((700, 300, 1100, 600)).tobytes()
+        return sum(b) / len(b)
+
+    try:
+        hypr_eval('hl.config({ animations = { enabled = true } })')
+        hypr_eval('hl.animation({ leaf = "layersIn", enabled = true, speed = 30, bezier = "linear", style = "fade" })')
+        hypr_eval('hl.animation({ leaf = "fadeLayersIn", enabled = true, speed = 30, bezier = "linear" })')
+        s.move(1500, 20); time.sleep(0.4)
+        base = lum()
+        n = len(s.traces("overlay_presented"))
+        p = s.bg("window")
+        assert wait_for(lambda: len(s.traces("overlay_presented")) > n, 4)
+        time.sleep(0.3)
+        shown = lum()
+        s.key("Escape"); finish(p, timeout=5)
+        assert shown < base * 0.7, ("dimmed at once, not fading in", base, shown)
+    finally:
+        hypr_eval('hl.config({ animations = { enabled = false } })')
+
+
+@case
 def overlay_takes_the_pointer_at_once(s, env):
     """SEL-01: the overlay takes the pointer as soon as it shows. Hyprland hands a new layer
     pointer focus only on motion, so Snip nudges the pointer; else a press made without
