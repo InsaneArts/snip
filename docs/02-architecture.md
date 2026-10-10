@@ -84,7 +84,7 @@ These are platform facts, not preferences. Each traces back to a research doc.
 │  ├─ snip-core: geometry, documents/op-log,     │  └─ Render thread (Qt Quick RHI / GL)  │
 │  │   encode, resize, stitch, OCR, QR, history, │                                        │
 │  │   config (toml_edit), naming, theme tokens  │   ▲ QObjects/models from Rust          │
-│  ├─ snip-recorder: gsr + ffmpeg jobs           │   │ (cxx-qt): CaptureController,       │
+│  │   + the recording's take (gsr | pattern)    │   │ (cxx-qt): CaptureController,       │
 │  └─ snip-ipc: ctl.sock server                  │   │ QuickAccessModel, HistoryModel,    │
 │                                                │   │ Settings, Theme, Recorder          │
 │  Threads: wayland (calloop) · workers (rayon)  │◀──┘ frames shared zero-copy (memfd)    │
@@ -398,6 +398,23 @@ Full detail and measurements: [research/processing-pipelines.md](research/proces
 | Q-S3 | **Omasnap:** independent, no shared code (D27, §10) |
 | Q-S4 | **Recording default:** gsr KMS, with private-window warnings; privacy-safe backend later |
 | Q-S9 | **Licence:** GPL-3.0-or-later |
+
+### Seams (2026-10-10)
+
+Where behaviour can change without editing its callers. They came out of the
+architecture review the user asked for before an overnight run, and are listed
+here so later reviews build on them (#127–#137).
+
+| Seam | Module | Adapters | Tested through it |
+|---|---|---|---|
+| The recorder | `snip_core::take` (**Take**) | gpu-screen-recorder · ffmpeg's test pattern (`SNIP_RECORDER=fake`) | `cargo test`: the clock without pauses, stops, gsr's requests and failures; the recording e2e |
+| The engine tells the UI | `snip_bridge::ui` (`Ui`, `UiOut`) | `ui::Qt` (Engine's signals and properties) · `ui::Told` (a list) | `cargo test` builds the engine in a temp dir: cards, After Capture rules, the auto background, the countdown, what a selection becomes |
+| A capture's request | engine `Job` (**Capture job**) and `Kind` | — | the same engine tests; `capture_keeps_its_own_action` |
+| Stepping aside (D18) | `Platform.afterFrames(windows, done)` | — | `cards_not_in_captures`, `hide_desktop_clutter`, the tray and recording cases |
+| Platform's requests | dialogs and exact grabs answer the caller's function | the desktop portal · the test portal (`SNIP_NO_PORTALS`, `answerNextFileDialog`) | `file_dialogs_answer_who_asked` |
+| Snip in Hyprland | `snip_hypr` (its footprint, `reinstall` after a reload) | — | the reload checks in the e2e |
+| The editor's files | `snip_core::editor_files` | — | `cargo test` on a temp dir |
+| Tests into windows | `app/qml/probe.js` and e2e.py's `where()` | — | every window's `where` |
 
 ### Still open
 
