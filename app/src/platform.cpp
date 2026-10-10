@@ -26,6 +26,7 @@
 #include <QTimer>
 #include <QUrl>
 #include <atomic>
+#include <malloc.h>
 #include <cmath>
 #include <functional>
 #include <memory>
@@ -162,6 +163,12 @@ answer(QJSValue done, const QJSValueList& args)
   const QJSValue r = done.call(args);
   if (r.isError())
     qWarning("snip: an answer's callback failed: %s", qPrintable(r.toString()));
+}
+
+void
+Platform::trimMemory()
+{
+  malloc_trim(0);
 }
 
 void

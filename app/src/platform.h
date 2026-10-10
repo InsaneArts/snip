@@ -63,6 +63,10 @@ public:
   // `windows` has swapped a frame of that, or after 250 ms if one draws
   // nothing. Hidden windows aren't waited for.
   Q_INVOKABLE void afterFrames(const QVariantList& windows, const QJSValue& done);
+  // Hand freed memory back to the system (malloc_trim): after a big window
+  // (an editor, the video editor) is gone, glibc keeps what its threads
+  // freed in their arenas, and snipd's memory only ever grows.
+  Q_INVOKABLE void trimMemory();
 
   // The editor's export (ANN-15): render `item` in its own coordinates
   // (its transform ignored) at exactly width x height pixels, one item unit
