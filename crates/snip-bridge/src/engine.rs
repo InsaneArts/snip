@@ -554,6 +554,7 @@ impl Inner {
         let cursor = cursor.unwrap_or_else(|| self.cfg().capture.show_cursor);
         let job = Job { waiter, cursor, delay: 0, action, line_breaks: None, skip_preset: false };
         *self.last_area.lock().unwrap() = Some((output.clone(), rect));
+        save_last_area(&output, rect);
         self.play("shutter");
         let req = self.next();
         self.pending.lock().unwrap().insert(req, Pending::Region { output: output.clone(), rect: Some(rect), kind: Kind::Area, job });
@@ -2563,6 +2564,16 @@ mod tests {
         assert!(file.exists() && file.starts_with(paths::runtime_dir()), "{file:?}");
         settle(&inner);
         assert_eq!(cards(&told).len(), 1, "and no card");
+    }
+
+    #[test]
+    fn a_command_area_is_the_previous_area_after_a_restart() {
+        let _one = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+        let (inner, _) = engine(false);
+        *inner.outputs.lock().unwrap() = vec![OutputInfo { name: "T".into(), logical: Rect::new(0, 0, 800, 600), transform: 0 }];
+        inner.capture_rect(Some("T".into()), Rect::new(10, 20, 30, 40), None, None, None);
+        // without Hyprland the scale is 1: physical px are the logical ones
+        assert_eq!(load_last_area(), Some(("T".into(), Rect::new(10, 20, 30, 40))), "kept on disk, for snip previous after a restart");
     }
 
     #[test]

@@ -155,8 +155,10 @@ Window {
             return
         }
         let dx = mouse.x - p0.x, dy = mouse.y - p0.y
-        if (c.altHeld) {     // square (CleanShot's Alt, D32)
-            const m = Math.max(Math.abs(dx), Math.abs(dy))
+        if (c.altHeld) {     // square (CleanShot's Alt, D32): as big as fits, an edge too
+            const rx = c.ctrlHeld ? Math.min(p0.x, width - p0.x) : dx < 0 ? p0.x : width - p0.x
+            const ry = c.ctrlHeld ? Math.min(p0.y, height - p0.y) : dy < 0 ? p0.y : height - p0.y
+            const m = Math.min(Math.max(Math.abs(dx), Math.abs(dy)), rx, ry)
             dx = (dx < 0 ? -1 : 1) * m
             dy = (dy < 0 ? -1 : 1) * m
         }
@@ -187,7 +189,7 @@ Window {
     }
 
     // Enter: the picked window (clean toplevel buffer in window mode), else
-    // the whole monitor.
+    // the whole monitor, in any mode (SEL-06).
     function confirm() {
         if (c.session && c.session.mode === "pick") {
             c.finishPick(win)
@@ -196,7 +198,7 @@ Window {
                 c.finishWindow(win, hoverWin, winPhys(hoverWin))
             else
                 c.finishArea(win, winPhys(hoverWin), "window")
-        } else if (!c.windowMode) {
+        } else {
             c.finishArea(win, fullPhys(), "fullscreen")
         }
     }

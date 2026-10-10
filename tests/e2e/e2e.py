@@ -541,6 +541,59 @@ def hotkey_again_while_opening_cancels(s, env):
 
 
 @case
+def area_alt_square_at_an_edge(s, env):
+    """SEL-07 (D32): Alt makes a square, also where the screen's edge stops the drag: as
+    big a square as fits, not one cut into a rectangle."""
+    r, _ = area(s, 100, 800, 300, 840, during=lambda: s.key("Alt", "keydown"))
+    s.key("Alt", "keyup")
+    assert r["ok"] and r["result"]["width"] == r["result"]["height"], (r["result"]["width"], r["result"]["height"])
+
+
+@case
+def window_mode_enter_takes_the_monitor(s, env):
+    """SEL-06: Enter captures the picked window, or the monitor when none is picked, in
+    window mode (snip window) too."""
+    mon = env.monitor()
+    lx = env.win["at"][0] - mon["x"]
+    p = s.bg("window"); time.sleep(0.5)
+    s.move(lx // 2 if lx > 4 else 3, 400); time.sleep(0.2)      # beside the window: none under it
+    s.key("Return")
+    try:
+        r, code = finish(p, timeout=6)
+    except subprocess.TimeoutExpired:
+        s.key("Escape"); finish(p, timeout=5)
+        raise AssertionError("Enter did nothing")
+    assert code == 0 and r["result"]["kind"] == "fullscreen", r
+    assert (r["result"]["width"], r["result"]["height"]) == (mon["width"], mon["height"]), r
+
+
+@case
+def window_pick_on_scratchpad(s, env):
+    """CAP-05: a window on a shown special workspace (Omarchy's scratchpad) can be picked;
+    it's drawn over the others, and the one behind it isn't what's captured."""
+    cmd = "foot --title=snip-e2e-scratch --app-id=snip-e2e-scratch sh -c 'printf scratch; sleep 3600'"
+    hypr_eval(f'hl.dispatch(hl.dsp.exec_cmd([[{cmd}]], {{ workspace = "special:scratchpad silent" }}))')
+    try:
+        assert wait_for(lambda: any(c["class"] == "snip-e2e-scratch" for c in hypr_json("clients")), 5), "it opens"
+        hypr_eval('hl.dispatch(hl.dsp.workspace.toggle_special("scratchpad"))')
+        assert wait_for(lambda: env.monitor()["specialWorkspace"]["id"] != 0, 3), "the scratchpad shows"
+        time.sleep(0.4)
+        c = next(c for c in hypr_json("clients") if c["class"] == "snip-e2e-scratch")
+        mon = env.monitor()
+        p = s.bg("area"); time.sleep(0.5)
+        s.move(c["at"][0] - mon["x"] + c["size"][0] / 2, c["at"][1] - mon["y"] + c["size"][1] / 2)
+        s.key("space", "keydown"); s.click()
+        r, code = finish(p, timeout=8)
+        s.key("space", "keyup")
+        assert code == 0 and r["result"].get("app") == "snip-e2e-scratch", (r["result"].get("kind"), r["result"].get("app"))
+    finally:
+        if env.monitor()["specialWorkspace"]["id"] != 0:
+            hypr_eval('hl.dispatch(hl.dsp.workspace.toggle_special("scratchpad"))')
+        subprocess.run(["pkill", "-f", "app-id=snip-e2e-scratch"], check=False)
+        time.sleep(0.4)
+
+
+@case
 def previous_area(s, env):
     r, _ = area(s, 200, 200, 400, 300)
     prev = s.json("previous")
@@ -1922,6 +1975,24 @@ def record_panel_chooses_the_area(s, env):
     r, code = finish(p, timeout=5)
     assert code != 0 or not r.get("ok"), r
     assert wait_for(lambda: not record_hud(s)["open"], 2), "the panel is gone"
+
+
+@case
+def record_panel_gap_is_part_of_the_panel(s, env):
+    """D49: the panel is one thing: a press in the gap between its two cards doesn't move or
+    redraw the area behind it."""
+    s.cli("close-all"); time.sleep(0.3)
+    p = record_panel(s)
+    try:
+        s.drag(200, 150, 1000, 650)
+        assert wait_for(lambda: (h := record_hud(s))["area"] == [200, 150, 800, 500] and h["panel"] is not None, 2), record_hud(s)
+        px, py, pw, ph = record_hud(s)["panel"]
+        s.drag(px + pw / 2, py + 93, px + pw / 2 + 60, py + 133)        # between the cards
+        time.sleep(0.3)
+        assert wait_for(lambda: record_hud(s)["area"] == [200, 150, 800, 500], 2), ("the area stays", record_hud(s)["area"])
+    finally:
+        s.debug("ui", "record", "keys", "{Escape}")
+        finish(p, timeout=5)
 
 
 @case
