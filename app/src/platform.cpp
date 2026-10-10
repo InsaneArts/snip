@@ -236,11 +236,16 @@ Platform::sendKeys(QWindow* w, const QString& keys)
   }
 }
 
+// Tests (SNIP_NO_PORTALS): what the next dialog answers; empty is cancelled
+static QString testAnswer;
+
 static void
 portalFileRequest(Platform* self, const QString& method, const QString& title, const QVariantMap& extra, const QJSValue& done)
 {
   if (qEnvironmentVariableIsSet("SNIP_NO_PORTALS")) {
-    QMetaObject::invokeMethod(self, [done] { answer(done, { QJSValue(QString()) }); }, Qt::QueuedConnection);
+    const QString path = testAnswer;
+    testAnswer.clear();
+    QMetaObject::invokeMethod(self, [done, path] { answer(done, { QJSValue(path) }); }, Qt::QueuedConnection);
     return;
   }
   static int requests = 0;
@@ -432,6 +437,12 @@ Platform::closeFileDialogs()
     // Close ends the dialog without a Response
     Q_EMIT req->done(1, {});
   }
+}
+
+void
+Platform::answerNextFileDialog(const QString& path)
+{
+  testAnswer = path;
 }
 
 void
