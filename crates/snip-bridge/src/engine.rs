@@ -462,8 +462,18 @@ impl Inner {
                     self.ui(Ui::CancelRequested);
                     return;
                 }
-                if self.pending.lock().unwrap().values().any(|p| matches!(p, Pending::Overlay { .. })) {
+                // ... and while it's still opening: its frames are dropped,
+                // the cards (stepped aside for them) come back
+                let opening = {
+                    let mut pending = self.pending.lock().unwrap();
+                    let req = pending.iter().find(|(_, p)| matches!(p, Pending::Overlay { .. })).map(|(r, _)| *r);
+                    req.and_then(|r| pending.remove(&r).map(|p| (r, p)))
+                };
+                if let Some((req, Pending::Overlay { job: first, .. })) = opening {
+                    self.deferred.lock().unwrap().remove(&req);
+                    reply(first.waiter, cancelled());
                     reply(job.waiter, cancelled());
+                    self.ui(Ui::CaptureDone);
                     return;
                 }
                 // All-In-One (CAP-07) is an M1 stand-in: the area overlay.
