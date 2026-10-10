@@ -283,6 +283,9 @@ pub mod qobject {
         /// Pin the capture to the screen (PIN-01)
         #[qinvokable]
         fn pin(self: Pin<&mut Engine>, id: QString);
+        /// The editors' decoded images, once the last editor closed.
+        #[qinvokable]
+        fn forget_images(self: &Engine);
         /// Resize one of Snip's own windows (by its title) through Hyprland,
         /// which keeps a floating window's size otherwise (a pin's zoom)
         #[qinvokable]
@@ -1037,6 +1040,10 @@ impl qobject::Engine {
         if let Some(i) = self.inner() {
             i.trash(&id.to_string());
         }
+    }
+
+    fn forget_images(&self) {
+        crate::edits::forget_decoded();
     }
 
     fn pin(self: Pin<&mut Self>, id: QString) {

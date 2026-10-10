@@ -5,6 +5,7 @@
 #include <QQmlApplicationEngine>
 #include <QQuickWindow>
 #include <cstdio>
+#include <malloc.h>
 
 #include "redact.h"
 #include "snip_bridge/src/bridge.cxxqt.h"
@@ -26,6 +27,13 @@ main(int argc, char* argv[])
     if (!qEnvironmentVariableIsSet(var))
       qputenv(var, ",");
   QQuickWindow::setDefaultAlphaBuffer(true);
+  // A buffer of 1 MB or more (a frame, an image, a decoded PNG) is its own
+  // mapping, given back when freed. glibc's default raises that threshold
+  // after the first big free, so they land in its per-thread arenas, which
+  // it never gives back: snipd grew by every capture, editor and recording
+  // (176 MB at start, 738 MB after a morning). About 1–2 ms more page faults
+  // per capture.
+  mallopt(M_MMAP_THRESHOLD, 1 << 20);
 
   QGuiApplication app(argc, argv);
   QGuiApplication::setApplicationName(QStringLiteral("snip"));

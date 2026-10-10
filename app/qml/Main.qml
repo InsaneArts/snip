@@ -351,7 +351,13 @@ QtObject {
     }
     // a big window just went (its pixels, its render thread's memory): give
     // the memory back once it's destroyed
-    property Timer trim: Timer { interval: 1500; onTriggered: Platform.trimMemory() }
+    property Timer trim: Timer {
+        interval: 1500
+        onTriggered: {
+            if (Object.keys(root.editors).length === 0) Engine.forgetImages()
+            Platform.trimMemory()
+        }
+    }
     // The video editor (VED): one window per recording, created like editors
     property var videoEditors: ({})
     property Component videoEditorComponent: Component { VideoEditor {} }
