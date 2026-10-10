@@ -4121,6 +4121,30 @@ def editor_crop_outward_and_ratios(s, env):
 
 
 @case
+def editor_menu_gives_the_keys_back(s, env):
+    """A field in a menu (Resize's width) kept the keys once its menu had closed: Ctrl+Z and
+    the tool keys went to the hidden field. The canvas gets them back."""
+    from PIL import Image
+    png = s.tmp / "menukeys.png"
+    Image.new("RGB", (400, 300), "white").save(png)
+    s.json("edit", str(png))
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    time.sleep(0.3)
+    w, mon, st = editor_window(), env.monitor(), editor_state(s)
+    win = lambda p: (w["at"][0] - mon["x"] + p["x"], w["at"][1] - mon["y"] + p["y"])
+    s.debug("ui", "editor", "rect", 50, 50, 100, 80)
+    s.debug("ui", "editor", "tool", "crop")
+    s.move(*win(where(s, "editor", "resize-button"))); s.click()
+    assert wait_for(lambda: editor_state(s)["menuOpen"], 2), "the Resize menu opens"
+    s.move(*win(where(s, "editor", "resize-w"))); s.click(); time.sleep(0.2)       # the width field
+    s.move(*win({"x": st["originX"] + 15 * st["k"], "y": st["originY"] + 285 * st["k"]})); s.click()
+    assert wait_for(lambda: not editor_state(s)["menuOpen"], 2), "a click beside it closes the menu"
+    s.debug("ui", "editor", "keys", "{ctrl+z}")
+    assert wait_for(lambda: editor_state(s)["items"] == [], 2), "Ctrl+Z undoes the rect"
+    close_editor(s)
+
+
+@case
 def editor_crop_bar(s, env):
     """CleanShot's crop bar: the canvas beyond the image can be transparent, white, black or
     any colour; Cancel (or Escape) goes back to the crop it started with."""

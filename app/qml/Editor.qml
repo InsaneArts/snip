@@ -4,6 +4,7 @@ import QtQuick.Effects
 import QtQuick.Shapes
 import Snip.Core
 import "editor.js" as Ed
+import "probe.js" as Probe
 
 // Snip's editor (ANN-01…19), CleanShot's Annotate window: a toolbar, the
 // canvas, a bottom bar. The document is a list of plain objects in image
@@ -1120,7 +1121,7 @@ Window {
                     ToolButton { icon: "rotate-cw"; tip: "Rotate right"; onClicked: ed.transformImage("rotate-right") }
                     ToolButton { icon: "flip-horizontal"; tip: "Flip horizontal"; onClicked: ed.transformImage("flip-horizontal") }
                     ToolButton { icon: "flip-vertical"; tip: "Flip vertical"; onClicked: ed.transformImage("flip-vertical") }
-                    ToolButton { id: resizeButton; label: "Resize"; chevron: true; onClicked: { resizeMenu.load(); ed.openMenuNamed("resize", resizeButton) } }
+                    ToolButton { id: resizeButton; objectName: "resize-button"; label: "Resize"; chevron: true; onClicked: { resizeMenu.load(); ed.openMenuNamed("resize", resizeButton) } }
                     ToolButton { label: "Revert to Original"; onClicked: { ed.cropRatio = 0; ed.setCrop(ed.full) } }
                     ToolButton { id: cropCancelButton; label: "Cancel"; onClicked: ed.cropCancel() }
                     ToolButton { label: "Crop"; selected: true; onClicked: ed.cropDone() }
@@ -1533,6 +1534,9 @@ Window {
                    counter: counterMenu, opacity: opacityMenu, ratio: ratioMenu, resize: resizeMenu, addImage: addImageMenu }[name], anchorItem)
     }
     property Item openedMenu: null
+    // a field in a menu (hex, size, a slider's value) keeps the keys even
+    // once its menu is gone: the canvas gets them back
+    onOpenedMenuChanged: if (!openedMenu && !editingText) focusKeys()
     function openMenu(menu, anchorItem) {
         if (openedMenu === menu) { openedMenu = null; return }
         const p = anchorItem.mapToItem(null, 0, 0)
@@ -1792,7 +1796,7 @@ Window {
         }
         Row {
             spacing: 6
-            Field { text: resizeMenu.shown(resizeMenu.rw, ed.imgW); onEdited: (t) => resizeMenu.set("w", t) }
+            Field { objectName: "resize-w"; text: resizeMenu.shown(resizeMenu.rw, ed.imgW); onEdited: (t) => resizeMenu.set("w", t) }
             Text { anchors.verticalCenter: parent.verticalCenter; text: "×"; color: Theme.textSecondary; font.pixelSize: 13 }
             Field { text: resizeMenu.shown(resizeMenu.rh, ed.imgH); onEdited: (t) => resizeMenu.set("h", t) }
             ToolButton { label: resizeMenu.percent ? "%" : "px"; onClicked: resizeMenu.percent = !resizeMenu.percent }
@@ -2157,6 +2161,7 @@ Window {
         case "zoom": a[1] === "fit" ? zoomFit() : zoomTo(n(1)); break
         case "flush": flush(a[1] || ""); break
         case "keys": Platform.sendKeys(ed, a.slice(1).join(" ")); break
+        case "where": Engine.log("editor_where", JSON.stringify(Probe.where(ed, a[1])).slice(1, -1)); break
         case "close": closeEditor(); break
         case "save-as": saveAsDialog(); break
         case "cancel-dialogs": Platform.closeFileDialogs(); break
