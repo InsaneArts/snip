@@ -265,14 +265,14 @@ pub fn reinstall() -> Result<(), String> {
 /// floats on every workspace, above fullscreen windows, with its own look.
 /// Applied at start and on every `configreloaded` (`reinstall`).
 ///
-/// Hyprland 0.56: a title pattern matches the whole title ("Snip Editor —
-/// <name>" needs `.*`); a rule matching class and title together never
+/// Hyprland 0.56: a pattern matches the whole name ("Snip Editor —
+/// <name>" needs `.*`, and so does a layer's "snip-select"); a rule matching class and title together never
 /// matches, nor does a pattern with non-ASCII characters; and when one rule
 /// moves a window, `float` from another rule is dropped. So: one ASCII field
 /// per rule, everything a window needs in one rule.
 pub fn install_runtime_rules() -> Result<(), String> {
     run(
-        r#"SNIP_LAYER_RULE = hl.layer_rule({ match = { namespace = "^snip-" }, no_anim = true, animation = "none" })
+        r#"SNIP_LAYER_RULE = hl.layer_rule({ match = { namespace = "^snip-.*" }, no_anim = true, animation = "none" })
 SNIP_EDITOR_RULE = hl.window_rule({ match = { title = "^Snip Editor.*" }, float = true, center = true, opacity = "1 1", tag = "+snip-editor" })
 SNIP_VIDEO_EDITOR_RULE = hl.window_rule({ match = { title = "^Snip Video Editor.*" }, float = true, center = true, opacity = "1 1", tag = "+snip-video-editor" })
 SNIP_QUICKLOOK_RULE = hl.window_rule({ match = { title = "^Snip Quick Look$" }, float = true, center = true, opacity = "1 1", tag = "+snip-quicklook" })
