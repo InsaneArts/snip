@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 use snip_core::geometry::{self, Rect};
+use snip_core::meter::{Meter, Reading};
 use snip_core::record::{self, Audio, Spec, Target};
 use snip_core::store::CaptureMeta;
 use snip_core::take::{self, Event, Recorder, Stopped, Take};
@@ -61,6 +62,8 @@ pub(super) struct Rec {
     title: Option<String>,
     state: State,
     run: Option<Run>,
+    /// listening to the chosen microphone (D53), and which
+    meter: Option<(String, Meter)>,
 }
 
 struct Run {
@@ -131,7 +134,7 @@ impl Inner {
         let local = Rect::new(logical.x - o.x, logical.y - o.y, logical.w, logical.h);
         let (app, title) = self.window_meta_at(&output, area, s);
         trace::trace("record_open", &format!("\"output\":{},\"area\":[{},{},{},{}],\"gif\":{gif}", js(&output), local.x, local.y, local.w, local.h));
-        *self.recording.lock().unwrap() = Some(Rec { output: output.clone(), logical, local, scale: s, gif, waiter, app, title, state: State::Ready, run: None });
+        *self.recording.lock().unwrap() = Some(Rec { output: output.clone(), logical, local, scale: s, gif, waiter, app, title, state: State::Ready, run: None, meter: None });
         let cfg = self.cfg().recording;
         // the windows on this output, front-most first, for Space (local px)
         let windows: Vec<Value> = if now {
@@ -158,6 +161,48 @@ impl Inner {
         // scripts: no panel and no countdown, the frame and controls only
         if now {
             self.record_go();
+        } else {
+            self.record_listen();
+        }
+    }
+
+    /// D53: listen to the chosen microphone while the panel shows it, and
+    /// while an area take records it (its pill shows the level); not for a
+    /// GIF, a whole-output take, or with no microphone. Called whenever one
+    /// of those changes.
+    pub(super) fn record_listen(self: &Arc<Self>) {
+        let mic = self.cfg().recording.mic;
+        let outputs = self.outputs.lock().unwrap().clone();
+        let old = {
+            let mut r = self.recording.lock().unwrap();
+            let Some(rec) = r.as_mut() else { return };
+            let o = outputs.iter().find(|o| o.name == rec.output).map(|o| o.logical);
+            let whole = o.is_none_or(|o| rec.local.x <= 0 && rec.local.y <= 0 && rec.local.w >= o.w && rec.local.h >= o.h);
+            let listen = !mic.is_empty()
+                && !rec.gif
+                && match rec.state {
+                    State::Ready => true,
+                    State::Countdown | State::Recording | State::Paused => !whole,
+                    State::Finishing => false,
+                };
+            if rec.meter.as_ref().map(|(m, _)| m.as_str()) == listen.then_some(mic.as_str()) {
+                return;
+            }
+            let (me, id) = (Arc::downgrade(self), mic.clone());
+            let heard = move |reading| {
+                let Some(me) = me.upgrade() else { return };
+                me.ui(match reading {
+                    Reading::Level(l) => Ui::RecordLevel(l as f64),
+                    Reading::Muted(muted) => Ui::RecordMic { mic: id.clone(), muted },
+                });
+            };
+            let new = listen.then(|| (mic.clone(), Meter::start(&mic, Recorder::from_env(), heard)));
+            std::mem::replace(&mut rec.meter, new)
+        };
+        // stopped outside the lock; what it showed goes with it
+        if old.is_some() {
+            drop(old);
+            self.ui(Ui::RecordLevel(0.0));
         }
     }
 
@@ -185,6 +230,7 @@ impl Inner {
             rec.state = State::Countdown;
         }
         self.record_status(json!({ "seconds": seconds }));
+        self.record_listen();
     }
 
     /// The countdown is over and off screen (QML): record.
@@ -247,6 +293,7 @@ impl Inner {
             self.record_hooks(&sid, keys, clicks);
         }
         self.record_status(json!({ "elapsed": 0 }));
+        self.record_listen();
         let me = self.clone();
         std::thread::spawn(move || me.record_watch(take));
     }
@@ -489,6 +536,8 @@ impl Inner {
             }
         };
         let Some(mut rec) = rec else { return };
+        // the microphone isn't listened to while gsr finishes
+        rec.meter = None;
         let dnd = rec.run.as_ref().is_some_and(|run| run.dnd);
         // gsr first: the HUD (the camera, the keys) stays until the file is finished
         let file = rec.run.take().and_then(|run| self.record_end_run(run, keep));

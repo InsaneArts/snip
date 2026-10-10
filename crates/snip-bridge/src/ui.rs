@@ -47,6 +47,10 @@ pub enum Ui {
     RecordOpen(String),
     RecordStatus(String),
     RecordInput(String),
+    /// D53: the chosen microphone's level, 0–1, about 30 times a second
+    RecordLevel(f64),
+    /// D53: the chosen microphone's mute switch, first and when it changes
+    RecordMic { mic: String, muted: bool },
     RecordClose,
     /// The `settings` property: the config as JSON.
     Settings(String),
@@ -107,6 +111,8 @@ impl UiOut for Qt {
                 Ui::RecordOpen(json) => e.record_open(&q(&json)),
                 Ui::RecordStatus(json) => e.record_status(&q(&json)),
                 Ui::RecordInput(json) => e.record_input(&q(&json)),
+                Ui::RecordLevel(level) => e.record_level(level),
+                Ui::RecordMic { mic, muted } => e.record_mic(&q(&mic), muted),
                 Ui::RecordClose => e.record_close(),
                 Ui::Settings(json) => e.set_settings(q(&json)),
                 Ui::Theme(json) => e.set_theme(q(&json)),

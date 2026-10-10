@@ -1941,7 +1941,7 @@ impl Inner {
 
     // ------------------------------------------------------------------ live config / theme
 
-    pub fn reload_config(&self) {
+    pub fn reload_config(self: &Arc<Self>) {
         let (cfg, err) = Config::load();
         let before = std::mem::replace(&mut *self.cfg.write().unwrap(), cfg);
         if before.shortcuts != self.cfg().shortcuts {
@@ -1949,6 +1949,10 @@ impl Inner {
         }
         if before.general.appearance != self.cfg().general.appearance {
             self.push_theme();
+        }
+        // D53: the panel's microphone, chosen anew
+        if before.recording.mic != self.cfg().recording.mic {
+            self.record_listen();
         }
         *self.cfg_error.lock().unwrap() = err.clone();
         if let Some(e) = err {
@@ -2011,7 +2015,7 @@ impl Inner {
     }
 
     /// Restore Defaults: [shortcuts] leaves the file; snip.lua's keys return.
-    pub fn restore_shortcuts(&self) -> Result<(), String> {
+    pub fn restore_shortcuts(self: &Arc<Self>) -> Result<(), String> {
         let path = Config::path();
         let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
         let out = snip_core::config::remove_value(&text, "shortcuts")?;
@@ -2022,7 +2026,7 @@ impl Inner {
 
     /// The settings window changes one setting (SET-02): written into
     /// config.toml (comments kept) only if the file stays valid.
-    pub fn set_setting(&self, dotted: &str, value: &str) -> Result<(), String> {
+    pub fn set_setting(self: &Arc<Self>, dotted: &str, value: &str) -> Result<(), String> {
         let value: Value = serde_json::from_str(value).map_err(|e| e.to_string())?;
         let path = Config::path();
         let text = match std::fs::read_to_string(&path) {
@@ -2405,9 +2409,10 @@ mod tests {
             for (var, sub) in [("HOME", "home"), ("XDG_DATA_HOME", "data"), ("XDG_CONFIG_HOME", "config"), ("XDG_CACHE_HOME", "cache"), ("SNIP_RUNTIME_DIR", "run")] {
                 std::env::set_var(var, d.join(sub));
             }
-            // never the user's session, notifications, browser or speakers
+            // never the user's session, notifications, browser, speakers or microphone
             std::env::remove_var("HYPRLAND_INSTANCE_SIGNATURE");
             std::env::set_var("SNIP_NO_PORTALS", "1");
+            std::env::set_var("SNIP_RECORDER", "fake");
             // as snipd has them: its ctl.sock lives in the runtime dir
             std::fs::create_dir_all(paths::runtime_dir()).unwrap();
             let cfg = paths::config_dir();
