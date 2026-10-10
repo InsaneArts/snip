@@ -681,6 +681,8 @@ Window {
         readonly property bool inside: hud.area.width >= width + 40 && hud.area.height >= height + 40
         x: inside ? Math.round(hud.area.x + hud.area.width / 2 - width / 2) : hud.placeX(width)
         y: inside ? Math.round(hud.area.y + hud.area.height / 2 - height / 2) : hud.placeY(height)
+        // the gap between the cards is the panel's too: no drag on the screen
+        MouseArea { anchors.fill: parent; cursorShape: Qt.ArrowCursor }
         RectangularShadow { anchors.fill: setupCard; radius: setupCard.radius; offset.y: 8; blur: 28; color: Theme.shadow }
         RectangularShadow { anchors.fill: recordCard; radius: recordCard.radius; offset.y: 8; blur: 28; color: Theme.shadow }
 

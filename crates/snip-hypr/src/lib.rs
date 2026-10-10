@@ -48,6 +48,8 @@ pub struct Monitor {
     pub scale: f64,
     pub focused: bool,
     pub active_workspace: i64,
+    /// the special workspace shown over it (Omarchy's scratchpad), or 0
+    pub special_workspace: i64,
     /// Space bars keep for themselves (logical px): left, top, right, bottom
     pub reserved: [i32; 4],
 }
@@ -101,6 +103,7 @@ pub fn monitors() -> Vec<Monitor> {
                     scale: m["scale"].as_f64().unwrap_or(1.0),
                     focused: m["focused"].as_bool().unwrap_or(false),
                     active_workspace: m["activeWorkspace"]["id"].as_i64().unwrap_or(0),
+                    special_workspace: m["specialWorkspace"]["id"].as_i64().unwrap_or(0),
                     reserved: [0, 1, 2, 3].map(|k| i(&m["reserved"][k])),
                 })
                 .collect()
@@ -138,12 +141,15 @@ pub fn clients() -> Vec<Client> {
 /// Windows visible on the focused workspaces of all monitors, front-most
 /// first (floating/pinned above tiled), for window-mode hit testing.
 pub fn visible_windows() -> Vec<Client> {
-    let active: Vec<i64> = monitors().iter().map(|m| m.active_workspace).collect();
+    let mons = monitors();
+    let active: Vec<i64> = mons.iter().map(|m| m.active_workspace).collect();
+    // a shown special workspace (the scratchpad) is drawn over the others
+    let special: Vec<i64> = mons.iter().map(|m| m.special_workspace).filter(|&w| w != 0).collect();
     let mut v: Vec<Client> = clients()
         .into_iter()
-        .filter(|c| !c.hidden && c.w > 0 && c.h > 0 && (c.pinned || active.contains(&c.workspace)))
+        .filter(|c| !c.hidden && c.w > 0 && c.h > 0 && (c.pinned || active.contains(&c.workspace) || special.contains(&c.workspace)))
         .collect();
-    v.sort_by_key(|c| (!(c.pinned || c.floating), !c.fullscreen));
+    v.sort_by_key(|c| (!special.contains(&c.workspace), !(c.pinned || c.floating), !c.fullscreen));
     v
 }
 
