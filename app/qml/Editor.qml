@@ -773,18 +773,30 @@ Window {
             width: ed.shown.w * ed.k; height: ed.shown.h * ed.k
             clip: true
 
-            // a checkerboard under transparent areas (ANN-01); not exported
+            // a checkerboard under transparent areas (ANN-01); not exported.
+            // One 16 px tile, repeated: a canvas this size took 0.5 s and
+            // half a gigabyte to repaint at 400 %. The tile is drawn at the
+            // screen's density, so it's shown a texel a pixel
+            Image {
+                width: parent.width * ed.dpr
+                height: parent.height * ed.dpr
+                scale: 1 / ed.dpr
+                transformOrigin: Item.TopLeft
+                fillMode: Image.Tile
+                smooth: false
+                source: checkerTile.tile
+            }
             Canvas {
-                anchors.fill: parent
-                onWidthChanged: requestPaint()
-                onHeightChanged: requestPaint()
+                id: checkerTile
+                property string tile: ""
+                visible: false
+                width: 16
+                height: 16
                 onPaint: {
                     const g = getContext("2d")
-                    for (let y = 0; y < height; y += 8)
-                        for (let x = 0; x < width; x += 8) {
-                            g.fillStyle = ((x + y) / 8) % 2 ? "#d8d8d8" : "#f4f4f4"
-                            g.fillRect(x, y, 8, 8)
-                        }
+                    g.fillStyle = "#f4f4f4"; g.fillRect(0, 0, 16, 16)
+                    g.fillStyle = "#d8d8d8"; g.fillRect(8, 0, 8, 8); g.fillRect(0, 8, 8, 8)
+                    tile = toDataURL()
                 }
             }
 
