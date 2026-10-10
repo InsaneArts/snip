@@ -87,6 +87,15 @@ struct PoolBuf {
     wl_buffer: WlBuffer,
 }
 
+impl Drop for PoolBuf {
+    // a dropped proxy isn't destroyed: the compositor kept the buffer, and
+    // its memory, until snipd quit
+    fn drop(&mut self) {
+        self.wl_buffer.destroy();
+        self._pool.destroy();
+    }
+}
+
 /// One capture target inside a request.
 struct Item {
     key: String,
@@ -427,6 +436,16 @@ impl State {
             wl_shm::Format::Xrgb8888 => PixelFormat::Xrgb8888,
             _ => return None,
         };
+        // one window's buffers at a time (a scrolling capture reuses them; every
+        // other window captured kept ~10 MB until snipd quit)
+        if key.starts_with("window:") {
+            self.pools.retain(|k, pool| {
+                if k.starts_with("window:") && k != key {
+                    pool.retain(|p| Arc::strong_count(&p.buf) > 1);
+                }
+                !pool.is_empty()
+            });
+        }
         let pool = self.pools.entry(key.to_owned()).or_default();
         // reuse a buffer nobody else holds (the UI may still show an older frame)
         pool.retain(|p| !(Arc::strong_count(&p.buf) == 1 && (p.buf.width, p.buf.height) != (w, h)));
