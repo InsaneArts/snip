@@ -4145,6 +4145,37 @@ def editor_menu_gives_the_keys_back(s, env):
 
 
 @case
+def editor_checkerboard_at_400(s, env):
+    """ANN-01: transparency shows as a checkerboard, zoomed in too. The canvas that painted
+    it took 0.5 s and up to half a gigabyte at 400 %; a 16 px tile, repeated, takes neither."""
+    from PIL import Image
+    png = s.tmp / "clear.png"
+    Image.new("RGBA", (1800, 1100), (0, 0, 0, 0)).save(png)
+    s.json("edit", str(png))
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    time.sleep(0.8)
+
+    def rss():
+        status = dict(l.split(":", 1) for l in open(f"/proc/{s.proc.pid}/status") if ":" in l)
+        return int(status["VmRSS"].split()[0]) // 1024
+
+    before = rss()
+    s.debug("ui", "editor", "zoom", 4)
+    time.sleep(1.5)
+    grown = rss() - before
+    print(f"      400 %: {grown} MB more")
+    w, mon, st = editor_window(), env.monitor(), editor_state(s)
+    shot = s.tmp / "checker.png"
+    sh("grim", "-o", OUT, str(shot))
+    im, sc = Image.open(shot).convert("RGB"), mon["scale"]
+    cx, cy = round((w["at"][0] - mon["x"] + st["winW"] / 2) * sc), round((w["at"][1] - mon["y"] + st["winH"] / 2) * sc)
+    greys = {im.getpixel((cx + dx, cy + dy))[0] for dx in range(0, 40, 2) for dy in range(0, 40, 2)}
+    assert any(abs(g - 216) <= 2 for g in greys) and any(abs(g - 244) <= 2 for g in greys), ("the checkerboard shows", greys)
+    assert grown < 40, ("MB for the checkerboard at 400 %", grown)
+    close_editor(s)
+
+
+@case
 def editor_crop_bar(s, env):
     """CleanShot's crop bar: the canvas beyond the image can be transparent, white, black or
     any colour; Cancel (or Escape) goes back to the crop it started with."""
