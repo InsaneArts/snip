@@ -3892,6 +3892,38 @@ def editor_double_click_changes_a_text(s, env):
 
 
 @case
+def editor_text_takes_colour_and_size_while_typing(s, env):
+    """ANN-05: a colour or size chosen while typing goes to that text, a new one or one being
+    changed. A new text kept the colour it started with, and a changed one got its old
+    colour back once more was typed."""
+    from PIL import Image
+    png = s.tmp / "inktext.png"
+    Image.new("RGB", (500, 260), "white").save(png)
+    s.json("edit", str(png))
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    time.sleep(0.3)
+    w, mon, st = editor_window(), env.monitor(), editor_state(s)
+    at = lambda ix, iy: (w["at"][0] - mon["x"] + st["originX"] + ix * st["k"], w["at"][1] - mon["y"] + st["originY"] + iy * st["k"])
+    s.debug("ui", "editor", "tool", "text")
+    s.move(*at(60, 120)); s.click(); time.sleep(0.2)
+    assert editor_state(s)["editingText"], "typing"
+    s.debug("ui", "editor", "keys", "Hello")
+    s.debug("ui", "editor", "color", "#e5484d")
+    s.debug("ui", "editor", "size", 3)
+    s.debug("ui", "editor", "keys", "{Return}")
+    t = editor_state(s)["items"][0]
+    assert (t["text"], t["color"], t["size"]) == ("Hello", "#e5484d", round(40 * st["dpr"])), t
+    s.debug("ui", "editor", "tool", "select")
+    s.move(*at(75, 125)); s.click(); time.sleep(0.05); s.click()      # a double-click changes it
+    assert wait_for(lambda: editor_state(s)["editingText"], 2), "changing the text"
+    s.debug("ui", "editor", "color", "#30a46c")
+    s.debug("ui", "editor", "keys", " there{Return}")
+    items = editor_state(s)["items"]
+    assert [(i["text"], i["color"]) for i in items] == [("Hello there", "#30a46c")], items
+    close_editor(s)
+
+
+@case
 def editor_text_emoji(s, env):
     """ANN-05: the blue smiley above the text being typed opens an emoji picker (Omarchy's
     list); searching and Return insert the emoji at the caret, and typing goes on."""
