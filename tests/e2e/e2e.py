@@ -3996,6 +3996,36 @@ def editor_redaction_is_secure(s, env):
 
 
 @case
+def editing_reads_the_text_again_once(s, env):
+    """HIS-05: each write-back of an edit drops the capture's text from the search, and the
+    indexer read it again after every one (a full OCR each time); it reads it once the
+    editing pauses, and the capture is found again."""
+    from PIL import Image, ImageDraw, ImageFont
+    try:
+        font = ImageFont.truetype("/usr/share/fonts/noto/NotoSans-Regular.ttf", 32)
+    except OSError:
+        font = ImageFont.load_default(32)
+    im = Image.new("RGB", (520, 200), "white")
+    ImageDraw.Draw(im).text((20, 70), "quokka lantern", fill="black", font=font)
+    png = s.tmp / "reread.png"
+    im.save(png)
+    rec = s.json("edit", str(png))["result"]
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    reads = lambda: [e for e in s.traces("indexed") if e["id"] == rec["id"]]
+    # searchable, and the indexer's round over (one going on reads what an edit drops)
+    assert wait_for(lambda: reads() and s.json("search", "quokka")["result"] and not s.status()["index_pending"], 10), "it's searchable first"
+    n = len(reads())
+    for i in range(4):
+        s.debug("ui", "editor", "rect", 400 + 25 * i, 20, 15, 15)
+        editor_flush(s)
+        time.sleep(0.8)
+    assert wait_for(lambda: s.json("search", "quokka")["result"], 10), "found again once the editing pauses"
+    time.sleep(0.5)
+    assert len(reads()) - n == 1, ("read again once", reads()[n:])
+    close_editor(s)
+
+
+@case
 def editor_redact_intensity(s, env):
     """ANN-06: intensity sets the Pixelate blocks' size; Natural blur (not secure) really
     blurs what is under it."""
