@@ -265,6 +265,7 @@ Window {
                         spacing: 8
                         Field { width: 300; key: "general.export_dir"; placeholder: "~/Pictures/Screenshots" }
                         TextButton {
+                            objectName: "choose:general.export_dir"
                             text: "Choose…"
                             implicitHeight: 26
                             onClicked: Platform.openFolderDialog("Export location", win.value("general.export_dir") || "", (path) => {

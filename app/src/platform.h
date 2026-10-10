@@ -100,6 +100,8 @@ public:
   Q_INVOKABLE QSize imageSize(const QString& path) const;
   // Tests: cancel every open dialog (portal Request.Close).
   Q_INVOKABLE void closeFileDialogs();
+  // Tests (SNIP_NO_PORTALS): the next file dialog answers `path`, not cancelled.
+  Q_INVOKABLE void answerNextFileDialog(const QString& path);
   // Snip in the bar (OMA-08): the tray icon, from snip-tray-symbolic.svg in
   // `iconDir`; trayActivated when it's clicked, trayMenuRequested when it's
   // right-clicked. Not with SNIP_NO_TRAY set (tests: no second icon in the

@@ -4485,6 +4485,68 @@ def save_as(s, env):
 
 
 @case
+def file_dialogs_answer_who_asked(s, env):
+    """Each desktop file dialog answers the request that opened it: Save As on a card and
+    in the editor, Add Image, Add Wallpaper, Open… and Pin to the Screen… in the bar's
+    menu, and Settings › Export location. (The test portal answers a path given ahead.)"""
+    from PIL import Image
+    png = s.tmp / "chosen.png"
+    Image.new("RGB", (240, 160), (40, 160, 90)).save(png)
+    answer = lambda p: s.debug("ui", "answer-dialog", str(p))
+    s.cli("close-all"); time.sleep(0.3)
+    rec = open_card(s, png); time.sleep(0.3)
+    answer(s.tmp / "card-as.png")
+    s.debug("ui", "save-as", rec["id"])
+    assert wait_for(lambda: (s.tmp / "card-as.png").exists(), 3), "a card's Save As writes where the dialog said"
+    s.cli("close-all")
+
+    s.json("edit", str(png))
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    answer(png)
+    s.debug("ui", "editor", "choose-image")
+    assert wait_for(lambda: [i["kind"] for i in editor_state(s)["items"]] == ["image"], 3), "Add Image adds the file"
+    answer(png)
+    s.debug("ui", "editor", "choose-wallpaper")
+    assert wait_for(lambda: len(editor_state(s)["ownWalls"]) == 1, 3), "Add Wallpaper adds it"
+    s.debug("ui", "editor", "remove-wallpaper", editor_state(s)["ownWalls"][0])
+    answer(s.tmp / "editor-as.png")
+    s.debug("ui", "editor", "save-as")
+    assert wait_for(lambda: (s.tmp / "editor-as.png").exists(), 5), "the editor's Save As writes there"
+    assert wait_for(lambda: editor_window() is None, 5), "and closes"
+
+    try:
+        for item, opened in (("open", lambda: editor_window()), ("pin", lambda: pin_windows())):
+            answer(png)
+            s.move(300, 5)                                              # on the bar, as the icon's click
+            s.debug("ui", "tray", "open")
+            assert wait_for(lambda: tray_state(s)["open"], 2)
+            n = len(s.traces("tray_where"))
+            s.debug("ui", "tray", "where", "menu:" + item)
+            assert wait_for(lambda: len(s.traces("tray_where")) > n, 2)
+            p = s.traces("tray_where")[-1]
+            s.move(p["x"], p["y"]); s.click()
+            assert wait_for(opened, 5), item + "… opens the chosen file"
+    finally:
+        s.debug("ui", "close-editors")
+        s.debug("ui", "close-pins")
+
+    cfg = s.tmp / "cfg/snip/config.toml"
+    before = cfg.read_text()
+    folder = s.tmp / "exports"
+    folder.mkdir(exist_ok=True)
+    try:
+        s.json("settings", "general")
+        assert wait_for(lambda: settings_client(), 5)
+        answer(folder)
+        settings_click(s, env, "choose:general.export_dir")
+        assert wait_for(lambda: settings_state(s, "general.export_dir")["value"] == str(folder), 3), "Export location takes the folder"
+    finally:
+        s.debug("ui", "settings", "close")
+        cfg.write_text(before)
+        time.sleep(0.8)
+
+
+@case
 def self_timer(s, env):
     """CAP-06: --delay counts down on screen, then captures live; the countdown is
     never in the capture; the capture hotkey cancels a running countdown."""

@@ -2137,6 +2137,8 @@ Window {
         case "print": flush("print"); break
         case "drop": { const v = toView(n(2), n(3)); dropFiles([a[1]], v.x, v.y); break }   // at image px
         case "add-wallpaper": bgPanel.addWallpaper(a.slice(1).join(" ")); break
+        case "choose-wallpaper": bgPanel.chooseWallpaper(); break
+        case "choose-image": chooseImage(); break
         case "remove-wallpaper": bgPanel.removeWallpaper(a.slice(1).join(" ")); break
         case "color": setColor(a[1]); break
         case "tool": setTool(a[1]); break

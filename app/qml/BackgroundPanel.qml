@@ -22,6 +22,9 @@ Rectangle {
         ownWalls = JSON.parse(Engine.customWallpapers() || "[]")
         ed.setBg({ kind: "wallpaper", value: p })
     }
+    function chooseWallpaper() {
+        Platform.openImageDialog("Add Wallpaper", (path) => { if (path !== "") addWallpaper(path) })
+    }
     function removeWallpaper(path) {
         Engine.removeWallpaper(path)
         ownWalls = JSON.parse(Engine.customWallpapers() || "[]")
@@ -206,7 +209,7 @@ Rectangle {
                             }
                         }
                         Icon { anchors.centerIn: parent; name: "plus"; size: 16; color: Theme.text }
-                        onPicked: Platform.openImageDialog("Add Wallpaper", (path) => { if (path !== "") panel.addWallpaper(path) })
+                        onPicked: panel.chooseWallpaper()
                     }
                 }
                 DropArea {
