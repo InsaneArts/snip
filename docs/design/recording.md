@@ -10,14 +10,14 @@ Sources: the six research reports in [research/recording-2026-10/](../research/r
 |---|---|---|
 | **Start** | Menu "Record Screen"; a hotkey that also stops (none by default); the URL API | Snip's menu (Record Screen / Stop Recording), `snip record`, the `record` action in Settings › Shortcuts (no default key yet; spec §7 proposes ALT+PRINT, an open question) |
 | **What** | Drag an area; **Space** snaps it to a window; ⤢ or Return with no area records the display | The same (D49): the panel shows at once over the whole output; a drag draws an area (handles resize it, a drag inside moves it), Space then a click picks a window, ⤢ goes back to the whole output, W × H types a size. `snip record area\|fullscreen` for scripts |
-| **Panel** | Settings, W×H, ⤢, Select area / Microphone (with a level meter), Computer audio, Camera, Highlight Clicks, Show Keystrokes / **Record GIF ⌥↩**, **Record Video ↩** | The same, without the level meter; centred on the screen, then in the area's middle (beside it when it doesn't fit), gone before the first frame |
+| **Panel** | Settings, W×H, ⤢, Select area / Microphone (with a level meter), Computer audio, Camera, Highlight Clicks, Show Keystrokes / **Record GIF ⌥↩**, **Record Video ↩** | The same: the mic cell fills with the microphone's level as you speak (D53); centred on the screen, then in the area's middle (beside it when it doesn't fit), gone before the first frame |
 | **Before it starts** | Optional 3-2-1 countdown (off by default), dim outside the area (on), Do Not Disturb (off) | Countdown (3 s by default), dim outside, Omarchy's DND on while recording, the earlier state restored |
-| **While recording** | A pill: stop with the time and a level meter, pause/resume, restart and delete (each asks first), a drag grip | Stop with the time, pause/resume, restart and delete (each asks first, in the pill); **outside the area**, since KMS capture records whatever is on screen (macOS left CleanShot's pill out of the capture). Hidden for a whole-output recording (it would be in the video): there a click on Snip in the bar stops it and its right-click menu pauses it (D52), as the countdown says. No level meter yet |
+| **While recording** | A pill: stop with the time and a level meter, pause/resume, restart and delete (each asks first), a drag grip | Stop with the time, pause/resume, restart and delete (each asks first, in the pill); **outside the area**, since KMS capture records whatever is on screen (macOS left CleanShot's pill out of the capture). Hidden for a whole-output recording (it would be in the video): there a click on Snip in the bar stops it and its right-click menu pauses it (D52), as the countdown says. Stop and the time fill with the microphone's level (D53) |
 | **After** | Quick Access card (length, size, sound); double-click opens the editor; a GIF is made after Stop | The same card (first frame, length); double-click or Edit Video… opens the editor; a GIF is made after Stop. Its corners (D51): close, **Quick Look** (a small window that plays it; Space too), the editor, **Open With…** where CleanShot has its cloud |
 | **Editor** | Trim (in and out only), dimensions, quality (7 steps), audio: as is / mono / mute / volume 0–200 %, Trim Only or Trim & Convert, **Replace** or **Save as New**, an estimated size | Trim, **cuts in the middle** (Split at the playhead, Cut a part), each track's volume (0 mutes it; several are mixed into one), mono, MP4 or **GIF**, quality (4 steps) and size, Replace or Save as New, an estimated size |
 | **Camera** | Devices; Small/Medium/Large/Huge (scaled to the area); Circle/Square/Rectangle/Vertical; mirrored by default; drag anywhere, any time; a click fills the area | The same, from the panel's Camera menu (below) |
 | **Clicks, keys** | Highlight clicks (size, colour, outline or filled, animated); keystrokes (size, 6 positions, dark or light, command keys only by default) | Two toggles on the panel: a ring in the theme's accent (right click: warning) where the pointer clicks; the command keys at the bottom centre of the area, held modifiers kept, repeats counted (×2). Command keys only, no options yet |
-| **Safety** | Crash recovery; a low-disk warning (no auto-stop); mic muted or unplugged: Continue Without Audio or Stop; display sleep prevented | Recovery at start; **stops and keeps** below 1 GB free or when its display goes away; the screen kept awake; **paused** when the session locks; a muted microphone flagged on the panel |
+| **Safety** | Crash recovery; a low-disk warning (no auto-stop); mic muted or unplugged: Continue Without Audio or Stop; display sleep prevented | Recovery at start; **stops and keeps** below 1 GB free or when its display goes away; the screen kept awake; **paused** when the session locks; a muted microphone flagged on the panel, live (D53) |
 
 Snip goes beyond CleanShot 4.x in two places, both asked for: cuts in the middle and GIF export in the editor ("cut things up"), and mixing the tracks with their own volumes in the editor ("merge audio, mute audio"; CleanShot asked for each track's volume in a dialog after recording).
 
@@ -30,6 +30,10 @@ The panel (D49, 2026-10-10), at once over the whole screen, then in the middle o
 Its toggles, off and on, dark and light: on, the icon sits on a soft accent square (as Full screen's does); off, a source is crossed out (no microphone, no computer audio, no camera), and clicks and keys go grey.
 
 ![The panel's toggles](recording-panel-toggles.png)
+
+The microphone's level (D53, the test voice here): the mic cell fills from the bottom as you speak; while an area records, Stop and the time fill the same way, darker so the time stays readable.
+
+![The microphone's level](recording-mic-level.png)
 
 A whole-screen take has no controls on screen (D52): its countdown says how to stop it.
 
@@ -120,7 +124,8 @@ history card ─ Edit Video… ─▶ VideoEditor window ─▶ media::export (f
 | Restart and Delete ask first; Alt+Enter records a GIF | REC-05, REC-02 | ✅ built |
 | The screen kept awake; paused when the session locks; a muted microphone flagged | REC-14 | ✅ built; the lock is untested (the nested Hyprland can't lock) |
 | Snip's bar icon turns red while recording (a click opens the menu: Stop Recording) | REC-06 | ✅ built (checked live: the bar's tray follows the icon change) |
-| A level meter; the time in the bar; a microphone unplugged mid-recording; the Bluetooth headset warning | REC-05, REC-06, REC-14 | planned |
+| The microphone's level: the panel's mic cell and the pill's Stop fill with it; the muted flag stays live (D53) | REC-02, REC-05, REC-14 | ✅ built; heard through PipeWire's peaks (`pw-record`), checked on a private PipeWire with a virtual microphone; a real microphone is to try by hand |
+| The time in the bar; a microphone unplugged mid-recording; the Bluetooth headset warning | REC-06, REC-14 | planned |
 | Editor: a scrubbing proxy, keyframe thumbnails at once, a smooth playhead | VED-01 | planned |
 | Privacy-safe mode; true window capture | REC-15, P2 | later |
 

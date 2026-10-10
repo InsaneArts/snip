@@ -12,7 +12,7 @@ license=(GPL-3.0-or-later)
 depends=(hyprland qt6-base qt6-declarative qt6-wayland qt6-multimedia qt6-multimedia-ffmpeg ffmpeg layer-shell-qt kcoreaddons wayland sqlite gcc-libs glibc)
 makedepends=(cargo cmake ninja corrosion git)
 optdepends=('tesseract-data-eng: Capture Text (OCR)'
-            'pipewire: capture sounds (pw-play)'
+            'pipewire-audio: capture sounds and the microphone level (pw-play, pw-record)'
             'glib2: Move to Trash for saved files')
 provides=(snip-screenshot)
 conflicts=(snip-screenshot)
