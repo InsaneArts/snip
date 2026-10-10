@@ -205,6 +205,7 @@ Window {
     // colour and size apply to the selection too, as in CleanShot
     function setColor(c) {
         if (sizeKind === "highlight") highlightInk = c; else ink = c
+        if (editingText) { textObj = Object.assign(Ed.copy(textObj), { color: c }); return }
         if (selectedObj && selectedObj.color !== c) {
             const o = Ed.copy(selectedObj); o.color = c; replaceItem(selected, o)
         }
@@ -213,6 +214,7 @@ Window {
         const kind = sizeKind
         if (!Ed.sizes[kind]) return
         const s = Object.assign({}, sizeIndex); s[kind] = i; sizeIndex = s
+        if (editingText && kind === "text") { textObj = Object.assign(Ed.copy(textObj), { size: sizeFor(kind) }); return }
         if (selectedObj && selectedObj.kind === kind) {
             const o = Ed.copy(selectedObj); o.size = sizeFor(kind); replaceItem(selected, o)
         }
@@ -541,8 +543,9 @@ Window {
         const i = draftIndex
         draftIndex = -1
         if (i >= 0) {
+            const o = Ed.copy(textObj); o.text = t
             if (t === "") { selected = i; removeSelected() }
-            else if (t !== doc.items[i].text) { const o = Ed.copy(textObj); o.text = t; replaceItem(i, o) }
+            else if (JSON.stringify(o) !== JSON.stringify(doc.items[i])) replaceItem(i, o)   // its text, colour, size or style
         } else if (t !== "") {
             const o = Ed.copy(textObj); o.text = t; addItem(o)
         }
@@ -2146,6 +2149,7 @@ Window {
         case "choose-image": chooseImage(); break
         case "remove-wallpaper": bgPanel.removeWallpaper(a.slice(1).join(" ")); break
         case "color": setColor(a[1]); break
+        case "size": setSize(n(1)); break
         case "tool": setTool(a[1]); break
         case "undo": undo(); break
         case "redo": redo(); break
