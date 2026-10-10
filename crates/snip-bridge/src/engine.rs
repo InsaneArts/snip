@@ -48,25 +48,42 @@ fn snapshot() -> Snapshot {
     Snapshot { clients: snip_hypr::visible_windows(), cursor: snip_hypr::cursor_pos() }
 }
 
+/// One capture as it was asked for (a key, `snip`, a menu). It travels
+/// through the overlay, a countdown or a live capture to the capture, so
+/// nothing it asked outlives it or reaches the next one.
+struct Job {
+    /// gets the outcome (the CLI blocks on it)
+    waiter: Option<Waiter>,
+    /// CAP-11: the pointer in the image
+    cursor: bool,
+    /// CAP-06: the self-timer's seconds (an area's start after its selection)
+    delay: u32,
+    /// CAP-02 variants, `--action`: run instead of the After Capture rules
+    action: Option<AfterCapture>,
+    /// OCR-02: keep (Some(true)) or join the text's line breaks, whatever
+    /// ocr.keep_line_breaks says ("text-lines", "text-one-line")
+    line_breaks: Option<bool>,
+    /// D32: Shift held as the selection ended skips the auto-applied preset
+    skip_preset: bool,
+}
+
 enum Pending {
     /// Frames for a selection overlay (area / window / text)
-    Overlay { mode: String, waiter: Option<Waiter>, snap: JoinHandle<Snapshot>, cursor: bool, delay: u32 },
+    Overlay { mode: String, snap: JoinHandle<Snapshot>, job: Job },
     /// A rectangle (or the whole output when `rect` is None) of one output
-    Region { waiter: Option<Waiter>, output: String, rect: Option<Rect>, kind: String },
+    Region { output: String, rect: Option<Rect>, kind: String, job: Job },
     /// Every monitor, for one image (CAP-04)
-    AllOutputs { waiter: Option<Waiter> },
+    AllOutputs { job: Job },
     /// A clean window buffer (CAP-05)
-    Window { waiter: Option<Waiter>, client: Client, output: String, shadow: bool, fallback: Option<Frame>, rect: Rect },
+    Window { client: Client, output: String, shadow: bool, fallback: Option<Frame>, rect: Rect, job: Job },
     /// A frame of a scrolling capture (SCR-01)
     Scroll { tx: mpsc::Sender<CaptureResult> },
 }
 
 struct Session {
     mode: String,
-    waiter: Option<Waiter>,
     clients: Vec<Client>,
-    cursor: bool,
-    delay: u32,
+    job: Job,
 }
 
 /// A running self-timer (CAP-06): captured live when the countdown ends.
@@ -74,8 +91,7 @@ struct Countdown {
     output: String,
     rect: Option<Rect>,
     kind: String,
-    waiter: Option<Waiter>,
-    cursor: bool,
+    job: Job,
 }
 
 pub struct Inner {
@@ -91,11 +107,8 @@ pub struct Inner {
     session: Mutex<Option<Session>>,
     last_area: Mutex<Option<(String, Rect)>>,
     /// Captures waiting for their auto-applied background (BG-03) before
-    /// their card: id → output
-    pending_bg: Mutex<HashMap<String, String>>,
-    /// Shift held when the selection ended (D32): this capture skips the
-    /// auto-applied preset. Cleared when a capture begins.
-    skip_preset: AtomicBool,
+    /// their card: id → output, and the capture's own action
+    pending_bg: Mutex<HashMap<String, (String, Option<AfterCapture>)>>,
     /// open cards (id, output), oldest first
     cards: Mutex<Vec<(String, String)>>,
     closed: Mutex<Vec<String>>,
@@ -105,18 +118,12 @@ pub struct Inner {
     /// Wakes the history indexer (HIS-05)
     index_wake: Mutex<Option<mpsc::Sender<()>>>,
     countdown: Mutex<Option<Countdown>>,
-    /// What the capture under way does instead of the After Capture rules
-    /// (CAP-02 variants, `--action`)
-    capture_action: Mutex<Option<AfterCapture>>,
     /// CAP-12: the wallpaper and the bands cut from it, until it changes
     cover: Mutex<Option<Cover>>,
     /// CAP-12, the live toggle: clutter is hidden; DND was on before it
     desktop_hidden: AtomicBool,
     /// who holds DND on (hidden clutter, a recording), and whether it was on before them
     dnd_holds: Mutex<(u32, Option<bool>)>,
-    /// OCR-02: the capture under way keeps (Some(true)) or joins line breaks,
-    /// whatever ocr.keep_line_breaks says ("text-lines", "text-one-line")
-    line_breaks: Mutex<Option<bool>>,
     /// A scrolling capture (SCR-01), from the chosen area until Done
     scroll: Mutex<Option<scroll::Scroll>>,
     /// the recording being set up or made (REC)
@@ -209,18 +216,15 @@ impl Inner {
             session: Mutex::new(None),
             last_area: Mutex::new(load_last_area()),
             pending_bg: Mutex::new(HashMap::new()),
-            skip_preset: AtomicBool::new(false),
             cards: Mutex::new(vec![]),
             closed: Mutex::new(vec![]),
             ocr_langs: OnceLock::new(),
             deferred: Mutex::new(HashMap::new()),
             index_wake: Mutex::new(None),
             countdown: Mutex::new(None),
-            capture_action: Mutex::new(None),
             cover: Mutex::new(None),
             desktop_hidden: AtomicBool::new(false),
             dnd_holds: Mutex::new((0, None)),
-            line_breaks: Mutex::new(None),
             scroll: Mutex::new(None),
             recording: Mutex::new(None),
         }))
@@ -387,22 +391,25 @@ impl Inner {
     #[allow(clippy::too_many_arguments)]
     pub fn begin(self: &Arc<Self>, mode: &str, monitor: Option<String>, cursor: Option<bool>, waiter: Option<Waiter>, delay: u32, action: Option<AfterCapture>) {
         let t0 = trace::now_ns();
-        self.skip_preset.store(false, Ordering::Relaxed);
-        *self.capture_action.lock().unwrap() = action;
-        // OCR-02: Capture Text with or without line breaks
-        *self.line_breaks.lock().unwrap() = match mode {
-            "text-lines" => Some(true),
-            "text-one-line" => Some(false),
-            _ => None,
+        let job = Job {
+            waiter,
+            // CAP-11: the pointer in screen captures (config, or per capture)
+            cursor: cursor.unwrap_or_else(|| self.cfg().capture.show_cursor),
+            delay: delay.min(60),
+            action,
+            // OCR-02: Capture Text with or without line breaks
+            line_breaks: match mode {
+                "text-lines" => Some(true),
+                "text-one-line" => Some(false),
+                _ => None,
+            },
+            skip_preset: false,
         };
         let mode = if mode.starts_with("text-") { "text" } else { mode };
-        // CAP-11: the pointer in screen captures (config, or per capture)
-        let cursor = cursor.unwrap_or_else(|| self.cfg().capture.show_cursor);
-        let delay = delay.min(60);
         // a capture hotkey during a countdown cancels it
         if let Some(c) = self.countdown.lock().unwrap().take() {
-            reply(c.waiter, cancelled());
-            reply(waiter, cancelled());
+            reply(c.job.waiter, cancelled());
+            reply(job.waiter, cancelled());
             self.ui(|e| e.countdown_cancel());
             return;
         }
@@ -410,14 +417,14 @@ impl Inner {
             "area" | "window" | "text" | "all-in-one" | "insert" | "pick" | "area-pin" | "scroll" => {
                 // SEL-09: the capture hotkey while the overlay is up cancels it.
                 if let Some(s) = self.session.lock().unwrap().take() {
-                    reply(s.waiter, cancelled());
-                    reply(waiter, cancelled());
+                    reply(s.job.waiter, cancelled());
+                    reply(job.waiter, cancelled());
                     frames::clear();
                     self.ui(|e| e.cancel_requested());
                     return;
                 }
                 if self.pending.lock().unwrap().values().any(|p| matches!(p, Pending::Overlay { .. })) {
-                    reply(waiter, cancelled());
+                    reply(job.waiter, cancelled());
                     return;
                 }
                 // All-In-One (CAP-07) is an M1 stand-in: the area overlay.
@@ -431,44 +438,47 @@ impl Inner {
                 let outputs = monitor.filter(|m| self.output_names().contains(m)).map(|m| vec![m]);
                 // the eyedropper reads the frozen pixels, so it always freezes
                 if self.cfg().capture.freeze || mode == "pick" {
-                    self.pending.lock().unwrap().insert(req, Pending::Overlay { mode, waiter, snap, cursor, delay });
+                    let cursor = job.cursor;
+                    self.pending.lock().unwrap().insert(req, Pending::Overlay { mode, snap, job });
                     self.capture_clean(req, Source::Outputs(outputs), cursor);
                 } else {
                     let snap = snap.join().unwrap_or_default();
-                    self.open_session(mode, req, waiter, snap, vec![], cursor, delay);
+                    self.open_session(mode, req, snap, vec![], job);
                 }
                 trace::trace("capture_begin", &format!("\"req\":{req},\"ms\":{:.2}", trace::ms_since(t0)));
             }
             "fullscreen-all" => {
                 self.play("shutter");
                 let req = self.next();
-                self.pending.lock().unwrap().insert(req, Pending::AllOutputs { waiter });
+                let cursor = job.cursor;
+                self.pending.lock().unwrap().insert(req, Pending::AllOutputs { job });
                 self.capture_clean(req, Source::Outputs(None), cursor);
             }
             "fullscreen" => {
                 let Some(output) = monitor.filter(|m| self.output_names().contains(m)).or_else(|| self.cursor_output()) else {
-                    reply(waiter, Response::err("no output"));
+                    reply(job.waiter, Response::err("no output"));
                     return;
                 };
-                if delay > 0 {
-                    self.start_countdown(Countdown { output, rect: None, kind: "fullscreen".into(), waiter, cursor }, delay, None);
+                if job.delay > 0 {
+                    self.start_countdown(Countdown { output, rect: None, kind: "fullscreen".into(), job }, None);
                     return;
                 }
                 self.play("shutter");
                 let req = self.next();
-                self.pending.lock().unwrap().insert(req, Pending::Region { waiter, output: output.clone(), rect: None, kind: "fullscreen".into() });
+                let cursor = job.cursor;
+                self.pending.lock().unwrap().insert(req, Pending::Region { output: output.clone(), rect: None, kind: "fullscreen".into(), job });
                 self.capture_clean(req, Source::Outputs(Some(vec![output])), cursor);
             }
             "previous" => {
                 // CAP-03: the last rectangle, in physical pixels, on its monitor.
                 let Some((mut output, rect)) = self.last_area.lock().unwrap().clone() else {
                     self.toast("No previous area yet");
-                    reply(waiter, Response::err("no previous area"));
+                    reply(job.waiter, Response::err("no previous area"));
                     return;
                 };
                 if !self.output_names().contains(&output) {
                     let Some(o) = self.cursor_output() else {
-                        reply(waiter, Response::err("no output"));
+                        reply(job.waiter, Response::err("no output"));
                         return;
                     };
                     self.toast(format!("{output} is gone; captured the same area on {o}"));
@@ -476,10 +486,11 @@ impl Inner {
                 }
                 self.play("shutter");
                 let req = self.next();
-                self.pending.lock().unwrap().insert(req, Pending::Region { waiter, output: output.clone(), rect: Some(rect), kind: "area".into() });
+                let cursor = job.cursor;
+                self.pending.lock().unwrap().insert(req, Pending::Region { output: output.clone(), rect: Some(rect), kind: "area".into(), job });
                 self.capture_clean(req, Source::Outputs(Some(vec![output])), cursor);
             }
-            other => reply(waiter, Response::err(format!("unknown capture mode '{other}'"))),
+            other => reply(job.waiter, Response::err(format!("unknown capture mode '{other}'"))),
         }
     }
 
@@ -491,14 +502,13 @@ impl Inner {
         };
         let s = snip_hypr::monitors().into_iter().find(|m| m.name == output).map_or(1.0, |m| m.scale);
         let rect = geometry::logical_to_physical(rect, s);
-        // no session here: a Shift held on the last one is over (D32)
-        self.skip_preset.store(false, Ordering::Relaxed);
-        *self.capture_action.lock().unwrap() = action;
+        let cursor = cursor.unwrap_or_else(|| self.cfg().capture.show_cursor);
+        let job = Job { waiter, cursor, delay: 0, action, line_breaks: None, skip_preset: false };
         *self.last_area.lock().unwrap() = Some((output.clone(), rect));
         self.play("shutter");
         let req = self.next();
-        self.pending.lock().unwrap().insert(req, Pending::Region { waiter, output: output.clone(), rect: Some(rect), kind: "area".into() });
-        self.capture_clean(req, Source::Outputs(Some(vec![output])), cursor.unwrap_or_else(|| self.cfg().capture.show_cursor));
+        self.pending.lock().unwrap().insert(req, Pending::Region { output: output.clone(), rect: Some(rect), kind: "area".into(), job });
+        self.capture_clean(req, Source::Outputs(Some(vec![output])), cursor);
     }
 
     /// CAP-12: paint the wallpaper over the bands bars reserve, on every
@@ -662,10 +672,10 @@ impl Inner {
             trace::warn("capture_failed", &format!("\"which\":{}", js(&r.failed.join(","))));
         }
         match p {
-            Pending::Overlay { mode, waiter, snap, cursor, delay } => {
+            Pending::Overlay { mode, snap, job } => {
                 if r.frames.is_empty() {
                     self.toast("Screen capture failed");
-                    reply(waiter, Response::err("capture failed"));
+                    reply(job.waiter, Response::err("capture failed"));
                     return;
                 }
                 let snap = snap.join().unwrap_or_default();
@@ -673,20 +683,20 @@ impl Inner {
                     "frames_captured",
                     &format!("\"req\":{},\"n\":{},\"ms\":{:.2}", r.request, r.frames.len(), (r.t_done_ns - r.t_start_ns) as f64 / 1e6),
                 );
-                self.open_session(mode, r.request, waiter, snap, r.frames, cursor, delay);
+                self.open_session(mode, r.request, snap, r.frames, job);
             }
-            Pending::Region { waiter, output, rect, kind } => {
+            Pending::Region { output, rect, kind, job } => {
                 let Some(frame) = r.frames.into_iter().next() else {
                     self.toast("Screen capture failed");
-                    reply(waiter, Response::err("capture failed"));
+                    reply(job.waiter, Response::err("capture failed"));
                     return;
                 };
                 let (uw, uh) = frame.upright_size();
                 let rect = rect.unwrap_or(Rect::new(0, 0, uw, uh));
-                self.finish_from_frame(&frame, rect, &kind, &output, waiter);
+                self.finish_from_frame(&frame, rect, &kind, &output, job);
             }
             Pending::Scroll { .. } => {}
-            Pending::AllOutputs { waiter } => {
+            Pending::AllOutputs { job } => {
                 let parts: Vec<_> = r.frames.iter().map(|f| {
                     let (uw, uh) = f.upright_size();
                     let (data, w, h, alpha) = encode::crop_upright(f, Rect::new(0, 0, uw, uh));
@@ -695,24 +705,24 @@ impl Inner {
                 }).collect();
                 if parts.is_empty() {
                     self.toast("Screen capture failed");
-                    return reply(waiter, Response::err("capture failed"));
+                    return reply(job.waiter, Response::err("capture failed"));
                 }
                 let (rgba, w, h) = encode::composite(&parts);
                 let png = encode::encode_png(&rgba, w, h, true);
                 let output = self.cursor_output().unwrap_or_default();
                 let scale = r.frames.iter().map(|f| f.scale).fold(1.0, f64::max);
                 let meta = CaptureMeta { kind: "fullscreen".into(), scale, output: output.clone(), app: None, title: None };
-                self.ingest(png, w, h, meta, &output, waiter);
+                self.ingest(png, w, h, meta, &output, job);
             }
-            Pending::Window { waiter, client, output, shadow, fallback, rect } => {
+            Pending::Window { client, output, shadow, fallback, rect, job } => {
                 match r.frames.into_iter().next() {
-                    Some(f) => self.finish_window_frame(&f, &client, &output, shadow, waiter),
+                    Some(f) => self.finish_window_frame(&f, &client, &output, shadow, job),
                     None => match fallback {
                         // no toplevel capture: what was on screen (frozen frame)
-                        Some(f) => self.finish_from_frame(&f, rect, "window", &output, waiter),
+                        Some(f) => self.finish_from_frame(&f, rect, "window", &output, job),
                         None => {
                             self.toast("Window capture failed");
-                            reply(waiter, Response::err("capture failed"));
+                            reply(job.waiter, Response::err("capture failed"));
                         }
                     },
                 }
@@ -720,8 +730,7 @@ impl Inner {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn open_session(self: &Arc<Self>, mode: String, epoch: u64, waiter: Option<Waiter>, snap: Snapshot, frames_: Vec<Frame>, cursor: bool, delay: u32) {
+    fn open_session(self: &Arc<Self>, mode: String, epoch: u64, snap: Snapshot, frames_: Vec<Frame>, job: Job) {
         let outputs = self.outputs.lock().unwrap().clone();
         // over the live screen there's no frame to tell an output's scale:
         // Hyprland's (QScreen rounds 1.25 up to 2)
@@ -771,7 +780,7 @@ impl Inner {
         .to_string();
         trace::trace("session", &format!("\"json\":{session}"));
         frames::publish(frames_);
-        *self.session.lock().unwrap() = Some(Session { mode, waiter, clients: snap.clients, cursor, delay });
+        *self.session.lock().unwrap() = Some(Session { mode, clients: snap.clients, job });
         self.ui(move |mut e| {
             e.as_mut().set_session(QString::from(session.as_str()));
             e.as_mut().set_epoch(epoch as i32);
@@ -779,14 +788,16 @@ impl Inner {
         });
     }
 
-    /// The user finished a selection (physical px of `output`).
-    pub fn finish_area(self: &Arc<Self>, output: String, rect: Rect, kind: String) {
+    /// The user finished a selection (physical px of `output`), with Shift
+    /// held as it ended when `skip_preset` (D32).
+    pub fn finish_area(self: &Arc<Self>, output: String, rect: Rect, kind: String, skip_preset: bool) {
         trace::trace("finish_area", &format!("\"output\":{},\"rect\":[{},{},{},{}],\"kind\":{}", js(&output), rect.x, rect.y, rect.w, rect.h, js(&kind)));
-        let Some(s) = self.session.lock().unwrap().take() else { return };
+        let Some(mut s) = self.session.lock().unwrap().take() else { return };
+        s.job.skip_preset = skip_preset;
         if s.mode == "scroll" {
             let scale = frames::get(&output).map(|f| f.scale).unwrap_or(1.0);
             frames::clear();
-            return self.scroll_open(output, rect, scale, s.waiter, &s.clients);
+            return self.scroll_open(output, rect, scale, s.job, &s.clients);
         }
         // Capture Area & Pin (PIN-01): an area, pinned where it was
         let kind = if s.mode == "text" || s.mode == "insert" || (s.mode == "area-pin" && kind == "area") { s.mode.clone() } else { kind };
@@ -795,11 +806,11 @@ impl Inner {
             save_last_area(&output, rect);
         }
         // self-timer: the selected area is captured live after the countdown
-        if s.delay > 0 && kind != "text" && kind != "insert" {
+        if s.job.delay > 0 && kind != "text" && kind != "insert" {
             let scale = frames::get(&output).map(|f| f.scale).unwrap_or(1.0);
             frames::clear();
             let shown = geometry::physical_to_logical(rect, scale);
-            self.start_countdown(Countdown { output, rect: Some(rect), kind, waiter: s.waiter, cursor: s.cursor }, s.delay, Some(shown));
+            self.start_countdown(Countdown { output, rect: Some(rect), kind, job: s.job }, Some(shown));
             return;
         }
         if kind != "text" {
@@ -809,14 +820,14 @@ impl Inner {
             Some(frame) => {
                 frames::clear();
                 let me = self.clone();
-                std::thread::spawn(move || me.finish_from_frame(&frame, rect, &kind, &output, s.waiter));
+                std::thread::spawn(move || me.finish_from_frame(&frame, rect, &kind, &output, s.job));
             }
             None => {
                 // live mode (freeze off): re-capture once the overlay is gone
                 let req = self.next();
-                self.pending.lock().unwrap().insert(req, Pending::Region { waiter: s.waiter, output: output.clone(), rect: Some(rect), kind });
+                let cursor = s.job.cursor;
+                self.pending.lock().unwrap().insert(req, Pending::Region { output: output.clone(), rect: Some(rect), kind, job: s.job });
                 let me = self.clone();
-                let cursor = s.cursor;
                 std::thread::spawn(move || {
                     std::thread::sleep(Duration::from_millis(90));
                     me.wl(Wl::Capture { request: req, source: Source::Outputs(Some(vec![output])), cursor });
@@ -827,8 +838,8 @@ impl Inner {
 
     /// CAP-06: show the countdown (logical `shown` area, or the whole output)
     /// and capture live when QML calls `countdown_done`.
-    fn start_countdown(&self, c: Countdown, seconds: u32, shown: Option<Rect>) {
-        let out = c.output.clone();
+    fn start_countdown(&self, c: Countdown, shown: Option<Rect>) {
+        let (out, seconds) = (c.output.clone(), c.job.delay);
         let r = shown.unwrap_or(Rect::new(-1, -1, 0, 0));
         trace::trace("countdown", &format!("\"output\":{},\"seconds\":{seconds}", js(&out)));
         *self.countdown.lock().unwrap() = Some(c);
@@ -840,18 +851,22 @@ impl Inner {
         let Some(c) = self.countdown.lock().unwrap().take() else { return };
         self.play("shutter");
         let req = self.next();
-        self.pending.lock().unwrap().insert(req, Pending::Region { waiter: c.waiter, output: c.output.clone(), rect: c.rect, kind: c.kind });
-        self.capture_clean(req, Source::Outputs(Some(vec![c.output])), c.cursor);
+        let cursor = c.job.cursor;
+        self.pending.lock().unwrap().insert(req, Pending::Region { output: c.output.clone(), rect: c.rect, kind: c.kind, job: c.job });
+        self.capture_clean(req, Source::Outputs(Some(vec![c.output])), cursor);
     }
 
     /// Window mode click (CAP-05): the window's own buffer, never occluded.
+    /// Shift (`invert`) flips the desktop or shadow choice, and skips an
+    /// auto-applied preset too (D32).
     pub fn finish_window(self: &Arc<Self>, address: &str, output: String, rect: Rect, invert: bool) {
-        let Some(s) = self.session.lock().unwrap().take() else { return };
+        let Some(mut s) = self.session.lock().unwrap().take() else { return };
+        s.job.skip_preset = invert;
         if s.mode == "scroll" {
             // Space then a click: the window's area, scrolled
             let scale = frames::get(&output).map(|f| f.scale).unwrap_or(1.0);
             frames::clear();
-            return self.scroll_open(output, rect, scale, s.waiter, &s.clients);
+            return self.scroll_open(output, rect, scale, s.job, &s.clients);
         }
         if s.mode == "insert" {
             // for an editor: the window as it is on screen
@@ -860,8 +875,8 @@ impl Inner {
             frames::clear();
             let me = self.clone();
             return match frame {
-                Some(f) => drop(std::thread::spawn(move || me.finish_from_frame(&f, rect, "insert", &output, s.waiter))),
-                None => reply(s.waiter, Response::err("window not found")),
+                Some(f) => drop(std::thread::spawn(move || me.finish_from_frame(&f, rect, "insert", &output, s.job))),
+                None => reply(s.job.waiter, Response::err("window not found")),
             };
         }
         // With the desktop: the window as it is on screen and what's around it
@@ -872,7 +887,7 @@ impl Inner {
                 let (m, (uw, uh)) = ((WINDOW_DESKTOP_MARGIN * f.scale).round() as i32, f.upright_size());
                 let around = Rect::new(rect.x - m, rect.y - m, rect.w + 2 * m, rect.h + 2 * m).intersect(&Rect::new(0, 0, uw, uh));
                 let me = self.clone();
-                std::thread::spawn(move || me.finish_from_frame(&f, around, "window", &output, s.waiter));
+                std::thread::spawn(move || me.finish_from_frame(&f, around, "window", &output, s.job));
                 return;
             }
         }
@@ -885,59 +900,54 @@ impl Inner {
         match client {
             Some(client) if self.features.lock().unwrap().toplevel_capture => {
                 let req = self.next();
-                self.pending.lock().unwrap().insert(req, Pending::Window { waiter: s.waiter, client, output, shadow, fallback, rect });
+                self.pending.lock().unwrap().insert(req, Pending::Window { client, output, shadow, fallback, rect, job: s.job });
                 self.wl(Wl::Capture { request: req, source: Source::Window(addr), cursor: false });
             }
             _ => match fallback {
                 Some(f) => {
                     let me = self.clone();
-                    std::thread::spawn(move || me.finish_from_frame(&f, rect, "window", &output, s.waiter));
+                    std::thread::spawn(move || me.finish_from_frame(&f, rect, "window", &output, s.job));
                 }
-                None => reply(s.waiter, Response::err("window not found")),
+                None => reply(s.job.waiter, Response::err("window not found")),
             },
         }
-    }
-
-    /// Shift was held as the selection ended: skip the preset (D32).
-    pub fn skip_preset(&self, skip: bool) {
-        self.skip_preset.store(skip, Ordering::Relaxed);
     }
 
     /// The eyedropper's click: the colour under the pointer (ANN-13).
     pub fn finish_pick(&self, color: String) {
         if let Some(s) = self.session.lock().unwrap().take() {
-            reply(s.waiter, Response::ok(json!(color)));
+            reply(s.job.waiter, Response::ok(json!(color)));
         }
         frames::clear();
     }
 
     pub fn cancel(&self) {
         if let Some(s) = self.session.lock().unwrap().take() {
-            reply(s.waiter, cancelled());
+            reply(s.job.waiter, cancelled());
         }
         frames::clear();
     }
 
-    fn finish_from_frame(self: &Arc<Self>, frame: &Frame, rect: Rect, kind: &str, output: &str, waiter: Option<Waiter>) {
+    fn finish_from_frame(self: &Arc<Self>, frame: &Frame, rect: Rect, kind: &str, output: &str, job: Job) {
         if kind == "insert" {
             // for an editor (ANN-12): a file to add, not a capture in history
             let (data, w, h, alpha) = encode::crop_upright(frame, rect);
             let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
             let path = snip_core::paths::runtime_dir().join(format!("insert-{ms}.png"));
             let r = std::fs::write(&path, encode::encode_png(&data, w, h, alpha));
-            return reply(waiter, match r {
+            return reply(job.waiter, match r {
                 Ok(()) => Response::ok(json!(path.to_string_lossy())),
                 Err(e) => Response::err(e.to_string()),
             });
         }
         if kind == "text" {
             let (data, w, h, alpha) = encode::crop_upright(frame, rect);
-            return reply(waiter, self.read_text(&data, w, h, alpha, frame.scale));
+            return reply(job.waiter, self.read_text(&data, w, h, alpha, frame.scale, job.line_breaks));
         }
         let (uw, uh) = frame.upright_size();
         if rect.intersect(&Rect::new(0, 0, uw, uh)).area() <= 0 {
             trace::warn("empty_crop", &format!("\"output\":{},\"rect\":[{},{},{},{}],\"frame\":[{uw},{uh}]", js(output), rect.x, rect.y, rect.w, rect.h));
-            reply(waiter, Response::err("empty selection"));
+            reply(job.waiter, Response::err("empty selection"));
             return;
         }
         let e = encode::crop_and_encode(frame, rect);
@@ -951,14 +961,15 @@ impl Inner {
             // where the area was, in layout px: the pin goes right there
             let origin = self.outputs.lock().unwrap().iter().find(|o| o.name == output).map(|o| (o.logical.x, o.logical.y)).unwrap_or((0, 0));
             let at = (origin.0 + (rect.x as f64 / frame.scale).round() as i32, origin.1 + (rect.y as f64 / frame.scale).round() as i32);
-            return self.ingest_and_pin(e.png, e.width, e.height, meta, at, waiter);
+            return self.ingest_and_pin(e.png, e.width, e.height, meta, at, job.waiter);
         }
-        self.ingest(e.png, e.width, e.height, meta, output, waiter);
+        self.ingest(e.png, e.width, e.height, meta, output, job);
     }
 
     /// Capture Text's reading (CAP-09): a QR code's exact value if there is one
-    /// (OCR-03), else the OCR'd text; copied, with a toast.
-    fn read_text(&self, data: &[u8], w: u32, h: u32, alpha: bool, scale: f64) -> Response {
+    /// (OCR-03), else the OCR'd text, its line breaks kept or joined as
+    /// `line_breaks` says (else ocr.keep_line_breaks); copied, with a toast.
+    fn read_text(&self, data: &[u8], w: u32, h: u32, alpha: bool, scale: f64, line_breaks: Option<bool>) -> Response {
         let t0 = trace::now_ns();
         let cfg = self.cfg().ocr;
         let bpp = if alpha { 4 } else { 3 };
@@ -974,7 +985,7 @@ impl Inner {
             self.offer_link(&text);
             return Response::ok(json!(text));
         }
-        let one_line = !self.line_breaks.lock().unwrap().take().unwrap_or(cfg.keep_line_breaks);
+        let one_line = !line_breaks.unwrap_or(cfg.keep_line_breaks);
         match ocr::recognize(data, w, h, bpp, scale, &self.ocr_languages()) {
             Ok(text) if !text.trim().is_empty() => {
                 let text = if one_line { snip_core::text::one_line(&text) } else { text };
@@ -1022,13 +1033,12 @@ impl Inner {
 
     /// OCR-06: Capture Text on a PNG file, or on the clipboard's image.
     pub fn text_of(&self, path: Option<&str>) -> Response {
-        *self.line_breaks.lock().unwrap() = None;
         let bytes = match path {
             Some(p) => std::fs::read(p).map_err(|e| format!("{p}: {e}")),
             None => self.clipboard_png().ok_or_else(|| "no image on the clipboard".to_string()),
         };
         match bytes.and_then(|b| encode::decode_png(&b).map_err(|_| "only PNG images can be read for now".to_string())) {
-            Ok((data, w, h, alpha)) => self.read_text(&data, w, h, alpha, 1.0),
+            Ok((data, w, h, alpha)) => self.read_text(&data, w, h, alpha, 1.0, None),
             Err(e) => Response::err(e),
         }
     }
@@ -1049,7 +1059,7 @@ impl Inner {
         }
     }
 
-    fn finish_window_frame(self: &Arc<Self>, f: &Frame, client: &Client, output: &str, shadow: bool, waiter: Option<Waiter>) {
+    fn finish_window_frame(self: &Arc<Self>, f: &Frame, client: &Client, output: &str, shadow: bool, job: Job) {
         let t0 = trace::now_ns();
         let (uw, uh) = f.upright_size();
         let (data, w, h, alpha) = encode::crop_upright(f, Rect::new(0, 0, uw, uh));
@@ -1065,7 +1075,7 @@ impl Inner {
         let png = encode::encode_png(&out, ow, oh, true);
         trace::trace("window_encoded", &format!("\"w\":{ow},\"h\":{oh},\"ms\":{:.1}", trace::ms_since(t0)));
         let meta = CaptureMeta { kind: "window".into(), scale, output: output.into(), app: Some(client.class.clone()), title: Some(client.title.clone()) };
-        self.ingest(png, ow, oh, meta, output, waiter);
+        self.ingest(png, ow, oh, meta, output, job);
     }
 
     /// Window title and class for %t / %a: the window that contains the
@@ -1145,20 +1155,20 @@ impl Inner {
         trace::trace("indexed", &format!("\"id\":\"{id}\",\"chars\":{},\"ms\":{:.0}", text.chars().count(), trace::ms_since(t0)));
     }
 
-    fn ingest(self: &Arc<Self>, png: Vec<u8>, w: u32, h: u32, meta: CaptureMeta, output: &str, waiter: Option<Waiter>) {
+    fn ingest(self: &Arc<Self>, png: Vec<u8>, w: u32, h: u32, meta: CaptureMeta, output: &str, job: Job) {
         let t0 = trace::now_ns();
         match self.store.ingest(png, w, h, meta, now_secs()) {
             Ok(rec) => {
                 trace::trace("ingested", &format!("\"id\":\"{}\",\"ms\":{:.2}", rec.id, trace::ms_since(t0)));
                 self.wake_indexer();
-                if !self.apply_auto_background(&rec, output) {
-                    self.after_capture(&rec, output);
+                if !self.apply_auto_background(&rec, output, &job) {
+                    self.after_capture(&rec, output, job.action);
                 }
-                reply(waiter, Response::ok(serde_json::to_value(&rec).unwrap_or(Value::Null)));
+                reply(job.waiter, Response::ok(serde_json::to_value(&rec).unwrap_or(Value::Null)));
             }
             Err(e) => {
                 self.toast(format!("Could not store the capture: {e}"));
-                reply(waiter, Response::err(e.to_string()));
+                reply(job.waiter, Response::err(e.to_string()));
             }
         }
     }
@@ -1172,15 +1182,14 @@ impl Inner {
     /// A new screenshot gets the auto-applied background before its card:
     /// QML renders it and commits it like an edit (action "auto-bg"), then
     /// the After Capture rules run. False when there is none to apply.
-    fn apply_auto_background(&self, rec: &Record, output: &str) -> bool {
+    fn apply_auto_background(&self, rec: &Record, output: &str, job: &Job) -> bool {
         // Shift skips it for this capture only, whatever its kind
-        let skip = self.skip_preset.swap(false, Ordering::Relaxed);
-        if skip || !matches!(rec.kind.as_str(), "area" | "fullscreen" | "window") {
+        if job.skip_preset || !matches!(rec.kind.as_str(), "area" | "fullscreen" | "window") {
             return false;
         }
         let Some(bg) = self.auto_background() else { return false };
         let scale = snip_hypr::monitors().into_iter().find(|m| m.name == output).map(|m| m.scale).unwrap_or(1.0);
-        self.pending_bg.lock().unwrap().insert(rec.id.clone(), output.to_string());
+        self.pending_bg.lock().unwrap().insert(rec.id.clone(), (output.to_string(), job.action));
         let mut j = card_json(rec, output);
         j["bg"] = bg;
         j["scale"] = json!(scale);
@@ -1191,11 +1200,11 @@ impl Inner {
     }
 
     /// SET-03 After Capture rules (default: only the Quick Access card), or a
-    /// variant's own action (CAP-02).
-    fn after_capture(self: &Arc<Self>, rec: &Record, output: &str) {
+    /// variant's own `action` (CAP-02).
+    fn after_capture(self: &Arc<Self>, rec: &Record, output: &str, action: Option<AfterCapture>) {
         let cfg = self.cfg().after_capture;
         let mut rules = cfg.screenshot;
-        if let Some(a) = self.capture_action.lock().unwrap().take() {
+        if let Some(a) = action {
             if cfg.variants_ignore_rules {
                 rules.clear();
             }
@@ -1626,9 +1635,9 @@ impl Inner {
             let done = |ok: bool, detail: String| {
                 // an auto-applied background (BG-03): now the card, rendered or not
                 if action == "auto-bg" {
-                    let out = me.pending_bg.lock().unwrap().remove(&id);
-                    if let (Some(out), Ok(rec)) = (out, me.store.get(&id)) {
-                        me.after_capture(&rec, &out);
+                    let held = me.pending_bg.lock().unwrap().remove(&id);
+                    if let (Some((out, own)), Ok(rec)) = (held, me.store.get(&id)) {
+                        me.after_capture(&rec, &out, own);
                     }
                     return;
                 }

@@ -614,15 +614,13 @@ impl qobject::Engine {
     #[allow(clippy::too_many_arguments)]
     fn finish_area(self: Pin<&mut Self>, output: QString, x: i32, y: i32, w: i32, h: i32, kind: QString, skip_preset: bool) {
         if let Some(i) = self.inner() {
-            i.skip_preset(skip_preset);
-            i.finish_area(output.to_string(), Rect::new(x, y, w, h), kind.to_string());
+            i.finish_area(output.to_string(), Rect::new(x, y, w, h), kind.to_string(), skip_preset);
         }
     }
 
     #[allow(clippy::too_many_arguments)]
     fn finish_window(self: Pin<&mut Self>, address: QString, output: QString, x: i32, y: i32, w: i32, h: i32, invert: bool) {
         if let Some(i) = self.inner() {
-            i.skip_preset(invert); // Shift: also skips an auto-applied preset (D32)
             i.finish_window(&address.to_string(), output.to_string(), Rect::new(x, y, w, h), invert);
         }
     }

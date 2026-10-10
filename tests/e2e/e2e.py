@@ -3953,6 +3953,39 @@ def background_auto_apply(s, env):
 
 
 @case
+def capture_keeps_its_own_action(s, env):
+    """CAP-02: a capture's own action (& Copy, --action) stays its own. A second capture
+    started while the first one's auto-applied background is still being drawn (BG-03)
+    doesn't take it, nor give it to the second."""
+    png = s.tmp / "own-action.png"
+    noise_png(png, 200, 120, seed=4)
+    s.json("edit", str(png))
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3), "the editor opens"
+    s.debug("ui", "editor", "bg", '{"kind":"color","value":"#10a050","padding":40,"inset":0,"radius":0,"shadow":0,"ratio":0,"align":"c"}')
+    s.debug("ui", "editor", "bg-preset-save", "Green")
+    s.debug("ui", "editor", "bg-auto", "Green")
+    close_editor(s)
+    s.cli("close-all"); time.sleep(0.3)
+    try:
+        rect = ("--x", "100", "--y", "80", "--w", "200", "--h", "120", "--monitor", OUT)
+        first = s.json("area", *rect, "--action", "copy")["result"]
+        second = s.json("area", *rect)["result"]                  # while the first's background is drawn
+        for rec in (first, second):
+            assert wait_for(lambda: [e for e in s.traces("edited") if e["id"] == rec["id"]], 5), "the background is applied"
+        copied = lambda id: [e for e in s.traces("copied") if e["id"] == id]
+        assert wait_for(lambda: copied(first["id"]), 3), "the first is copied, as it asked"
+        assert wait_for(lambda: second["id"] in s.status()["cards"], 3), "the second gets its card"
+        assert not copied(second["id"]), "and isn't copied"
+    finally:
+        s.cli("close-all")
+        s.json("edit", str(png))
+        if wait_for(lambda: editor_window(), 5):
+            s.debug("ui", "editor", "bg-auto", "Green")          # off again for the cases after
+            s.debug("ui", "editor", "bg-preset-delete", "Green")
+            close_editor(s)
+
+
+@case
 def shift_skips_preset(s, env):
     """BG-03, D32: Shift held as the selection ends skips the auto-applied preset (and
     doesn't square the selection any more); the next capture gets it again."""
