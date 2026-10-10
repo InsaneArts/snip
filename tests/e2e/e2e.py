@@ -752,6 +752,33 @@ def window_capture(s, env):
 
 
 @case
+def window_captures_give_their_buffers_back(s, env):
+    """Every window captured kept its capture buffers (4 MB here, ~10 MB on a big screen)
+    until snipd quit, even once the window was gone; only the last window's are kept, for
+    a scrolling capture to reuse."""
+    def shmem():
+        status = dict(l.split(":", 1) for l in open(f"/proc/{s.proc.pid}/status") if ":" in l)
+        return int(status["RssShmem"].split()[0]) / 1024
+    mon, sizes = env.monitor(), []
+    for i in range(4):
+        app = f"snip-e2e-buf{i}"
+        env.spawn_window(app, f"window {i}")
+        try:
+            c = next(x for x in hypr_json("clients") if x["class"] == app)    # tiled beside the target
+            p = s.bg("window"); time.sleep(0.5)
+            s.move(c["at"][0] - mon["x"] + c["size"][0] / 2, c["at"][1] - mon["y"] + c["size"][1] / 2); time.sleep(0.2); s.click()
+            r, code = finish(p, timeout=8)
+            assert code == 0 and r["result"].get("app") == app, (code, r)
+        finally:
+            subprocess.run(["pkill", "-f", f"app-id={app}"], check=False)
+            time.sleep(0.5)
+        sizes.append(round(shmem(), 1))
+    s.cli("close-all")
+    print(f"      shared memory after each window: {sizes} MB")
+    assert sizes[3] - sizes[0] < 6, ("MB after each window", sizes)
+
+
+@case
 def window_with_desktop(s, env):
     """Capture Window "With the desktop" (product owner, 2026-10-08): the window as it is on
     screen with 48 px of the desktop around it (wallpaper, other windows, the bar), opaque,
