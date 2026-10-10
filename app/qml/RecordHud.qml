@@ -501,6 +501,19 @@ Window {
         return height - h - 24
     }
     function placeX(w) { return Math.max(8, Math.min(width - w - 8, area.x + area.width / 2 - w / 2)) }
+    // REC-05: the controls never sit in the area (they'd be in the video):
+    // below it, above it, else beside it; with no room anywhere, none, as
+    // for a whole-screen take (D52: the bar stops it)
+    function controlsPlace(w, h) {
+        const gap = margin + 12
+        const cx = placeX(w), cy = Math.max(8, Math.min(height - h - 8, area.y + area.height / 2 - h / 2))
+        if (area.y + area.height + gap + h <= height - 8) return Qt.point(cx, area.y + area.height + gap)
+        if (area.y - gap - h >= 8) return Qt.point(cx, area.y - gap - h)
+        if (area.x + area.width + gap + w <= width - 8) return Qt.point(area.x + area.width + gap, cy)
+        if (area.x - gap - w >= 8) return Qt.point(area.x - gap - w, cy)
+        return null
+    }
+    readonly property var controlsAt: controlsPlace(controls.width, controls.height)
 
     // ---------------------------------------------------------------- the camera (REC-08)
     CameraBubble {
@@ -613,7 +626,7 @@ Window {
     Rectangle {
         id: stopHint
         objectName: "record-stop-hint"
-        visible: hud.phase === "countdown" && hud.whole
+        visible: hud.phase === "countdown" && (hud.whole || hud.controlsAt === null)
         anchors.horizontalCenter: countdownDisc.horizontalCenter
         y: countdownDisc.y + countdownDisc.height + 16
         width: stopHintText.implicitWidth + 28
@@ -1031,12 +1044,12 @@ Window {
     Rectangle {
         id: controls
         objectName: "record-controls"
-        visible: !hud.whole && (hud.phase === "recording" || hud.phase === "paused")
+        visible: !hud.whole && hud.controlsAt !== null && (hud.phase === "recording" || hud.phase === "paused")
         width: ctl.implicitWidth + 16
         height: 40
         radius: 20
-        x: hud.placeX(width)
-        y: hud.placeY(height)
+        x: hud.controlsAt ? hud.controlsAt.x : 0
+        y: hud.controlsAt ? hud.controlsAt.y : 0
         color: Theme.pillBg
         border.width: 1
         border.color: Theme.hairline
