@@ -266,8 +266,9 @@ fn export_frames(src: &Path, dst: &Path, edit: &Edit, progress: &mut impl FnMut(
 }
 
 /// `n` frames spread over a video (the editor's timeline, VED-01), `height`
-/// px high, as JPEGs in `dir`: one ffmpeg, one accurate seek per frame (about
-/// 1 s for a 20 s 3440×1440 recording; a full decode took 2.5 s).
+/// px high, as JPEGs in `dir`: one ffmpeg, the keyframe at or before each
+/// point (gsr writes one every 2 s). 1.4 s of CPU for a 3-minute 3440×1440
+/// recording; accurate seeks took 9 s.
 pub fn thumbnails(src: &Path, duration_ms: u64, n: u32, height: u32, dir: &Path) -> Result<Vec<std::path::PathBuf>, String> {
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     let n = n.max(1);
@@ -275,12 +276,13 @@ pub fn thumbnails(src: &Path, duration_ms: u64, n: u32, height: u32, dir: &Path)
     for i in 0..n {
         // the middle of each slice of the timeline
         let t = (duration_ms as f64 / 1000.0) * (i as f64 + 0.5) / n as f64;
-        args.extend(["-ss".into(), format!("{t:.3}"), "-i".into(), src.to_string_lossy().into_owned()]);
+        // only keyframes are decoded, and the one before `t` is kept
+        args.extend(["-noaccurate_seek".into(), "-skip_frame".into(), "nokey".into(), "-ss".into(), format!("{t:.3}"), "-i".into(), src.to_string_lossy().into_owned()]);
     }
     let mut out = vec![];
     for i in 0..n {
         let f = dir.join(format!("thumb-{i:02}.jpg"));
-        args.extend(["-map".into(), format!("{i}:v:0"), "-frames:v".into(), "1".into(), "-vf".into(), format!("scale=-2:{height}"), "-q:v".into(), "4".into()]);
+        args.extend(["-map".into(), format!("{i}:v:0"), "-frames:v".into(), "1".into(), "-fps_mode".into(), "passthrough".into(), "-vf".into(), format!("scale=-2:{height}"), "-q:v".into(), "4".into()]);
         args.push(f.to_string_lossy().into_owned());
         out.push(f);
     }
