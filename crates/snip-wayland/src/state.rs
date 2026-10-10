@@ -291,12 +291,21 @@ impl State {
                 }
             }
             Request::PointerNudge => {
-                if let Some((_, p)) = &self.vptr {
+                // the overlay gets the pointer only on motion: a pointer of
+                // Snip's own (unbound: relative motion), if none moved before
+                if self.vptr.is_none() {
+                    self.pointer_for("");
+                }
+                let moved = if let Some((_, p)) = &self.vptr {
                     p.motion(now_ms(), 1.0, 0.0);
                     p.frame();
                     p.motion(now_ms(), -1.0, 0.0);
                     p.frame();
-                }
+                    true
+                } else {
+                    false
+                };
+                trace::trace("pointer_nudged", &format!("\"moved\":{moved}"));
             }
             Request::PointerWheel { notches } => {
                 if let Some((_, p)) = &self.vptr {
