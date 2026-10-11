@@ -259,7 +259,7 @@ CleanShot 5's Studio Mode on Hyprland: zooms placed by hand and automatic, a smo
 
 Phase 1's tests are the studio evaluator's, in `cargo test` (the owner's choice).
 
-Built so far (2026-10-11): the zoom lane and the popover (level, the spotlight on what a zoom shows), Smooth or Dynamic under Animations, touching zooms that pan, and an export drawn frame by frame with the preview's scene (`snipd --render-video`; S1: about 75 fps at 2688×1568). Still to come in phase 1: `edit.json` with a Replace that keeps the original (D56), undo, the lane's right-click menu, and an export at 100 fps or more at 1440p.
+Built so far (2026-10-12): the zoom lane and the popover (level, the spotlight on what a zoom shows), Smooth or Dynamic under Animations, touching zooms that pan, an export drawn frame by frame with the preview's scene (`snipd --render-video`; S1: about 75 fps at 2688×1568), the edit kept in `edit.json` with a Replace that keeps the original (D56), and undo. Still to come in phase 1: the lane's right-click menu, and an export at 100 fps or more at 1440p.
 
 ## M5: 1.0 hardening (M)
 
