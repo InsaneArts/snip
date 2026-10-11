@@ -322,6 +322,7 @@ Window {
             else if (e.key === Qt.Key_End) { player.pause(); ve.seek(ve.outMs) }
             else if (ctrl && e.key === Qt.Key_S) ve.exportIt(!shift)
             else if (e.key === Qt.Key_Escape && ve.exportOpen) ve.exportOpen = false
+            else if (e.key === Qt.Key_Escape && ve.zoomSelected >= 0) ve.selectZoom(-1)
             else if (e.key === Qt.Key_Escape || (ctrl && e.key === Qt.Key_W)) ve.close()
             else return
             e.accepted = true
@@ -368,7 +369,7 @@ Window {
             spacing: 6
             Repeater {
                 // [section, icon, name]
-                model: [["audio", "volume", "Audio"], ["background", "image", "Background"]]
+                model: [["audio", "volume", "Audio"], ["background", "image", "Background"], ["animations", "sparkles", "Animations"]]
                 SideButton {
                     required property var modelData
                     objectName: "video-section=" + modelData[0]
@@ -401,6 +402,40 @@ Window {
             anchors { fill: parent; rightMargin: 1 }
             ed: ve
             video: true
+        }
+        // Animations (D55): how zooms move in and out, for all of them
+        Column {
+            visible: ve.section === "animations"
+            anchors { fill: parent; margins: 16 }
+            spacing: 14
+            Text { text: "Animations"; color: Theme.text; font.family: Theme.fontUi; font.pixelSize: 13; font.weight: Font.DemiBold }
+            Column {
+                width: parent.width
+                spacing: 8
+                Text { text: "Zooms"; color: Theme.textSecondary; font.family: Theme.fontUi; font.pixelSize: 12 }
+                Segmented {
+                    objectName: "studio-zoom-style"
+                    options: [["smooth", "Smooth"], ["dynamic", "Dynamic"]]
+                    current: ve.studio.zoom_style
+                    onPicked: (v) => ve.studio = Object.assign({}, ve.studio, { zoom_style: v })
+                }
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    text: ve.studio.zoom_style === "dynamic" ? "Quick: in and out in 0.4 s, settling like a spring." : "Gentle: in and out over 0.75 s, easing at both ends."
+                    color: Theme.textSecondary
+                    font.family: Theme.fontUi
+                    font.pixelSize: 11
+                }
+            }
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                text: "Add a zoom on the lane above the frames: click for 2 s, or drag across the time it should last."
+                color: Theme.textSecondary
+                font.family: Theme.fontUi
+                font.pixelSize: 11
+            }
         }
         Flickable {
             visible: ve.section === "audio"
@@ -821,6 +856,17 @@ Window {
             color: Theme.textSecondary
             opacity: 0.5
         }
+    }
+
+    // the zoom selected, over the timeline above it
+    ZoomPopover {
+        id: zoomPopover
+        objectName: "studio-zoom-popover"
+        ed: ve
+        source: studioFrame.video
+        readonly property real at: zoom ? tlView.x + timeline.x - tlView.contentX + (zoom.from + zoom.to) / 2 * timeline.k : 0
+        x: Math.max(8, Math.min(ve.width - width - 8, at - width / 2))
+        y: timelineArea.y + tlView.y + zoomLane.y - height - 6
     }
 
     // ---------------------------------------------------------------- Export (VED-02): a popover under its button
