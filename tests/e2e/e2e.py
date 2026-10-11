@@ -2934,6 +2934,31 @@ def video_editor_keys_come_back_after_a_volume(s, env):
 
 
 @case
+def video_editor_fits_a_small_screen(s, env):
+    """VED-01: the video editor fits the screen it opens on. It was a fixed 1180 x 780, so on
+    1280 x 720 logical px (a 1080p screen at 1.5) the timeline and Export were off screen."""
+    s.cli("close-all"); time.sleep(0.3)
+    clip = s.tmp / "small.mp4"
+    make_clip(clip, seconds=2, size="640x360")
+    env.configure(1.5)
+    try:
+        mon = env.monitor()
+        W, H = mon["width"] / mon["scale"], mon["height"] / mon["scale"]
+        s.json("edit", str(clip))
+        assert wait_for(lambda: video_editor_window(), 6), "the video editor opens"
+        time.sleep(0.5)
+        size = video_editor_window()["size"]
+        assert size[0] <= W and size[1] <= H, ("on screen", size, (W, H))
+    finally:
+        for _ in range(3):
+            if not video_editor_window():
+                break
+            s.debug("ui", "video", "keys", "{Escape}"); time.sleep(0.4)
+        env.configure(1.25)
+        s.cli("close-all")
+
+
+@case
 def video_editor_background(s, env):
     """D50: the video editor's Background section puts a background around the recording,
     as the Background tool does around a screenshot: in the preview at once, and in the
