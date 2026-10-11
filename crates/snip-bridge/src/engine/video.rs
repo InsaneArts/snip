@@ -2,6 +2,9 @@
 //! its export through ffmpeg, which replaces the recording or becomes a new
 //! capture (CleanShot's "Replace" and "Save as New").
 
+use std::io::BufRead;
+use std::path::Path;
+use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -106,11 +109,17 @@ impl Inner {
                     status(json!({ "progress": f }));
                 }
             };
-            let mut done = media::export(&rec.source, &out, &edit, &mut report);
+            // Studio Mode (D55): with zooms, snipd draws every frame itself
+            let scene = spec.get("scene").filter(|s| s["studio"]["zooms"].as_array().is_some_and(|z| !z.is_empty()));
+            let run = |edit: &Edit, report: &mut dyn FnMut(f64)| match scene {
+                Some(scene) => render_studio(&rec.source, &out, edit, scene, report),
+                None => media::export(&rec.source, &out, edit, report),
+            };
+            let mut done = run(&edit, &mut report);
             if done.is_err() && gif.is_none() {
                 // no NVENC (or it refused): x264 on the CPU
                 edit.encoder = "libx264".into();
-                done = media::export(&rec.source, &out, &edit, &mut report);
+                done = run(&edit, &mut report);
             }
             if let Some(c) = cover {
                 let _ = std::fs::remove_file(c);
@@ -145,4 +154,65 @@ impl Inner {
             }
         });
     }
+}
+
+/// A Studio export (D55, the design's §8.2): snipd draws each frame of the
+/// kept parts with the scene the editor shows (StudioFrame.qml: the
+/// background still, the card zoomed), between an ffmpeg that decodes and
+/// one that encodes, in a child (`snipd --render-video`), so its GPU work and
+/// a crash stay out of the daemon. A GIF is drawn as an MP4 first, then made
+/// a GIF as any recording is.
+fn render_studio(src: &Path, dst: &Path, edit: &Edit, scene: &Value, report: &mut dyn FnMut(f64)) -> Result<(), String> {
+    let probe = media::probe(src)?;
+    let side = |k: &str, full: u32| scene["outer"][k].as_f64().unwrap_or(full as f64);
+    let (ow, oh) = (side("w", probe.width), side("h", probe.height));
+    let (mp4, drawn) = match edit.gif {
+        // as any GIF: no sound, and its own width, not a height
+        Some(_) => (dst.with_extension("studio.mp4"), Edit { gif: None, tracks: vec![], height: None, encoder: "libx264".into(), quality: 16, ..edit.clone() }),
+        None => (dst.to_path_buf(), edit.clone()),
+    };
+    let k = drawn.height.map_or(1.0, |h| (h as f64 / oh).min(1.0));
+    let size = (((ow * k).round() as u32).max(2) & !1, ((oh * k).round() as u32).max(2) & !1);
+    let r = media::render_args(src, &mp4, &drawn, size);
+    let frames: f64 = r.keep.iter().map(|(a, b)| ((b - a) * r.fps).round()).sum::<f64>().max(1.0);
+    let spec = json!({
+        "decode": r.decode, "encode": r.encode, "keep": r.keep, "fps": r.fps,
+        "source": [probe.width, probe.height], "size": [size.0, size.1], "scale": size.0 as f64 / ow, "scene": scene,
+    });
+    let spec_path = dst.with_extension("render.json");
+    std::fs::write(&spec_path, spec.to_string()).map_err(|e| e.to_string())?;
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let child = Command::new(exe).arg("--render-video").arg(&spec_path).stdin(Stdio::null()).stdout(Stdio::piped()).spawn();
+    let mut child = match child {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = std::fs::remove_file(&spec_path);
+            return Err(format!("render: {e}"));
+        }
+    };
+    // a GIF's last fifth is the GIF itself
+    let share = if edit.gif.is_some() { 0.8 } else { 1.0 };
+    let mut why = vec![];
+    if let Some(out) = child.stdout.take() {
+        for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
+            if let Some(n) = line.strip_prefix("frame ").and_then(|v| v.trim().parse::<f64>().ok()) {
+                report((n / frames).clamp(0.0, 1.0) * share);
+            } else if let Some(e) = line.strip_prefix("error ") {
+                why.push(e.to_string());
+            }
+        }
+    }
+    let status = child.wait().map_err(|e| format!("render: {e}"));
+    let _ = std::fs::remove_file(&spec_path);
+    if !status?.success() {
+        let _ = std::fs::remove_file(&mp4);
+        return Err(format!("render: {}", why.join("\n")));
+    }
+    if let Some((fps, width)) = edit.gif {
+        let made = media::gif(&mp4, dst, fps, width);
+        let _ = std::fs::remove_file(&mp4);
+        made?;
+    }
+    report(1.0);
+    Ok(())
 }

@@ -8,6 +8,7 @@
 #include <malloc.h>
 
 #include "redact.h"
+#include "render.h"
 #include "snip_bridge/src/bridge.cxxqt.h"
 
 int
@@ -43,8 +44,12 @@ main(int argc, char* argv[])
   QGuiApplication::setDesktopFileName(appId.isEmpty() ? QStringLiteral("snip") : appId);
   QGuiApplication::setQuitOnLastWindowClosed(false);
 
-  QString mode = QStringLiteral("interactive");
   const QStringList args = app.arguments();
+  // Studio Mode's export: a child that draws a recording's frames (render.h)
+  if (const qsizetype at = args.indexOf(QStringLiteral("--render-video")); at >= 0 && at + 1 < args.size())
+    return renderVideo(args.at(at + 1));
+
+  QString mode = QStringLiteral("interactive");
   if (args.contains(QStringLiteral("--test")))
     mode = QStringLiteral("test");
   else if (args.contains(QStringLiteral("--gallery")))
