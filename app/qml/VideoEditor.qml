@@ -26,10 +26,13 @@ Window {
 
     title: "Snip Video Editor — " + (info.title || "Recording")
     color: Theme.background
-    width: 1180
-    height: 780
-    minimumWidth: 900
-    minimumHeight: 600
+    // 1180 x 780, or 90 % of its screen's free space when that's less (on 1280 x 720
+    // logical px the timeline and Export were off screen)
+    readonly property rect avail: { const s = Platform.screen(info.output || ""); return s ? s.availableGeometry : Qt.rect(0, 0, 1600, 1000) }
+    width: Math.min(1180, Math.round(avail.width * 0.9))
+    height: Math.min(780, Math.round(avail.height * 0.9))
+    minimumWidth: Math.min(900, width)
+    minimumHeight: Math.min(600, height)
     visible: true
 
     // ---------------------------------------------------------------- the edit
