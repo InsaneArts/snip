@@ -897,6 +897,8 @@ ffmpeg -f rawvideo -pix_fmt rgba -s WxH -r fps -i pipe:0 -i original.mp4
 
 ## 10. Tests
 
+**Phase 1** is tested at one seam, the studio evaluator in `cargo test` (the owner's choice, 2026-10-11).
+
 **Rust unit tests** (`cargo test -p snip-core`):
 
 | Area | What they check |
@@ -978,7 +980,7 @@ Each question has options and a recommendation. Recorded answers become D-number
 - (b) **Zooms placed by hand (Phase 1) in v1, the rest after 1.0.**
 - (c) All of it in v1.
 
-*Recommend (b).* Phase 1 changes nothing in recording, gives every recording CleanShot's standard-take zooms, and builds the renderer the rest needs.
+**Decided (D55, 2026-10-11): (c), now and in 1.0:** "Studio arrives now, I want to start development on studio".
 
 **Q2. How is a studio take started?**
 - (a) **A third button on the panel, "Record in Studio", as CleanShot has.** A key such as Shift+Enter could go with it.
@@ -1012,7 +1014,7 @@ Each question has options and a recommendation. Recorded answers become D-number
 - (a) **The recording's card (video, corners, shadow, pointer) grows over a still background. The padding leaves the canvas as it zooms in, as in Cap.** CleanShot probably does the same: it drops out of the zoom while a padding slider is dragged, so the padding can be seen.
 - (b) Only the video inside its card, so the padding and corners stay.
 
-*Recommend (a).*
+**Decided (D56, 2026-10-11): (a),** the card grows over a still background.
 
 **Q7. Pointer art?**
 - (a) **The user's own cursor theme (Adwaita here), drawn at a large size.**
@@ -1038,7 +1040,7 @@ Each question has options and a recommendation. Recorded answers become D-number
 - (a) **Yes: edits stay editable.** It costs one more video once Replace is used.
 - (b) No: Replace overwrites, as today.
 
-*Recommend (a).*
+**Decided (D56, 2026-10-11): (a), yes:** edits stay editable.
 
 **Q11. Sound in studio takes.** CleanShot lets you turn system audio on after the take, so it records it anyway.
 - (a) **Record only what the panel says, as today.**
