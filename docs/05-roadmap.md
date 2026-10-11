@@ -257,7 +257,7 @@ CleanShot 5's Studio Mode on Hyprland: zooms placed by hand and automatic, a smo
 | 5. Polish | Motion blur, Snip's own pointer set, ratios, Export Current Frame | ⏳ |
 | 6. The camera as its own stream | The camera recorded apart, laid out after the fact | ⏳ |
 
-Phase 1's tests are the studio evaluator's, in `cargo test` (the owner's choice).
+Phase 1's tests are the studio evaluator's, in `cargo test` (the owner's choice). Phase 2's (the owner's choice, 2026-10-12): `cargo test` for the input log, its timing and the pointer's path; one e2e case for a studio take with the fake recorder (it stops, the editor opens, the log is there); the UI checked by hand.
 
 Phase 1 is built (2026-10-12): the zoom lane, its popover (level, the spotlight on what a zoom shows) and its right-click menu, Smooth or Dynamic under Animations, touching zooms that pan, the edit kept in `edit.json` with a Replace that keeps the original (D56), undo, and an export drawn frame by frame with the preview's scene (`snipd --render-video`; S1 answered: 172 fps at 2688×1568, the frames made I420 on the GPU). The owner liked Smooth and Dynamic (2026-10-12), its "done when".
 
