@@ -56,6 +56,7 @@ Window {
     property point cameraAt: Qt.point(-1, -1)       // its corner from the area's (-1: not moved)
     property bool clicks: false                     // REC-09: a ring where the pointer clicks
     property bool keys: false                       // REC-10: the command keys pressed
+    property bool studio: false                     // D54: a studio take (the editor redraws the pointer)
     property var heldMods: []                       // the modifiers held, by label
     property string combo: ""                       // the last command, e.g. "Ctrl + C"
     property int comboCount: 0                      // pressed again and again
@@ -110,6 +111,7 @@ Window {
         cameraAt = Qt.point(-1, -1)
         clicks = !!s.clicks
         keys = !!s.keys
+        studio = !!s.studio
         heldMods = []
         combo = ""
         comboShown = false
@@ -289,6 +291,7 @@ Window {
 
     function setShown(key, on) {
         if (key === "highlight_clicks") clicks = on
+        else if (key === "studio") studio = on
         else keys = on
         Engine.setSetting("recording." + key, JSON.stringify(on))
     }
@@ -787,17 +790,19 @@ Window {
                             ["record-system", "volume", "volume-x", "Record what the computer plays", hud.system && !hud.gif],
                             ["record-camera-button", "webcam", "webcam-off", hud.cameraEntry ? hud.cameraEntry.name : "No camera", hud.cameraEntry !== null],
                             ["record-clicks", "click", "", "Highlight clicks", hud.clicks],
-                            ["record-keys", "command", "", "Show keystrokes (command keys only)", hud.keys]]
+                            ["record-keys", "command", "", "Show keystrokes (command keys only)", hud.keys],
+                            ["record-studio", "sparkles", "", "Studio: the editor redraws the pointer, smooth", hud.studio && !hud.gif]]
                     PanelCell {
                         required property var modelData
                         objectName: modelData[0]
-                        width: setupCard.width / 5
+                        width: setupCard.width / 6
                         icon: modelData[1]
                         offIcon: modelData[2]
                         tip: modelData[3]
                         on: modelData[4]
-                        // a GIF has no sound
-                        opacity: hud.gif && (modelData[0] === "record-mic" || modelData[0] === "record-system") ? 0.4 : 1
+                        // a GIF has no sound, nor Studio; a studio take shows no rings or keys as it records
+                        opacity: hud.gif && (modelData[0] === "record-mic" || modelData[0] === "record-system" || modelData[0] === "record-studio")
+                                 || hud.studio && !hud.gif && (modelData[0] === "record-clicks" || modelData[0] === "record-keys") ? 0.4 : 1
                         warn: modelData[0] === "record-mic" && hud.micMuted && !hud.gif ? Qt.rgba(Theme.warning.r, Theme.warning.g, Theme.warning.b, 0.3) : "transparent"
                         level: modelData[0] === "record-mic" && modelData[4] ? hud.micLevel : -1
                         onTapped: {
@@ -807,6 +812,7 @@ Window {
                             case "record-camera-button": hud.camerasOpen = !hud.camerasOpen; break
                             case "record-clicks": hud.setShown("highlight_clicks", !hud.clicks); break
                             case "record-keys": hud.setShown("show_keystrokes", !hud.keys); break
+                            case "record-studio": if (!hud.gif) hud.setShown("studio", !hud.studio); break
                             }
                         }
                     }
@@ -1167,7 +1173,7 @@ Window {
                                                     camera: bubble.visible ? [bubble.x, bubble.y, bubble.width, bubble.height] : null,
                                                     cameraName: camera, cameraShape: cameraShape, cameraSize: cameraSize, cameraMirror: cameraMirror,
                                                     cameraFull: cameraFull, cameraReady: bubble.ready, cameras: cameras.map(c => c.name),
-                                                    camerasOpen: cameraList.visible, micsOpen: micList.visible, clicks: clicks, keys: keys, rings: ringsShown,
+                                                    camerasOpen: cameraList.visible, micsOpen: micList.visible, clicks: clicks, keys: keys, studio: studio, rings: ringsShown,
                                                     keystrokes: keyPill.visible ? keyText : "", asking: asking, stopHint: stopHint.visible,
                                                     cardsAway: !!(controller && controller.quickAccess.capturing) }).slice(1, -1))
             break

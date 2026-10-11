@@ -76,6 +76,9 @@ struct Run {
     hooks: Option<(bool, bool)>,
     /// what the HUD shows of them as it records: keys, clicks
     hud: (bool, bool),
+    /// a studio take (D54): its command keys and typing logged, the editor
+    /// opened at its end (D58)
+    studio: bool,
     /// where the pointer went and the clicks, for the editor (D54)
     log: Option<TakeLog>,
     /// this take put the desktop cover up (CAP-12): it takes it down
@@ -158,7 +161,7 @@ impl Inner {
             "output": output, "x": local.x, "y": local.y, "w": local.w, "h": local.h, "ow": o.w, "oh": o.h, "scale": s, "gif": gif,
             "mics": if now { vec![] } else { self.audio_inputs() }, "mic": cfg.mic, "system": cfg.system_audio, "dim": cfg.dim, "now": now,
             "camera": cfg.camera, "cameraShape": cfg.camera_shape, "cameraSize": cfg.camera_size, "cameraMirror": cfg.camera_mirror,
-            "clicks": cfg.highlight_clicks, "keys": cfg.show_keystrokes, "windows": windows,
+            "clicks": cfg.highlight_clicks, "keys": cfg.show_keystrokes, "studio": cfg.studio, "windows": windows,
             // tests: a test card stands in for a camera (the suite's machine has none)
             "fakeCamera": std::env::var("SNIP_CAMERA").is_ok_and(|v| v == "fake"),
         })
@@ -255,10 +258,12 @@ impl Inner {
         let has_audio = audio.mic.is_some() || audio.system;
         let whole = self.outputs.lock().unwrap().iter().find(|o| o.name == rec.output).is_some_and(|o| rec.local == Rect::new(0, 0, o.logical.w, o.logical.h));
         let target = if whole { Target::Output(rec.output.clone()) } else { Target::Area(rec.logical) };
+        // Studio (D54; never a GIF): the pointer left out, to be redrawn
+        let studio = cfg.studio && !rec.gif;
         let spec = Spec {
             target,
             fps: cfg.fps.clamp(1, 240),
-            cursor: cfg.show_cursor,
+            cursor: cfg.show_cursor && !studio,
             audio,
             codec: "auto".into(),
             quality: cfg.quality.as_str().into(),
@@ -282,9 +287,11 @@ impl Inner {
             }
         };
         rec.state = State::Recording;
-        // every take logs its clicks (D54); the HUD shows what it's asked to
-        let hooks = Some((cfg.show_keystrokes, true));
-        let hud = (cfg.show_keystrokes, cfg.highlight_clicks);
+        // every take logs its clicks (D54), a studio take its command keys too;
+        // the HUD shows what it's asked to, nothing in a studio take (it would
+        // be in the video, and redrawn: twice)
+        let hooks = Some((cfg.show_keystrokes || studio, true));
+        let hud = if studio { (false, false) } else { (cfg.show_keystrokes, cfg.highlight_clicks) };
         let sid = stamp.replace('-', "");
         let header = Header {
             fps: spec.fps as f64,
@@ -298,7 +305,7 @@ impl Inner {
                 size: ["HYPRCURSOR_SIZE", "XCURSOR_SIZE"].iter().filter_map(|v| std::env::var(v).ok()?.parse().ok()).next().unwrap_or(24),
                 hide_on_key_press: snip_hypr::option_bool("cursor:hide_on_key_press").unwrap_or(false),
             },
-            keys: "none".into(),
+            keys: if studio { "commands" } else { "none" }.into(),
             ..Header::default()
         };
         // the pointer twice a frame, as Hyprland has it
@@ -306,7 +313,7 @@ impl Inner {
         // CAP-12: with Hide desktop clutter on, the bars show the wallpaper and
         // pins step aside while it records (unless they're hidden already)
         let covered = self.cfg().capture.hide_desktop && !self.desktop_is_hidden();
-        rec.run = Some(Run { take: take.clone(), sid: sid.clone(), hooks, hud, log: Some(log), covered, dnd: cfg.dnd });
+        rec.run = Some(Run { take: take.clone(), sid: sid.clone(), hooks, hud, studio, log: Some(log), covered, dnd: cfg.dnd });
         drop(r);
         if covered {
             self.desktop("hide");
@@ -317,7 +324,7 @@ impl Inner {
         // the screen doesn't idle into the lock screen mid-recording
         self.wl(snip_wayland::Request::KeepAwake(true));
         if let Some((keys, clicks)) = hooks {
-            self.record_hooks(&sid, keys, clicks);
+            self.record_hooks(&sid, keys, clicks, studio);
         }
         self.record_status(json!({ "elapsed": 0 }));
         self.record_listen();
@@ -491,8 +498,8 @@ impl Inner {
     /// Clicks and keys while `sid` records (REC-09/10): Hyprland's hooks send
     /// them as socket2 events; a heartbeat keeps the hooks, which remove
     /// themselves once it stops (Snip gone).
-    fn record_hooks(self: &Arc<Self>, sid: &str, keys: bool, clicks: bool) {
-        if let Err(e) = snip_hypr::keys::recording_hooks(sid, keys, clicks, false) {
+    fn record_hooks(self: &Arc<Self>, sid: &str, keys: bool, clicks: bool, typing: bool) {
+        if let Err(e) = snip_hypr::keys::recording_hooks(sid, keys, clicks, typing) {
             return trace::warn("record_hooks", &format!("\"reply\":{}", js(&e)));
         }
         trace::trace("record_hooks", &format!("\"sid\":\"{sid}\",\"keys\":{keys},\"clicks\":{clicks}"));
@@ -522,10 +529,19 @@ impl Inner {
         let j = match parts.as_slice() {
             [_, "k", code, st] => {
                 let Ok(code) = code.parse::<u32>() else { return };
+                if let Some(log) = run.log.as_ref().filter(|_| run.studio) {
+                    log.push(Input::Key { t, code, down: *st == "1" });
+                }
                 if !run.hud.0 {
                     return;
                 }
                 json!({ "kind": "key", "code": code, "down": *st == "1", "label": snip_hypr::keys::key_label(code) })
+            }
+            [_, "t"] => {
+                if let Some(log) = run.log.as_ref().filter(|_| run.studio) {
+                    log.push(Input::Typing { t });
+                }
+                return;
             }
             [_, c @ ("c" | "u"), button, x, y] => {
                 let (Ok(x), Ok(y), Some((ox, oy))) = (x.parse::<f64>(), y.parse::<f64>(), origin) else { return };
@@ -588,6 +604,7 @@ impl Inner {
         // the microphone isn't listened to while gsr finishes
         rec.meter = None;
         let dnd = rec.run.as_ref().is_some_and(|run| run.dnd);
+        let studio = rec.run.as_ref().is_some_and(|run| run.studio);
         // gsr first: the HUD (the camera, the keys) stays until the file is finished
         let file = rec.run.take().and_then(|run| self.record_end_run(run, keep));
         self.ui(Ui::RecordClose);
@@ -627,6 +644,10 @@ impl Inner {
         match ingested {
             Ok(r) => {
                 self.show_card(&r, &rec.output);
+                // a studio take goes on in the video editor (D58)
+                if studio {
+                    self.video_open(&r.id);
+                }
                 reply(rec.waiter, Response::ok(card_json(&r, &rec.output)));
             }
             Err(e) => {

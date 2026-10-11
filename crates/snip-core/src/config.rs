@@ -198,6 +198,9 @@ pub struct Recording {
     pub highlight_clicks: bool,
     /// REC-10: the command keys pressed (never plain typing)
     pub show_keystrokes: bool,
+    /// D54: a studio take (Studio Mode, D55): recorded without the pointer,
+    /// which the video editor redraws; it opens when the take stops (D58)
+    pub studio: bool,
 }
 
 impl Default for Recording {
@@ -223,6 +226,7 @@ impl Default for Recording {
             camera_mirror: true,
             highlight_clicks: false,
             show_keystrokes: false,
+            studio: false,
         }
     }
 }
