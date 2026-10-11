@@ -2798,6 +2798,38 @@ def video_editor_gives_memory_back(s, env):
 
 
 @case
+def video_editor_keys_come_back_after_a_volume(s, env):
+    """VED-02: a volume typed in its box and left with Esc, or with a click on the timeline,
+    gives the keys back. Space, B, the arrows and Ctrl+S had gone to the hidden field."""
+    s.cli("close-all"); time.sleep(0.3)
+    clip = s.tmp / "volkeys.mp4"
+    make_clip(clip, seconds=3, size="640x360")
+    s.json("edit", str(clip))
+    assert wait_for(lambda: video_editor_window(), 6), "the video editor opens"
+    time.sleep(0.8)
+    try:
+        def type_into_volume():
+            s.move(*video_point(s, env, "video-volume:0")); time.sleep(0.3)   # its value shows on hover
+            video_click(s, env, "video-volume:0-value"); time.sleep(0.2)
+        type_into_volume()
+        s.debug("ui", "video", "keys", "{Escape}")
+        s.debug("ui", "video", "keys", "{Space}")
+        assert wait_for(lambda: video_state(s)["playing"], 2), "after Esc, Space plays"
+        s.debug("ui", "video", "keys", "{Space}")
+        assert wait_for(lambda: not video_state(s)["playing"], 2)
+        type_into_volume()
+        video_click(s, env, "video-timeline")
+        s.debug("ui", "video", "keys", "{Space}")
+        assert wait_for(lambda: video_state(s)["playing"], 2), "after a click on the timeline, Space plays"
+    finally:
+        for _ in range(3):
+            if not video_editor_window():
+                break
+            s.debug("ui", "video", "keys", "{Escape}"); time.sleep(0.4)
+        s.cli("close-all")
+
+
+@case
 def video_editor_background(s, env):
     """D50: the video editor's Background section puts a background around the recording,
     as the Background tool does around a screenshot: in the preview at once, and in the

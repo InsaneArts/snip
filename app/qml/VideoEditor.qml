@@ -410,6 +410,7 @@ Window {
                             value: trackRow.volume * 100
                             onMoved: (v) => ve.setVolume(trackRow.index, v / 100)
                             onReleased: (v) => { ve.setVolume(trackRow.index, v / 100); keyboard.forceActiveFocus() }
+                            onCancelled: keyboard.forceActiveFocus()
                         }
                     }
                 }
@@ -468,7 +469,7 @@ Window {
                 }
             }
         }
-        MouseArea { anchors.fill: parent; onClicked: ve.playPause() }
+        MouseArea { anchors.fill: parent; onPressed: ve.focusKeys(); onClicked: ve.playPause() }
     }
     // the background for the export: drawn off screen at the result's size, a
     // hole where the recording shows (ffmpeg puts it on top), then grabbed
@@ -644,7 +645,7 @@ Window {
                     }
                     MouseArea {
                         anchors.fill: parent
-                        onPressed: (m) => { player.pause(); ve.seek(timeline.msAt(m.x)) }
+                        onPressed: (m) => { ve.focusKeys(); player.pause(); ve.seek(timeline.msAt(m.x)) }
                         onPositionChanged: (m) => { if (pressed) ve.seek(timeline.msAt(m.x)) }
                     }
                 }
@@ -720,7 +721,7 @@ Window {
                     // a press selects the part under it and moves the playhead there
                     MouseArea {
                         anchors.fill: parent
-                        onPressed: (m) => { const ms = timeline.msAt(m.x); ve.selected = ve.partAt(ms); player.pause(); ve.seek(ms) }
+                        onPressed: (m) => { ve.focusKeys(); const ms = timeline.msAt(m.x); ve.selected = ve.partAt(ms); player.pause(); ve.seek(ms) }
                         onPositionChanged: (m) => { if (pressed) ve.seek(timeline.msAt(m.x)) }
                     }
                     // the trim handles
