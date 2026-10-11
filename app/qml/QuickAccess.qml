@@ -125,8 +125,6 @@ Window {
         Platform.saveFileDialog("Save As", sug.name || "", sug.folder || "", (path) => {
             if (path === "") return
             Engine.saveAs(id, path)
-            const shown = qa.cardById(id)        // unless it's gone meanwhile
-            if (shown) shown.flash("saved", 900)
         })
     }
 
@@ -198,7 +196,7 @@ Window {
             break
         case "save":
             if (Platform.altHeld()) saveAs(card)            // QAO-03: Alt+Save asks where
-            else { Engine.save(id); card.flash("saved", 900) }
+            else Engine.save(id)                           // the card says how it went (cardStatus)
             break
         case "save-as": saveAs(card); break
         case "show": Engine.showInFiles(id); break

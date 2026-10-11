@@ -62,9 +62,10 @@ Window {
         }
     }
     function zoomBy(f) { zoom = Math.max(0.1, Math.min(4, zoom * f)) }
-    // Copy Text's result (it comes as a card's status): a toast here
+    // Copy Text's and Save's results (they come as a card's status): a toast here
     function status(st, detail) {
-        const said = { "text-copied": "Copied " + detail, "qr-copied": "Copied " + detail, "no-text": "No text found", "error": detail }[st]
+        const said = { "text-copied": "Copied " + detail, "qr-copied": "Copied " + detail, "no-text": "No text found", "error": detail,
+                       "saved": "Saved" }[st]
         if (said) controller.toast.show(said, capture.output)
     }
     // PIN-07: hidden pins come back where they were (Hyprland would centre them)
