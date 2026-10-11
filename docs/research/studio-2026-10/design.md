@@ -331,7 +331,7 @@ All of them draw on screen while recording, so keys are burned into the video an
 
 | Topic | Taken from | Snip's default |
 |---|---|---|
-| Flow | CleanShot | A third button on the panel. When a studio take stops, the editor opens. Standard takes get zooms placed by hand. |
+| Flow | CleanShot, then D54 | A Studio switch on the panel, off until turned on and remembered between takes (D54). When a studio take stops, the editor opens (Q3). Every take keeps its clicks, so any recording gets auto zooms (D54). |
 | Auto zoom | CleanShot's grouping and levels; OpenScreen's guards (wide at the start and end, never move the user's zooms); Cursorful's "2 clicks"; the complaints above (fully in before the click; no dwell) | On for studio takes |
 | Zoom ramps | CleanShot | Smooth 0.75 s, Dynamic 0.4 s, one setting for the project |
 | Zoom levels | CleanShot | 1–4×. Auto zoom picks 1.5×, or 2× for dense clicks. |
@@ -350,7 +350,7 @@ All of them draw on screen while recording, so keys are burned into the video an
 ## 3. Design overview
 
 ```
-Panel: Record in Studio ─▶ record_go (studio)
+Panel: Studio switch on ─▶ record_go (studio)
    ├─ gsr -cursor no ─────────────────────────────▶ recording/<stamp>.mp4 (+ <stamp>.mp4.ts)
    ├─ pointer poller: j/cursorpos at 2 × fps ─┐
    ├─ Hyprland hooks: buttons, wheel, keys ───┼──▶ recording/<stamp>.input.jsonl
@@ -537,7 +537,7 @@ events with Pᵢ ≤ t < Rᵢ are dropped
 | `snip_core::record::Spec` | `cursor: false` for a studio take (the field exists) |
 | `snip_core::studio::log` (new, pure) | The log's types, writer and reader, time mapping, and the software-cursor checks as pure functions over `hyprctl` JSON. Unit-tested. |
 | `snip_core::take` | Keep `.ts` contents and gsr's pause lines before stop deletes them (`take.rs:243`) |
-| `snip_bridge::engine::record` | A studio take: the panel's third button, the poller thread, hooks with releases, wheel and typing, the 1 s check for software cursors, moving the log into history, recovering a log left behind with its take, and opening the editor at stop. socket2 events go through a channel (review gap 12). The live HUD draws **no** rings or keys during a studio take: they are in the log, and drawn ones would be baked in twice. |
+| `snip_bridge::engine::record` | A studio take: the panel's Studio switch (D54), the poller thread, hooks with releases, wheel and typing, the 1 s check for software cursors, moving the log into history, recovering a log left behind with its take, and opening the editor at stop. socket2 events go through a channel (review gap 12). The live HUD draws **no** rings or keys during a studio take: they are in the log, and drawn ones would be baked in twice. Every take, the switch off too (D54): the poller and the click hooks, no keys. |
 | `snip_hypr::keys::recording_lua` / `recording.lua` | Release binds, wheel binds, the typing marker |
 | `snip_core::store` | `ingest_media` takes the log and the first `edit.json`; `original.mp4` (§5.1) |
 
@@ -589,7 +589,7 @@ Times are **source milliseconds**: the recording's own time, as the editor's cut
 }
 ```
 
-- **On a standard recording,** `pointer`, `keys` and `follow: true` are absent or ignored. The editor greys those sections out with CleanShot's line: "Record in Studio to change the pointer".
+- **On a standard recording** (the Studio switch off), `pointer` and `keys` are absent or ignored: its pointer is in the picture. Zooms, auto zooms and follow work from its log (D54). The editor greys the Pointer and Keystrokes sections out: "Turn on Studio on the recording panel to change the pointer".
 - **Versions.** Readers refuse a newer `version`. Unknown fields are kept when the file is saved again, as `.snip` projects do (architecture §5.3).
 
 ### 5.3 Saving and undo
@@ -734,7 +734,7 @@ Snip's own rules: CleanShot's grouping and levels (vendor), OpenScreen's guards,
    - Results are marked `auto: true`. Editing one turns it into a user zoom.
    - **Re-run auto zoom** (a Snip extra) replaces only `auto: true` zooms. Zooms the user placed are never moved.
    - **Remove All Zooms** sits in plain sight in the zoom lane's menu. Screen Studio hid it, and users complained.
-   - Auto zoom can also run on a standard take, but only if it has an input log (decision Q13).
+   - Auto zoom runs on standard takes too, from the clicks every take keeps (D54).
 8. **Typing-only stretches.** CleanShot follows text-field frames from Accessibility, which Wayland doesn't offer. Instead, a typing stretch of 2 s or more with no zoom open makes one at the last press. That needs the press within the previous 10 s and the pointer not to have moved more than 10 % of the width since: that is where the caret probably is.
 9. **Later ideas** (not v1):
    - Recordly rates a click by what the pointer does next: a still pointer suggests a text field, a downward move a menu, a sideways drag a text selection. That could set the level.
@@ -929,8 +929,8 @@ Each phase is several small PRs, each reviewable and shippable on its own (CLAUD
 |---|---|---|---|---|---|
 | **0. Spikes** (about a week) | — | S1–S6 below | Owner's OK for S2 and S3 (they record the screen) | — | Each question answered with a number |
 | **1. Zooms you place, for every recording** (smallest valuable step) | Zooms on today's recordings: the zoom lane and popover; level 1–4; Manual focus with the spotlight thumbnail; Smooth or Dynamic; touching zooms pan; the edit kept (`edit.json`, a non-destructive Replace, Q10); undo | `studio` view path and tests → `StudioFrame.qml` and the frame relay → the zoom lane → `snipd --render-video` → `edit.json` and undo | S1 | Export speed and colour | The golden fidelity test passes; at least 100 fps at 1440p; the owner likes the ramps |
-| **2. Studio takes and the redrawn pointer** | "Record in Studio" on the panel; the editor opens at stop; the Pointer section: show, size, Natural or Smooth or Off, press effect, hide when typing or idle; the theme's arrow, sharp at any size | The log (writer, reader, mapping) → the poller and hooks → software-cursor checks and baked spans → history files and recovery → pointer track and tests → the Pointer section | S2, S3, S4, S5 | A baked pointer on other setups; how the smoothing feels | A live studio take on the owner's machine exports with a smooth pointer that lands on every click within a frame |
-| **3. Auto zoom and follow** | Zooms placed on every new studio take; Follow Cursor zooms; Re-run Auto Zoom | Auto zoom and fixtures → follow dead zone and edge snap → typing and wheel rules | Phase 2 | Zooms that feel wrong | Fixture tests pass; the owner rates the zooms on 5 real takes |
+| **2. Studio takes and the redrawn pointer** | the Studio switch on the panel (D54); the editor opens at stop; the Pointer section: show, size, Natural or Smooth or Off, press effect, hide when typing or idle; the theme's arrow, sharp at any size | The log (writer, reader, mapping) → the poller and hooks → software-cursor checks and baked spans → history files and recovery → pointer track and tests → the Pointer section | S2, S3, S4, S5 | A baked pointer on other setups; how the smoothing feels | A live studio take on the owner's machine exports with a smooth pointer that lands on every click within a frame |
+| **3. Auto zoom and follow** | Zooms placed on every new take (D54); Follow Cursor zooms; Re-run Auto Zoom | Auto zoom and fixtures → follow dead zone and edge snap → typing and wheel rules | Phase 2 | Zooms that feel wrong | Fixture tests pass; the owner rates the zooms on 5 real takes |
 | **4. Clicks and keys after the fact** | Ripples (colour, outline or filled); the Keystrokes section (size, look, 9 positions, command or all keys) | Ripple and keystroke tracks → the two sections → the live HUD off during studio takes | Phase 2 | Key labels on non-US layouts | Keys and ripples line up with the video in the export |
 | **5. Polish** | Motion blur; Snip's own pointer set; a guess at hand and I-beam from hotspots (if S6 works); CleanShot's aspect-ratio list; window takes get a background automatically; Export Current Frame as Image | — | S1 cost numbers; S6 | Cost of the blur shader | — |
 | **6. The camera as its own stream** | Studio takes record the webcam to `camera.mp4` instead of drawing it on screen. Layout after the fact: size 0.5–2, shape, 9 positions, flip, shrink on zoom. | — | — | Recording the camera alongside gsr: CPU, sync | — |
@@ -959,6 +959,7 @@ Each phase is several small PRs, each reviewable and shippable on its own (CLAUD
 | Alignment off by more than a frame (encoder delay differs, pause edges) | A pointer slightly ahead of or behind hover effects | Low | Calibrate k per encoder (S3); gsr's stderr pause lines; the gsr plugin as a last resort |
 | No shape information | An arrow over text fields and links looks a little wrong | Certain (v1) | The theme's arrow; the hotspot guess (S6); upstream (Q12); a standard take keeps the real pointer |
 | Keystroke privacy | Passwords in a file | Low with the defaults | Command keys only; the typing marker carries no content; "all keys" is opt-in, before recording |
+| Every take logs its clicks and pointer positions (D54) | A record of where you clicked, beside every recording | Certain | No keys outside studio takes; kept in the recording's history folder and deleted with it |
 | Hyprland updates change Lua or IPC | Hooks or the poller stop working | Medium | Snip's existing `reinstall`; IPC is tolerant JSON; a version probe; the fake e2e covers the hooks |
 | Disk: two videos per studio take | History grows | Medium | Render on demand (Q3); retention counts both; Save copies only `source.mp4` |
 | gsr changes (6.1.3 flushes the end, timing) | Alignment and the last frames shift | Medium | Re-measure after updates (S3 harness) |
@@ -984,7 +985,7 @@ Each question has options and a recommendation. Recorded answers become D-number
 - (b) A Studio switch on the panel.
 - (c) Every video is a studio take when possible.
 
-*Recommend (a).* It matches CleanShot, keeps standard takes instant, and doesn't double the disk use of every take.
+**Decided (D54, 2026-10-11): (b),** a Studio cell on the panel with Mic, System audio, Camera, Clicks and Keys, off until switched on and remembered between takes. The owner weighed Studio as every recording's default ("if u dont want zooming u will turn it off from editor"); it would make every Copy, Save and drag wait for a render.
 
 **Q3. What happens when a studio take stops?**
 - (a) **The editor opens (CleanShot), and the take is in history at once; Copy, Save and drag render it first, with progress on the card.**
@@ -1055,7 +1056,7 @@ Each question has options and a recommendation. Recorded answers become D-number
 - (a) **No: only studio takes, as CleanShot does.**
 - (b) Yes.
 
-*Recommend (a).* Simpler, and nothing new to explain about privacy.
+**Decided (D54, 2026-10-11): (b), yes.** Every take keeps its clicks and pointer positions (no keys), so the editor can place auto zooms on any recording; the card still shares it as recorded.
 
 **Q14. The camera in studio takes.**
 - (a) **Keep today's bubble, drawn on screen and baked in, until Phase 6.**
