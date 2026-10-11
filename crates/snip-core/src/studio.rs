@@ -5,6 +5,7 @@
 use serde::{Deserialize, Serialize};
 
 pub mod log;
+pub mod pointer;
 
 /// A zoom on the timeline: from `from` to `to` (the recording's own ms), at
 /// `level` (1–4), framing `focus`, a point of the recording (0–1 across and

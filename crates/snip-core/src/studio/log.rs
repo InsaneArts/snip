@@ -90,6 +90,19 @@ pub enum Event {
 }
 
 impl Event {
+    /// When it happened (CLOCK_MONOTONIC µs).
+    pub fn t(&self) -> i64 {
+        match *self {
+            Event::Move { t, .. }
+            | Event::Button { t, .. }
+            | Event::Wheel { t, .. }
+            | Event::Key { t, .. }
+            | Event::Typing { t }
+            | Event::Pause { t, .. }
+            | Event::Baked { t, .. } => t,
+        }
+    }
+
     /// Where the pointer was (global logical px): a move's middle (Hyprland
     /// floors it to whole px), a button's exact place; None for the rest.
     pub fn place(&self) -> Option<[f64; 2]> {
