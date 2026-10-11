@@ -32,12 +32,20 @@ impl Inner {
             // D56: the recording as recorded, and the edit made on it
             let Ok((path, edit)) = me.store.video_edit_state(&id) else { return };
             let edit = edit.and_then(|e| serde_json::from_str::<Value>(&e).ok()).unwrap_or(Value::Null);
+            // a studio take's pointer, to redraw (its log's first line says)
+            let log = Store::input_log(&rec);
+            let pointer = std::fs::File::open(&log)
+                .ok()
+                .and_then(|f| std::io::BufReader::new(f).lines().next()?.ok())
+                .and_then(|first| snip_core::studio::log::read(&first))
+                .filter(|l| l.header.studio)
+                .map_or(Value::Null, |l| json!({ "log": log, "theme": l.header.cursor.theme, "size": l.header.cursor.size, "scale": l.header.scale }));
             let p = match media::probe(&path) {
                 Ok(p) => p,
                 Err(e) => return me.toast(format!("Can't open the video: {e}")),
             };
             let j = json!({
-                "id": id, "path": path, "edit": edit, "poster": Store::poster(&rec), "title": rec.title.clone().unwrap_or_else(|| "Recording".into()),
+                "id": id, "path": path, "edit": edit, "pointer": pointer, "poster": Store::poster(&rec), "title": rec.title.clone().unwrap_or_else(|| "Recording".into()),
                 "duration": p.duration_ms, "fps": if p.fps > 0.0 { p.fps } else { 30.0 }, "width": p.width, "height": p.height,
                 "tracks": p.audio_tracks, "bytes": path.metadata().map_or(0, |m| m.len()),
                 // pixels per point: a background's sizes are in points
@@ -114,8 +122,9 @@ impl Inner {
                     status(json!({ "progress": f }));
                 }
             };
-            // Studio Mode (D55): with zooms, snipd draws every frame itself
-            let scene = spec.get("scene").filter(|s| s["studio"]["zooms"].as_array().is_some_and(|z| !z.is_empty()));
+            // Studio Mode (D55): with zooms, or a studio take's pointer to redraw,
+            // snipd draws every frame itself
+            let scene = spec.get("scene").filter(|s| s["studio"]["zooms"].as_array().is_some_and(|z| !z.is_empty()) || s["pointer"].is_object());
             let run = |edit: &Edit, report: &mut dyn FnMut(f64)| match scene {
                 Some(scene) => render_studio(&input, &out, edit, scene, report),
                 None => media::export(&input, &out, edit, report),

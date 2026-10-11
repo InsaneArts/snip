@@ -4,6 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
+pub mod cursor;
 pub mod log;
 pub mod pointer;
 

@@ -133,6 +133,18 @@ pub mod qobject {
         #[qinvokable]
         fn studio_card(self: &Engine, edit: QString, t: f64, canvas_w: f64, canvas_h: f64, x: f64, y: f64, w: f64, h: f64) -> QString;
 
+        /// A studio take's redrawn pointer at `ms` of its video (D55): from
+        /// its input log at `log`, as the edit's pointer `settings` have it,
+        /// in px of the `video_w` × `video_h` video. Answers
+        /// {"x", "y", "opacity", "press"}, or null without a log.
+        #[qinvokable]
+        fn studio_pointer(self: &Engine, log: QString, settings: QString, ms: f64, video_w: f64, video_h: f64) -> QString;
+
+        /// The pointer's look (D59): `theme`'s arrow as a PNG in Snip's cache.
+        /// Answers {"path", "w", "h", "hot": [x, y], "nominal"}, or null.
+        #[qinvokable]
+        fn studio_cursor(self: &Engine, theme: QString) -> QString;
+
         /// Add image (ANN-12): copy `src` beside the editor's image at `base`;
         /// answers the new file's name, or "" on failure.
         #[qinvokable]
@@ -736,6 +748,48 @@ impl qobject::Engine {
 
     fn remove_wallpaper(&self, path: QString) {
         editor_files::remove_wallpaper(std::path::Path::new(&path.to_string()));
+    }
+
+    fn studio_pointer(&self, log: QString, settings: QString, ms: f64, video_w: f64, video_h: f64) -> QString {
+        use snip_core::studio::{log as input, pointer};
+        use std::cell::RefCell;
+        // built once for a log, its settings and its video (60 times a second otherwise)
+        thread_local! { static TRACK: RefCell<Option<(String, Option<pointer::Track>)>> = const { RefCell::new(None) } }
+        let key = format!("{log}|{settings}|{video_w}x{video_h}");
+        TRACK.with(|cell| {
+            let mut cell = cell.borrow_mut();
+            if cell.as_ref().is_none_or(|(k, _)| *k != key) {
+                let track = std::fs::read_to_string(log.to_string()).ok().and_then(|text| input::read(&text)).and_then(|mut l| {
+                    // the video as it is (gsr may have scaled it to a largest size)
+                    l.header.video = [video_w as u32, video_h as u32];
+                    let s: pointer::Settings = serde_json::from_str(&settings.to_string()).unwrap_or_default();
+                    pointer::Track::new(&l, &s)
+                });
+                *cell = Some((key, track));
+            }
+            match cell.as_ref().and_then(|(_, t)| t.as_ref()) {
+                Some(t) => {
+                    let s = t.at(ms);
+                    QString::from(format!(r#"{{"x":{},"y":{},"opacity":{},"press":{}}}"#, s.at[0], s.at[1], s.opacity, s.press).as_str())
+                }
+                None => QString::from("null"),
+            }
+        })
+    }
+
+    fn studio_cursor(&self, theme: QString) -> QString {
+        use snip_core::studio::cursor;
+        let theme = theme.to_string();
+        let Some(img) = cursor::arrow(&theme) else { return QString::from("null") };
+        let file = snip_core::paths::cache_dir().join("cursor").join(format!("{}-{}.png", theme.replace('/', "_"), img.nominal));
+        if !file.exists() {
+            let _ = std::fs::create_dir_all(file.parent().unwrap_or(std::path::Path::new(".")));
+            if snip_core::store::atomic_write(&file, &snip_core::encode::encode_png(&img.rgba, img.width, img.height, true)).is_err() {
+                return QString::from("null");
+            }
+        }
+        let j = serde_json::json!({ "path": file, "w": img.width, "h": img.height, "hot": img.hot, "nominal": img.nominal });
+        QString::from(j.to_string().as_str())
     }
 
     #[allow(clippy::too_many_arguments)]

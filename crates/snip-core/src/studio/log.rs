@@ -31,6 +31,9 @@ pub struct Header {
     pub keys: String,
     /// the pointer was in the picture from the start (a software cursor)
     pub baked: bool,
+    /// a studio take: recorded without the pointer, for the editor to redraw
+    /// (an ordinary take's pointer is the video's own)
+    pub studio: bool,
 }
 
 impl Default for Header {
@@ -49,6 +52,7 @@ impl Default for Header {
             cursor: Cursor::default(),
             keys: "commands".into(),
             baked: false,
+            studio: false,
         }
     }
 }
