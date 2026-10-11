@@ -1137,6 +1137,26 @@ def cards_fit_the_screen(s, env):
 
 
 @case
+def card_menu_stays_on_screen(s, env):
+    """QAO-09: a card's menu stays on screen. It was placed by the height of a menu with no
+    card, so a HiDPI capture's (one row more: Scale to 1x) ran off the bottom."""
+    s.cli("close-all"); time.sleep(0.6)
+    rec = s.json("area", "--x", "100", "--y", "80", "--w", "200", "--h", "120", "--monitor", OUT)["result"]
+    assert rec["scale"] == 1.25, rec
+    time.sleep(0.6)
+    try:
+        card = where(s, "qa", "card:" + rec["id"])
+        y = card["y"] + 80                                          # near the card's bottom
+        s.move(card["x"] + 1, y); s.move(card["x"], y); time.sleep(0.3); s.click(right=True)
+        assert wait_for(lambda: layer_mapped("snip-dismiss"), 2), "the menu opens"
+        last, mon = where(s, "qa", "menu:hide"), env.monitor()
+        assert 0 <= last["y"] <= mon["height"] / mon["scale"] - 16, ("its last row is on screen", last)
+        s.move(last["x"], last["y"]); time.sleep(0.15); s.click()     # Hide: the menu goes
+    finally:
+        s.cli("close-all"); time.sleep(0.6)
+
+
+@case
 def alt_save_asks_where(s, env):
     """QAO-03: on a hovered card Ctrl+S saves; with Alt (Ctrl+Alt+S, or Alt held on Save)
     it asks where instead. (Alt with a click needs a real keyboard: checked by hand.)"""
