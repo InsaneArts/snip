@@ -4617,6 +4617,29 @@ def editor_crop_menu_takes_esc_first(s, env):
 
 
 @case
+def editor_esc_mid_drag_drops_the_object(s, env):
+    """ANN-01: Esc while drawing drops the half-drawn object. With nothing selected, it closed
+    the editor in the middle of the drag."""
+    from PIL import Image
+    png = s.tmp / "middrag.png"
+    Image.new("RGB", (400, 300), "white").save(png)
+    s.json("edit", str(png))
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    time.sleep(0.3)
+    w, mon, st = editor_window(), env.monitor(), editor_state(s)
+    at = lambda ix, iy: (w["at"][0] - mon["x"] + st["originX"] + ix * st["k"], w["at"][1] - mon["y"] + st["originY"] + iy * st["k"])
+    s.debug("ui", "editor", "tool", "rect")
+    s.move(*at(50, 50)); s.debug("down"); s.move(*at(120, 100)); s.move(*at(150, 120))
+    s.debug("ui", "editor", "keys", "{Escape}")
+    time.sleep(0.3)
+    open_ = editor_window() is not None
+    s.move(*at(160, 130)); s.debug("up")
+    assert open_, "the editor stays open"
+    assert wait_for(lambda: editor_state(s)["items"] == [], 2), ("nothing drawn", editor_state(s)["items"])
+    close_editor(s)
+
+
+@case
 def editor_crop_bar(s, env):
     """CleanShot's crop bar: the canvas beyond the image can be transparent, white, black or
     any colour; Cancel (or Escape) goes back to the crop it started with."""
