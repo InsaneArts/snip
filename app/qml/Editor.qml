@@ -603,7 +603,7 @@ Window {
                 return
             }
             const nudge = shift ? 10 : 1
-            if (ed.tool === "crop" && (e.key === Qt.Key_Escape || e.key === Qt.Key_Return || e.key === Qt.Key_Enter)) {
+            if (ed.tool === "crop" && !ed.openedMenu && (e.key === Qt.Key_Escape || e.key === Qt.Key_Return || e.key === Qt.Key_Enter)) {
                 if (e.key === Qt.Key_Escape) ed.cropCancel(); else ed.cropDone()
                 e.accepted = true
                 return
@@ -1081,6 +1081,7 @@ Window {
                     spacing: 6
                     ToolButton {
                         id: ratioButton
+                        objectName: "crop-ratio"
                         label: (Ed.cropRatios.find(r => r.r === ed.cropRatio) || Ed.cropRatios[0]).label
                         chevron: true
                         onClicked: ed.openMenuNamed("ratio", ratioButton)
