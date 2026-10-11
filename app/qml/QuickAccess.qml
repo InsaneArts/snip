@@ -43,7 +43,7 @@ Window {
     property bool expanded: false
     property var menuCard: null
     property real menuX: 0
-    property real menuY: 0
+    property real menuAt: 0          // where the menu's top would go: by the pointer
     readonly property bool hovering: stackHover.hovered
     readonly property int count: cards.count
     readonly property int firstVisible: Math.max(0, count - (expanded ? fits(false) : shown))
@@ -405,7 +405,7 @@ Window {
                 onCloseRequested: (animated) => animated ? leave(qa.outward) : qa.remove(cardId, true)
                 onMenuRequested: (mx, my) => {
                     qa.menuX = qa.right ? qa.cardX - menu.width - 10 : qa.cardX + qa.cardWidth + 10
-                    qa.menuY = Math.max(8, Math.min(qa.height - menu.height - 8, cardItem.y + my - 12))
+                    qa.menuAt = cardItem.y + my - 12
                     qa.menuCard = cardItem
                 }
             }
@@ -439,7 +439,8 @@ Window {
             z: 100
             visible: qa.menuCard !== null
             x: qa.menuX
-            y: qa.menuY
+            // on screen by its height for this card (a HiDPI capture's has one row more)
+            y: Math.max(8, Math.min(qa.height - height - 8, qa.menuAt))
             card: qa.menuCard
             onTriggered: (action) => qa.act(action, qa.menuCard)
         }
