@@ -178,10 +178,10 @@ fn parts_graph(edit: &Edit, input: usize, video: bool, sound: bool) -> String {
 }
 
 /// A Studio export (D55, the design's §8.2): ffmpeg decodes the kept parts
-/// (`decode`: raw 4:2:0 frames of the recording's size on stdout) for
+/// (`decode`: raw I420 frames of the recording's size on stdout) for
 /// snipd's renderer, which draws each frame (the background still, the card
-/// zoomed) and hands it (raw RGBA, `size`) to a second ffmpeg (`encode`)
-/// that adds the sound and writes `dst`. `keep` is where each part starts
+/// zoomed) and hands it (raw I420 again, BT.709 at video range, `size`) to a
+/// second ffmpeg (`encode`) that adds the sound and writes `dst`. `keep` is where each part starts
 /// and ends in the recording, cut on frames, so the renderer knows each
 /// frame's time.
 pub struct Render {
@@ -198,10 +198,10 @@ pub fn render_args(src: &Path, dst: &Path, edit: &Edit, size: (u32, u32)) -> Ren
     decode.extend([src_s.clone(), "-filter_complex".into(), format!("{};[vc]format=yuv420p[v]", parts_graph(edit, 0, true, false))]);
     decode.extend(["-map", "[v]", "-f", "rawvideo", "-pix_fmt", "yuv420p", "pipe:1"].map(String::from));
     let sound = edit.tracks.iter().any(|&v| v > 0.0);
-    let mut encode: Vec<String> = ["-v", "error", "-nostdin", "-y", "-f", "rawvideo", "-pix_fmt", "rgba", "-s"].map(String::from).to_vec();
+    let mut encode: Vec<String> = ["-v", "error", "-nostdin", "-y", "-f", "rawvideo", "-pix_fmt", "yuv420p", "-s"].map(String::from).to_vec();
     encode.extend([format!("{}x{}", size.0, size.1), "-r".into(), format!("{fps}"), "-i".into(), "pipe:0".into()]);
-    // the picture in BT.709, as gsr records it, and tagged so
-    let picture = "[0:v]scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv[v]";
+    // BT.709, as gsr records it (the renderer made it so), and tagged so
+    let picture = "[0:v]setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv[v]";
     if sound {
         encode.extend(["-i".into(), src_s, "-filter_complex".into(), format!("{picture};{}", parts_graph(edit, 1, false, true))]);
         encode.extend(["-map", "[v]", "-map", "[ac]", "-c:a", "aac", "-b:a", "160k"].map(String::from));

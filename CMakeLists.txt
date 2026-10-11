@@ -4,7 +4,7 @@ project(snip VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick DBus Multimedia QmlImportScanner)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick DBus Multimedia QmlImportScanner ShaderTools)
 find_package(Qt6 REQUIRED COMPONENTS GuiPrivate)
 find_package(KF6CoreAddons REQUIRED)
 find_package(LayerShellQt REQUIRED)
@@ -98,6 +98,14 @@ qt_add_qml_module(snipd
     app/src/tray.cpp app/src/tray.h
     app/src/redact.cpp app/src/redact.h
     app/src/render.cpp app/src/render.h)
+
+# the Studio export's colour pass (render.cpp), compiled at build time
+qt_add_shaders(snipd "studio_shaders"
+  PREFIX "/snip"
+  BASE app
+  GLSL "300es,330"
+  NOHLSL NOMSL
+  FILES app/shaders/yuv.vert app/shaders/yuv.frag)
 
 target_link_libraries(snipd PRIVATE
   snip_core_qml

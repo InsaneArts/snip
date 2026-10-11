@@ -45,7 +45,7 @@ pacman asks for your password and installs what Snip needs. Snip then appears in
 Dependencies (Arch/Omarchy):
 
 ```sh
-sudo pacman -S --needed rust cmake ninja corrosion qt6-base qt6-declarative qt6-wayland layer-shell-qt kcoreaddons sqlite tesseract tesseract-data-eng
+sudo pacman -S --needed rust cmake ninja corrosion qt6-base qt6-declarative qt6-wayland qt6-shadertools layer-shell-qt kcoreaddons sqlite tesseract tesseract-data-eng
 ```
 
 Then:
