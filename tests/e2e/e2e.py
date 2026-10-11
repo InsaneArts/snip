@@ -4282,6 +4282,38 @@ def editor_menu_gives_the_keys_back(s, env):
 
 
 @case
+def editor_colour_menu_fits_the_window(s, env):
+    """ANN-13: the colour menu stays inside the editor's window. It was one column, ~34 px a
+    colour, so in a small capture's window the rainbow and the saved colours fell off the
+    bottom, out of reach (found when an earlier case had saved colours)."""
+    from PIL import Image
+    png = s.tmp / "short.png"
+    Image.new("RGB", (400, 300), "white").save(png)
+    s.json("edit", str(png))
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    time.sleep(0.3)
+    added = [c for c in ("#123456", "#654321", "#abcdef", "#fedcba") if c not in editor_state(s)["savedColors"]]
+    try:
+        for c in added:
+            s.debug("ui", "editor", "save-color", c)
+        w, mon, st = editor_window(), env.monitor(), editor_state(s)
+        win = lambda p: (w["at"][0] - mon["x"] + p["x"], w["at"][1] - mon["y"] + p["y"])
+        s.move(*win(where(s, "editor", "color-swatch"))); s.click()
+        assert wait_for(lambda: editor_state(s)["menuOpen"], 2), "the colour menu opens"
+        time.sleep(0.3)                                             # laid out
+        rb = where(s, "editor", "color-custom")
+        assert 0 <= rb["y"] <= st["winH"] - 15, ("the rainbow is in the window", rb["y"], st["winH"])
+        s.move(*win(rb)); s.click()
+        assert wait_for(lambda: where(s, "editor", "color-square")["x"] >= 0, 2), "and it opens the custom panel"
+    finally:
+        s.debug("ui", "editor", "keys", "{Escape}")
+        for c in added:                                             # later cases expect them as they were
+            if c in editor_state(s)["savedColors"]:
+                s.debug("ui", "editor", "remove-color", editor_state(s)["savedColors"].index(c))
+        close_editor(s)
+
+
+@case
 def editor_checkerboard_at_400(s, env):
     """ANN-01: transparency shows as a checkerboard, zoomed in too. The canvas that painted
     it took 0.5 s and up to half a gigabyte at 400 %; a 16 px tile, repeated, takes neither."""
