@@ -37,8 +37,8 @@ Rectangle {
             ToolButton { id: addImageButton; icon: "image-plus"; tip: "Add image (Ctrl+I)"; onClicked: bar.ed.openMenuNamed("addImage", addImageButton) }
         }
         Capsule {
-            ToolButton { icon: "image"; tip: "Background (B)"; selected: bar.ed.tool === "background"
-                         onClicked: bar.ed.setTool(bar.ed.tool === "background" ? "select" : "background") }
+            ToolButton { objectName: "tool-background"; icon: "image"; tip: "Background (B)"; selected: bar.ed.tool === "background"
+                         onClicked: bar.ed.setTool(bar.ed.tool === "background" ? bar.ed.lastTool : "background") }
         }
         Capsule {
             Tool { name: "select"; icon: "pointer"; tip: "Select (V)" }
