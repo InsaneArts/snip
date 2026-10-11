@@ -13,6 +13,7 @@ Window {
     property bool shown: false
 
     function show(text, out) {
+        Engine.log("toast", JSON.stringify({ text: text }).slice(1, -1))
         message = text
         if (out && out !== output) { shown = false; output = out }
         shown = true

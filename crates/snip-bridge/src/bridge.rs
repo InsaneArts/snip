@@ -525,6 +525,19 @@ fn file_written(r: Result<(), String>) {
     }
 }
 
+/// Save or Save As from a card or a pin: the card says Saved once the file is
+/// written, or Couldn't save with why (and a toast does, should it be gone).
+fn saved(i: &Inner, id: &str, r: Result<std::path::PathBuf, String>) {
+    match r {
+        Ok(_) => i.card_status(id, "saved", ""),
+        Err(e) => {
+            trace::warn("save_failed", &format!("\"msg\":{}", trace::js(&e)));
+            i.card_status(id, "save-failed", &e);
+            i.toast(format!("Couldn't save: {e}"));
+        }
+    }
+}
+
 impl qobject::Engine {
     fn inner(&self) -> Option<Arc<Inner>> {
         self.rust().inner.clone()
@@ -667,24 +680,15 @@ impl qobject::Engine {
     fn save(self: Pin<&mut Self>, id: QString) {
         if let Some(i) = self.inner() {
             let id = id.to_string();
-            // fsync and rename off the GUI thread; the card updates by signal
-            std::thread::spawn(move || {
-                if let Err(e) = i.save(&id) {
-                    trace::warn("save_failed", &format!("\"msg\":{}", trace::js(&e)));
-                }
-            });
+            // fsync and rename off the GUI thread; the card says how it went
+            std::thread::spawn(move || saved(&i, &id, i.save(&id)));
         }
     }
 
     fn save_as(self: Pin<&mut Self>, id: QString, path: QString) {
         if let Some(i) = self.inner() {
             let (id, path) = (id.to_string(), path.to_string());
-            std::thread::spawn(move || {
-                if let Err(e) = i.save_as(&id, std::path::Path::new(&path)) {
-                    trace::warn("save_failed", &format!("\"msg\":{}", trace::js(&e)));
-                    i.toast(format!("Couldn't save: {e}"));
-                }
-            });
+            std::thread::spawn(move || saved(&i, &id, i.save_as(&id, std::path::Path::new(&path))));
         }
     }
 

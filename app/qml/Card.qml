@@ -296,7 +296,8 @@ Item {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: ({ "copied": "Copied", "saved": "Saved", "text": "Reading text…", "text-copied": "Text copied",
-                         "qr-copied": "QR code copied", "no-text": "No text found", "error": "Couldn't read text" })[card.status] || ""
+                         "qr-copied": "QR code copied", "no-text": "No text found", "error": "Couldn't read text",
+                         "save-failed": "Couldn't save" })[card.status] || ""
                 color: "white"
                 font.family: Theme.fontUi
                 font.pixelSize: 13
@@ -325,6 +326,7 @@ Item {
         return (h > 0 ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(s).padStart(2, "0")
     }
     function flash(s, ms, d) {
+        Engine.log("card_flash", JSON.stringify({ id: cardId, status: s }).slice(1, -1))
         status = s
         detail = d || ""
         statusReset.interval = ms > 0 ? ms : 20000
@@ -332,6 +334,6 @@ Item {
     }
     // a result from the engine (Extract Text)
     function showResult(s, d) {
-        flash(s, s === "qr-copied" ? 2200 : s === "text-copied" ? 1700 : s === "error" ? 2400 : 1500, d)
+        flash(s, s === "qr-copied" ? 2200 : s === "text-copied" ? 1700 : s === "error" || s === "save-failed" ? 2400 : 1500, d)
     }
 }

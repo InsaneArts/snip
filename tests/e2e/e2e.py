@@ -1157,6 +1157,40 @@ def card_menu_stays_on_screen(s, env):
 
 
 @case
+def card_save_says_what_happened(s, env):
+    """QAO-03: a card says Saved once the file is written, and Couldn't save when it isn't (it
+    said Saved either way); a pin's Save says so too (it said nothing)."""
+    s.cli("close-all"); time.sleep(0.3)
+    png = s.tmp / "savefail.png"
+    make_text_png(png, ["save me"])
+    rec = open_card(s, png); time.sleep(0.5)
+    mon, ch = env.monitor(), round(280 * 0.705)
+    s.export.mkdir(parents=True, exist_ok=True)
+    mode, there = s.export.stat().st_mode, set(s.export.iterdir())
+    flashes = lambda: [e["status"] for e in s.traces("card_flash") if e["id"] == rec["id"]]
+    try:
+        os.chmod(s.export, 0o500)                                   # the folder can't be written
+        s.move(24 + 140, mon["height"] / mon["scale"] - 24 - ch / 2); time.sleep(0.6)
+        s.debug("ui", "qa-keys", "{ctrl+s}")
+        assert wait_for(lambda: "save-failed" in flashes(), 3), ("Couldn't save", flashes())
+        assert "saved" not in flashes(), ("not Saved", flashes())
+        os.chmod(s.export, mode)
+        s.debug("ui", "qa-keys", "{ctrl+s}")
+        assert wait_for(lambda: "saved" in flashes(), 3), ("Saved once written", flashes())
+        n = len(s.traces("toast"))
+        s.json("pin", rec["id"])
+        assert wait_for(lambda: pin_windows(), 3), "pinned"
+        s.debug("ui", "pin", "act", "save")
+        assert wait_for(lambda: [t for t in s.traces("toast")[n:] if t["text"] == "Saved"], 3), "the pin says Saved"
+    finally:
+        os.chmod(s.export, mode)
+        for f in set(s.export.iterdir()) - there:                  # later cases expect it as it was
+            f.unlink()
+        s.debug("ui", "close-pins")
+        s.cli("close-all"); time.sleep(0.6)
+
+
+@case
 def alt_save_asks_where(s, env):
     """QAO-03: on a hovered card Ctrl+S saves; with Alt (Ctrl+Alt+S, or Alt held on Save)
     it asks where instead. (Alt with a click needs a real keyboard: checked by hand.)"""

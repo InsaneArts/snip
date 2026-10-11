@@ -296,7 +296,7 @@ impl Inner {
     }
 
     /// A result shown on the card itself (CleanShot's "Link copied" style).
-    fn card_status(&self, id: &str, status: &str, detail: &str) {
+    pub(crate) fn card_status(&self, id: &str, status: &str, detail: &str) {
         trace::trace("card_status", &format!("\"id\":\"{id}\",\"status\":\"{status}\",\"detail\":{}", js(detail)));
         self.ui(Ui::CardStatus { id: id.into(), status: status.into(), detail: detail.into() });
     }
