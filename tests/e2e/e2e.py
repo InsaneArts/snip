@@ -4594,6 +4594,29 @@ def editor_crop_typed_size_applies(s, env):
 
 
 @case
+def editor_crop_menu_takes_esc_first(s, env):
+    """ANN-11: with the crop bar's ratio menu open, Esc closes the menu. It cancelled the whole
+    crop instead, and left the menu on screen."""
+    from PIL import Image
+    png = s.tmp / "cropmenu.png"
+    Image.new("RGB", (400, 300), (90, 140, 220)).save(png)
+    s.json("edit", str(png))
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    time.sleep(0.3)
+    w, mon = editor_window(), env.monitor()
+    win = lambda p: (w["at"][0] - mon["x"] + p["x"], w["at"][1] - mon["y"] + p["y"])
+    s.debug("ui", "editor", "tool", "crop")
+    time.sleep(0.3)
+    s.move(*win(where(s, "editor", "crop-ratio"))); s.click()
+    assert wait_for(lambda: editor_state(s)["menuOpen"], 2), "the ratio menu opens"
+    s.debug("ui", "editor", "keys", "{Escape}")
+    st = editor_state(s)
+    assert not st["menuOpen"] and st["tool"] == "crop", ("the menu closes, cropping goes on", st["menuOpen"], st["tool"])
+    s.debug("ui", "editor", "keys", "{Escape}")                    # now Cancel
+    close_editor(s)
+
+
+@case
 def editor_crop_bar(s, env):
     """CleanShot's crop bar: the canvas beyond the image can be transparent, white, black or
     any colour; Cancel (or Escape) goes back to the crop it started with."""
