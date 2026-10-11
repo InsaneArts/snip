@@ -32,21 +32,24 @@ impl Inner {
             // D56: the recording as recorded, and the edit made on it
             let Ok((path, edit)) = me.store.video_edit_state(&id) else { return };
             let edit = edit.and_then(|e| serde_json::from_str::<Value>(&e).ok()).unwrap_or(Value::Null);
-            // a studio take's pointer, to redraw (its log's first line says)
+            // a studio take's pointer, to redraw (its log's first line says); or,
+            // in the picture from the start (D57's hardware plane couldn't be
+            // had), why: nothing to redraw
             let log = Store::input_log(&rec);
-            let pointer = std::fs::File::open(&log)
+            let header = std::fs::File::open(&log)
                 .ok()
                 .and_then(|f| std::io::BufReader::new(f).lines().next()?.ok())
                 .and_then(|first| snip_core::studio::log::read(&first))
-                // in the picture from the start (D57's hardware pointer couldn't be had): nothing to redraw
-                .filter(|l| l.header.studio && !l.header.baked)
-                .map_or(Value::Null, |l| json!({ "log": log, "theme": l.header.cursor.theme, "size": l.header.cursor.size, "scale": l.header.scale }));
+                .map(|l| l.header)
+                .filter(|h| h.studio);
+            let pointer = header.as_ref().filter(|h| !h.baked).map_or(Value::Null, |h| json!({ "log": log, "theme": h.cursor.theme, "size": h.cursor.size, "scale": h.scale }));
+            let pointer_kept = header.filter(|h| h.baked).map_or(Value::Null, |h| json!(h.baked_why));
             let p = match media::probe(&path) {
                 Ok(p) => p,
                 Err(e) => return me.toast(format!("Can't open the video: {e}")),
             };
             let j = json!({
-                "id": id, "path": path, "edit": edit, "pointer": pointer, "poster": Store::poster(&rec), "title": rec.title.clone().unwrap_or_else(|| "Recording".into()),
+                "id": id, "path": path, "edit": edit, "pointer": pointer, "pointerKept": pointer_kept, "poster": Store::poster(&rec), "title": rec.title.clone().unwrap_or_else(|| "Recording".into()),
                 "duration": p.duration_ms, "fps": if p.fps > 0.0 { p.fps } else { 30.0 }, "width": p.width, "height": p.height,
                 "tracks": p.audio_tracks, "bytes": path.metadata().map_or(0, |m| m.len()),
                 // pixels per point: a background's sizes are in points

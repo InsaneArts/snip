@@ -514,10 +514,29 @@ Window {
             spacing: 14
             Text { text: "Pointer"; color: Theme.text; font.family: Theme.fontUi; font.pixelSize: 13; font.weight: Font.DemiBold }
             Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                text: "Redraws the mouse pointer in the video: bigger, smoother, hidden while you type."
+                color: Theme.text
+                font.family: Theme.fontUi
+                font.pixelSize: 12
+            }
+            // why it can't here: an ordinary recording, or a studio take whose pointer stayed in the picture
+            Text {
+                objectName: "studio-pointer-why"
                 visible: !ve.info.pointer
                 width: parent.width
                 wrapMode: Text.WordWrap
-                text: "This recording has its pointer in the picture. Turn on Studio on the recording panel to record one the editor redraws: smooth, any size, hidden while you type."
+                function why(kept) {
+                    if (kept === undefined || kept === null)
+                        return "Not for this recording: its pointer was recorded into the picture. Turn on Studio (the sparkles button on the recording panel) before you record, and the pointer can be changed here."
+                    if (kept === "software")
+                        return "Not for this recording: Studio was on, but Hyprland's software pointer setting (cursor:no_hardware_cursors = 1) kept the pointer in the picture."
+                    if (kept === "")
+                        return "Not for this recording: Studio was on, but the pointer couldn't be kept out of the picture."
+                    return "Not for this recording: Studio was on, but the pointer stayed in the picture because " + kept + " was connected: Snip takes it out only when every output is a real display. Once " + kept + " is gone (a virtual output goes when you log in again), new Studio recordings work."
+                }
+                text: why(ve.info.pointerKept)
                 color: Theme.textSecondary
                 font.family: Theme.fontUi
                 font.pixelSize: 12

@@ -289,8 +289,8 @@ impl Inner {
         // only with DRM outputs alone: forced hardware cursors crash Hyprland
         // 0.56 at the next pointer move on a nested session's WAYLAND- output
         // (measured), and maybe on a HEADLESS- one
-        let drm = self.outputs.lock().unwrap().iter().all(|o| !o.name.starts_with("WAYLAND-") && !o.name.starts_with("HEADLESS-"));
-        let cursor = (hw == Some(2) && drm && !fake).then_some(2);
+        let others: Vec<String> = self.outputs.lock().unwrap().iter().filter(|o| o.name.starts_with("WAYLAND-") || o.name.starts_with("HEADLESS-")).map(|o| o.name.clone()).collect();
+        let cursor = (hw == Some(2) && others.is_empty() && !fake).then_some(2);
         if cursor.is_some() {
             super::hypr("hardware_pointer", snip_hypr::run("hl.config({ cursor = { no_hardware_cursors = 0 } })"));
             self.apply_pointer_setting();
@@ -327,6 +327,7 @@ impl Inner {
             // not surely out of the video (no hardware plane for it): never
             // redrawn over it (the test pattern never has it)
             baked: studio && !fake && hw != Some(0) && cursor.is_none(),
+            baked_why: if hw == Some(1) { "software".into() } else { others.join(", ") },
             ..Header::default()
         };
         // the pointer twice a frame, as Hyprland has it
