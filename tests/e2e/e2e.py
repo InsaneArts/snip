@@ -4665,6 +4665,25 @@ def editor_esc_mid_drag_drops_the_object(s, env):
 
 
 @case
+def editor_alt_copy_keeps_the_editor_open(s, env):
+    """ANN-15: Copy (Ctrl+Shift+C) puts the image on the clipboard and closes the editor; with
+    Alt it stays open. It closed either way."""
+    from PIL import Image
+    png = s.tmp / "altcopy.png"
+    Image.new("RGB", (400, 300), "white").save(png)
+    s.json("edit", str(png))
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    s.debug("ui", "editor", "rect", 40, 40, 80, 60)                 # an edit, written back first
+    n = len(s.traces("toast"))
+    s.debug("ui", "editor", "keys", "{ctrl+alt+shift+c}")
+    assert wait_for(lambda: [t for t in s.traces("toast")[n:] if t["text"] == "Copied"], 3), "copied"
+    time.sleep(0.6)
+    assert editor_window(), "with Alt the editor stays open"
+    s.debug("ui", "editor", "keys", "{ctrl+shift+c}")
+    assert wait_for(lambda: editor_window() is None, 3), "without Alt it closes"
+
+
+@case
 def editor_crop_bar(s, env):
     """CleanShot's crop bar: the canvas beyond the image can be transparent, white, black or
     any colour; Cancel (or Escape) goes back to the crop it started with."""

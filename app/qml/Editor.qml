@@ -404,7 +404,11 @@ Window {
 
     // Write the document back to the capture, then do `action`
     // ("" | copy | save | close). One commit at a time, in order.
-    function flush(action) {
+    // Alt with Copy keeps the editor open (ANN-15), noted when Copy is asked
+    // for: the write-back comes first, and Alt may be up by then
+    property bool stayOpen: false
+    function flush(action, keepOpen) {
+        if (action === "copy") stayOpen = !!keepOpen
         finishText()
         if (committing) {
             queued = true
@@ -469,7 +473,7 @@ Window {
         if (what === "save" && !ran) Engine.save(captureId)
         if (what === "copy" || what === "save") {
             toast(what === "copy" ? "Copied" : "Saved")
-            close_()
+            if (!(what === "copy" && stayOpen)) close_()
         } else if (action === "close") {
             close_()
         }
@@ -587,7 +591,7 @@ Window {
                 case Qt.Key_Y: ed.redo(); break
                 case Qt.Key_S: shift ? ed.saveAsDialog() : ed.flush("save"); break
                 // with an object selected Ctrl+C copies it; Ctrl+Shift+C always copies the image
-                case Qt.Key_C: (!shift && ed.selectedObj) ? ed.copyObjects() : ed.flush("copy"); break
+                case Qt.Key_C: (!shift && ed.selectedObj) ? ed.copyObjects() : ed.flush("copy", (e.modifiers & Qt.AltModifier) !== 0); break
                 // objects copied in an editor first, else the clipboard's image
                 case Qt.Key_V: (controller.objectClipboard || []).length ? ed.pasteObjects() : ed.pasteImage(); break
                 case Qt.Key_I: shift ? ed.takeScreenshot() : ed.chooseImage(); break
@@ -1543,7 +1547,7 @@ Window {
             IconButton { icon: "printer"; tip: "Print…"; tipAbove: true; width: 32; height: 32; radius: 16; onClicked: ed.flush("print") }
             IconButton { icon: "share"; tip: "Open With…"; tipAbove: true; width: 32; height: 32; radius: 16; onClicked: ed.flush("share") }
             IconButton { icon: "pin"; tip: "Pin to Screen (Ctrl+P)"; tipAbove: true; width: 32; height: 32; radius: 16; onClicked: ed.flush("pin") }
-            IconButton { icon: "copy"; tip: "Copy (Ctrl+C)"; tipAbove: true; width: 32; height: 32; radius: 16; onClicked: ed.flush("copy") }
+            IconButton { icon: "copy"; tip: "Copy (Ctrl+C)"; tipAbove: true; width: 32; height: 32; radius: 16; onClicked: ed.flush("copy", Platform.altHeld()) }
         }
     }
 
