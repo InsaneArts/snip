@@ -61,6 +61,7 @@ Window {
         for (let i = 0; i < (info.tracks || 0); i++) v.push(1)
         volumes = v
         restore(info.edit)
+        undoBase = editText
     }
 
     // ---------------------------------------------------------------- the edit kept (edit.json, D56)
@@ -99,8 +100,42 @@ Window {
         })
     }
     readonly property string editText: JSON.stringify(editDoc())
-    onEditTextChanged: if (editReady) editSave.restart()
+    onEditTextChanged: {
+        if (!editReady) return
+        editSave.restart()
+        if (!undoing) takeStep()
+    }
     Timer { id: editSave; interval: 300; onTriggered: Engine.videoSaveEdit(ve.info.id, ve.editText) }
+
+    // Undo (the design's §5.3): the whole edit, before each change. What
+    // changes without a pause (a drag, a slider) is one step: the step ends
+    // once the edit has been still for 400 ms. Ctrl+Z; Ctrl+Shift+Z or Ctrl+Y.
+    property var undoStack: []
+    property var redoStack: []
+    property string undoBase: ""               // the edit where the step under way began
+    property bool undoing: false
+    function takeStep() {
+        if (!stepping.running) {
+            undoStack = undoStack.concat([undoBase]).slice(-100)
+            redoStack = []
+        }
+        stepping.restart()
+    }
+    Timer { id: stepping; interval: 400; onTriggered: ve.undoBase = ve.editText }
+    function travel(from, to) {
+        if (stepping.running) { stepping.stop(); undoBase = editText }
+        if (!from.length) return [from, to]
+        to = to.concat([editText])
+        undoing = true
+        selectZoom(-1)
+        selected = -1
+        restore(JSON.parse(from[from.length - 1]))
+        undoing = false
+        undoBase = editText
+        return [from.slice(0, -1), to]
+    }
+    function undo() { const r = travel(undoStack, redoStack); undoStack = r[0]; redoStack = r[1] }
+    function redo() { const r = travel(redoStack, undoStack); redoStack = r[0]; undoStack = r[1] }
 
     readonly property var parts: {
         const out = []
@@ -365,6 +400,8 @@ Window {
             else if (e.key === Qt.Key_Home) { player.pause(); ve.seek(ve.inMs) }
             else if (e.key === Qt.Key_End) { player.pause(); ve.seek(ve.outMs) }
             else if (ctrl && e.key === Qt.Key_S) ve.exportIt(!shift)
+            else if (ctrl && (e.key === Qt.Key_Y || (shift && e.key === Qt.Key_Z))) ve.redo()
+            else if (ctrl && e.key === Qt.Key_Z) ve.undo()
             else if (e.key === Qt.Key_Escape && ve.exportOpen) ve.exportOpen = false
             else if (e.key === Qt.Key_Escape && ve.zoomSelected >= 0) ve.selectZoom(-1)
             else if (e.key === Qt.Key_Escape || (ctrl && e.key === Qt.Key_W)) ve.close()
