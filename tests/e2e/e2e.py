@@ -2688,7 +2688,11 @@ def studio_take(s, env):
     """D54, D58: with the panel's Studio switch, a take is a studio take: nothing drawn on it
     as it records, its input log (where the pointer went, the clicks, the command keys and a
     typing marker) kept beside it in history, and the video editor open on it when it stops.
-    The switch is remembered. (The test pattern stands in for gsr: -cursor no is gsr_args'.)"""
+    The switch is remembered. (The test pattern stands in for gsr: -cursor no is gsr_args'.)
+    D57's hardware pointer stays off here: forced on the nested session's WAYLAND- output, it
+    crashes Hyprland at the next pointer move."""
+    hw = lambda: json.loads(sh("hyprctl", "-j", "getoption", "cursor:no_hardware_cursors").stdout)["int"]
+    before = hw()
     s.cli("close-all"); time.sleep(0.3)
     p = record_panel(s)
     s.drag(300, 200, 1100, 650)
@@ -2700,6 +2704,7 @@ def studio_take(s, env):
     assert wait_for(lambda: record_hud(s)["phase"] == "recording", 5), record_hud(s)
     assert wait_for(lambda: len(s.traces("record_hooks")) > n, 3), "the hooks are in"
     sid = s.traces("record_hooks")[-1]["sid"]
+    assert hw() == before, ("no hardware pointer forced on a nested session", before, hw())
     rings = record_hud(s)["rings"]                                  # (counted since Snip started)
     for i in range(6):
         s.move(400 + i * 40, 300 + i * 15); time.sleep(0.05)
@@ -2715,6 +2720,7 @@ def studio_take(s, env):
     try:
         r, code = finish(p, timeout=20)
         assert code == 0, r
+        assert hw() == before, ("the pointer setting as it was", before, hw())
         rid = r["result"]["id"]
         assert wait_for(lambda: video_editor_window(), 6), "the video editor opens on it (D58)"
         assert video_state(s)["id"] == rid, video_state(s)

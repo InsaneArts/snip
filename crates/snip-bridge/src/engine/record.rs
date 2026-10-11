@@ -79,6 +79,9 @@ struct Run {
     /// a studio take (D54): its command keys and typing logged, the editor
     /// opened at its end (D58)
     studio: bool,
+    /// the `cursor:no_hardware_cursors` a studio take put the pointer on the
+    /// hardware plane from (D57), to put back
+    cursor: Option<i64>,
     /// where the pointer went and the clicks, for the editor (D54)
     log: Option<TakeLog>,
     /// this take put the desktop cover up (CAP-12): it takes it down
@@ -278,6 +281,20 @@ impl Inner {
         let spec = Spec { cpu: !record::gpu_can_encode(size.0, size.1), max_size, ..spec };
         let recorder = Recorder::from_env();
         let fake = matches!(recorder, Recorder::TestPattern);
+        // D57: a studio take's pointer on the hardware plane, so gsr can leave it
+        // out (Hyprland's auto mode draws it into the screen on some setups,
+        // spike S2); the user's own choice of software is kept, and the pointer
+        // is then in the picture, never redrawn
+        let hw = studio.then(|| snip_hypr::option_int("cursor:no_hardware_cursors")).flatten();
+        // only with DRM outputs alone: forced hardware cursors crash Hyprland
+        // 0.56 at the next pointer move on a nested session's WAYLAND- output
+        // (measured), and maybe on a HEADLESS- one
+        let drm = self.outputs.lock().unwrap().iter().all(|o| !o.name.starts_with("WAYLAND-") && !o.name.starts_with("HEADLESS-"));
+        let cursor = (hw == Some(2) && drm && !fake).then_some(2);
+        if cursor.is_some() {
+            super::hypr("hardware_pointer", snip_hypr::run("hl.config({ cursor = { no_hardware_cursors = 0 } })"));
+            self.apply_pointer_setting();
+        }
         let take = match Take::start(&spec, size, has_audio, recorder) {
             Ok(t) => Arc::new(t),
             Err(e) => {
@@ -307,6 +324,9 @@ impl Inner {
             },
             keys: if studio { "commands" } else { "none" }.into(),
             studio,
+            // not surely out of the video (no hardware plane for it): never
+            // redrawn over it (the test pattern never has it)
+            baked: studio && !fake && hw != Some(0) && cursor.is_none(),
             ..Header::default()
         };
         // the pointer twice a frame, as Hyprland has it
@@ -314,7 +334,7 @@ impl Inner {
         // CAP-12: with Hide desktop clutter on, the bars show the wallpaper and
         // pins step aside while it records (unless they're hidden already)
         let covered = self.cfg().capture.hide_desktop && !self.desktop_is_hidden();
-        rec.run = Some(Run { take: take.clone(), sid: sid.clone(), hooks, hud, studio, log: Some(log), covered, dnd: cfg.dnd });
+        rec.run = Some(Run { take: take.clone(), sid: sid.clone(), hooks, hud, studio, cursor, log: Some(log), covered, dnd: cfg.dnd });
         drop(r);
         if covered {
             self.desktop("hide");
@@ -325,7 +345,7 @@ impl Inner {
         // the screen doesn't idle into the lock screen mid-recording
         self.wl(snip_wayland::Request::KeepAwake(true));
         if let Some((keys, clicks)) = hooks {
-            self.record_hooks(&sid, keys, clicks, studio);
+            self.record_hooks(&sid, keys, clicks, studio, cursor);
         }
         self.record_status(json!({ "elapsed": 0 }));
         self.record_listen();
@@ -496,11 +516,18 @@ impl Inner {
         self.ui(Ui::RecordStatus(j));
     }
 
+    /// Hyprland applies a pointer setting at the pointer's next move: one
+    /// (Snip's virtual pointer), then a moment for it to take.
+    fn apply_pointer_setting(&self) {
+        self.wl(snip_wayland::Request::PointerNudge);
+        std::thread::sleep(Duration::from_millis(50));
+    }
+
     /// Clicks and keys while `sid` records (REC-09/10): Hyprland's hooks send
     /// them as socket2 events; a heartbeat keeps the hooks, which remove
     /// themselves once it stops (Snip gone).
-    fn record_hooks(self: &Arc<Self>, sid: &str, keys: bool, clicks: bool, typing: bool) {
-        if let Err(e) = snip_hypr::keys::recording_hooks(sid, keys, clicks, typing) {
+    fn record_hooks(self: &Arc<Self>, sid: &str, keys: bool, clicks: bool, typing: bool, cursor: Option<i64>) {
+        if let Err(e) = snip_hypr::keys::recording_hooks(sid, keys, clicks, typing, cursor) {
             return trace::warn("record_hooks", &format!("\"reply\":{}", js(&e)));
         }
         trace::trace("record_hooks", &format!("\"sid\":\"{sid}\",\"keys\":{keys},\"clicks\":{clicks}"));
@@ -577,6 +604,12 @@ impl Inner {
         }
         if run.hooks.is_some() {
             super::hypr("recording_hooks", snip_hypr::keys::recording_hooks_off());
+        }
+        // the user's pointer setting again (the hooks put it back too, even
+        // without snipd), applied at once
+        if let Some(v) = run.cursor {
+            super::hypr("hardware_pointer", snip_hypr::run(&format!("hl.config({{ cursor = {{ no_hardware_cursors = {v} }} }})")));
+            self.apply_pointer_setting();
         }
         match stopped {
             Stopped::Kept(file) => Some(file),
