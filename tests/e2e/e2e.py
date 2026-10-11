@@ -2873,6 +2873,41 @@ def video_editor(s, env):
 
 
 @case
+def video_editor_leaves_its_card(s, env):
+    """A recording's card stays while its video editor is open, longer than cards stay
+    (auto_close): someone who opened the editor from the card and left it with Esc,
+    wanting only to save, found the card gone."""
+    s.cli("close-all"); time.sleep(0.3)
+    cfg = s.tmp / "cfg/snip/config.toml"
+    before = cfg.read_text()
+    cfg.write_text(before + "\n[quick_access]\nauto_close_seconds = 2\n")
+    time.sleep(0.8)
+    try:
+        clip = s.tmp / "keep-card.mp4"
+        make_clip(clip, seconds=2, size="640x360")
+        vid = s.json("open", str(clip))["result"]
+        time.sleep(0.6)
+        assert vid["id"] in s.status()["cards"], s.status()["cards"]
+        c = where(s, "qa", "card:" + vid["id"])
+        s.move(c["x"] + 1, c["y"]); s.move(c["x"], c["y"]); time.sleep(0.5)    # its corners show
+        b = where(s, "qa", "card-annotate")
+        s.move(b["x"], b["y"]); time.sleep(0.15); s.click()
+        assert wait_for(lambda: video_editor_window(), 6), "the video editor opens"
+        time.sleep(0.8)                                             # centred by its rule
+        w, mon = video_editor_window(), env.monitor()
+        s.move(w["at"][0] - mon["x"] + w["size"][0] / 2, w["at"][1] - mon["y"] + 20); s.click()
+        time.sleep(2.5)                                             # longer than cards stay
+        sh("wtype", "-k", "Escape")                                 # a real key, through Hyprland
+        assert wait_for(lambda: not video_editor_window(), 3), "Esc closes the editor"
+        time.sleep(0.5)
+        assert vid["id"] in s.status()["cards"], ("its card stays", s.status()["cards"])
+    finally:
+        cfg.write_text(before)
+        time.sleep(0.8)
+        s.cli("close-all")
+
+
+@case
 def video_editor_gives_memory_back(s, env):
     """Closing the video editor gives its memory back: opened and closed four times,
     snipd doesn't keep growing (glibc kept what the window's threads freed, until
