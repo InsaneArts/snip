@@ -14,6 +14,7 @@ Rectangle {
     readonly property color base: primary ? Theme.accent : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, Theme.light ? 0.07 : 0.11)
     color: ma.pressed ? Qt.darker(base, 1.15) : ma.containsMouse ? Qt.lighter(base, primary ? 1.08 : 1.35) : base
     Behavior on color { ColorAnimation { duration: 90 } }
+    opacity: enabled ? 1 : 0.45             // it does nothing now: it doesn't look as if it would
 
     Text {
         id: label
