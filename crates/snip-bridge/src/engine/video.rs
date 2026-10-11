@@ -29,14 +29,17 @@ impl Inner {
             if rec.media() != Media::Video {
                 return me.toast("Only videos open in the video editor");
             }
-            let p = match media::probe(&rec.source) {
+            // D56: the recording as recorded, and the edit made on it
+            let Ok((path, edit)) = me.store.video_edit_state(&id) else { return };
+            let edit = edit.and_then(|e| serde_json::from_str::<Value>(&e).ok()).unwrap_or(Value::Null);
+            let p = match media::probe(&path) {
                 Ok(p) => p,
                 Err(e) => return me.toast(format!("Can't open the video: {e}")),
             };
             let j = json!({
-                "id": id, "path": rec.source, "poster": Store::poster(&rec), "title": rec.title.clone().unwrap_or_else(|| "Recording".into()),
+                "id": id, "path": path, "edit": edit, "poster": Store::poster(&rec), "title": rec.title.clone().unwrap_or_else(|| "Recording".into()),
                 "duration": p.duration_ms, "fps": if p.fps > 0.0 { p.fps } else { 30.0 }, "width": p.width, "height": p.height,
-                "tracks": p.audio_tracks, "bytes": rec.source.metadata().map_or(0, |m| m.len()),
+                "tracks": p.audio_tracks, "bytes": path.metadata().map_or(0, |m| m.len()),
                 // pixels per point: a background's sizes are in points
                 "scale": rec.scale, "output": me.cursor_output(),
             })
@@ -45,7 +48,7 @@ impl Inner {
             me.ui(Ui::VideoEditorOpen(j));
             let dir = paths::cache_dir().join("video").join(&id);
             let _ = std::fs::remove_dir_all(&dir);
-            let thumbs = media::thumbnails(&rec.source, p.duration_ms, 12, 72, &dir).unwrap_or_default();
+            let thumbs = media::thumbnails(&path, p.duration_ms, 12, 72, &dir).unwrap_or_default();
             trace::trace("video_thumbs", &format!("\"id\":\"{id}\",\"thumbs\":{}", thumbs.len()));
             let t = json!(thumbs).to_string();
             me.ui(Ui::VideoThumbs { id, json: t });
@@ -66,6 +69,8 @@ impl Inner {
                 me.ui(Ui::VideoExportStatus { id, json: s });
             };
             let Ok(rec) = me.store.get(&id) else { return status(json!({ "done": true, "ok": false, "error": "the recording is gone" })) };
+            // D56: drawn from the recording as recorded, not from a Replace's result
+            let Ok((input, _)) = me.store.video_edit_state(&id) else { return status(json!({ "done": true, "ok": false, "error": "the recording is gone" })) };
             let keep: Vec<(f64, f64)> = spec["keep"].as_array().map(|a| a.iter().filter_map(|p| Some((p[0].as_f64()?, p[1].as_f64()?))).filter(|(a, b)| b > a).collect()).unwrap_or_default();
             if keep.is_empty() {
                 return status(json!({ "done": true, "ok": false, "error": "nothing is kept" }));
@@ -97,7 +102,7 @@ impl Inner {
                 quality: spec["quality"].as_u64().unwrap_or(23) as u32,
                 gif,
                 encoder: "h264_nvenc".into(),
-                fps: media::probe(&rec.source).map_or(0.0, |p| p.fps),
+                fps: media::probe(&input).map_or(0.0, |p| p.fps),
                 backdrop,
             };
             let out = dir.join(format!("{id}-{stamp}.{}", if gif.is_some() { "gif" } else { "mp4" }));
@@ -112,8 +117,8 @@ impl Inner {
             // Studio Mode (D55): with zooms, snipd draws every frame itself
             let scene = spec.get("scene").filter(|s| s["studio"]["zooms"].as_array().is_some_and(|z| !z.is_empty()));
             let run = |edit: &Edit, report: &mut dyn FnMut(f64)| match scene {
-                Some(scene) => render_studio(&rec.source, &out, edit, scene, report),
-                None => media::export(&rec.source, &out, edit, report),
+                Some(scene) => render_studio(&input, &out, edit, scene, report),
+                None => media::export(&input, &out, edit, report),
             };
             let mut done = run(&edit, &mut report);
             if done.is_err() && gif.is_none() {
@@ -133,10 +138,15 @@ impl Inner {
             // Replace: the card stays on its output; Save as New: a card where the pointer is
             let card_output = me.cards.lock().unwrap().iter().find(|(i, _)| i == &id).map(|(_, o)| o.clone());
             let output = card_output.filter(|_| replace).or_else(|| me.cursor_output()).unwrap_or_default();
+            // the edit, as edit.json keeps it (null: the editor didn't read the one there)
+            let doc = spec.get("edit").filter(|e| e.is_object()).map(Value::to_string);
             let result = if replace {
+                // D56: the recording stays, as the original, and the edit with it
                 media::probe(&out)
                     .and_then(|p| media::poster(&out).map(|poster| (p, poster)))
+                    .and_then(|pp| me.store.keep_video_original(&id, &rec.source).map(|_| pp).map_err(|e| format!("the recording couldn't be kept: {e}")))
                     .and_then(|(p, poster)| me.store.replace_media(&id, &out, &poster, p.width, p.height, p.duration_ms).map_err(|e| e.to_string()))
+                    .inspect(|_| edit_kept(doc.as_deref().map_or(Ok(()), |d| me.store.save_video_edit(&id, d))))
                     .map(|r| {
                         let _ = std::fs::remove_dir_all(paths::drag_dir().join(&id));
                         let j = card_json(&r, &output).to_string();
@@ -146,13 +156,24 @@ impl Inner {
                     })
             } else {
                 let meta = CaptureMeta { kind: "recording".into(), scale: rec.scale, output: output.clone(), app: rec.app.clone(), title: rec.title.clone() };
-                me.ingest_media(&out, true, meta).inspect(|r| me.show_card(r, &output))
+                me.ingest_media(&out, true, meta).inspect(|r| {
+                    // its own original (the same recording) and edit, so it opens as it was made
+                    edit_kept(me.store.keep_video_original(&r.id, &input).and_then(|_| doc.as_deref().map_or(Ok(()), |d| me.store.save_video_edit(&r.id, d))));
+                    me.show_card(r, &output)
+                })
             };
             match result {
                 Ok(r) => status(json!({ "done": true, "ok": true, "id": r.id, "media": r.media() })),
                 Err(e) => status(json!({ "done": true, "ok": false, "error": e })),
             }
         });
+    }
+}
+
+/// An edit that couldn't be kept goes to the trace (the export itself worked).
+fn edit_kept(r: Result<(), snip_core::store::StoreError>) {
+    if let Err(e) = r {
+        trace::warn("video_edit", &format!("\"msg\":{}", js(&e.to_string())));
     }
 }
 

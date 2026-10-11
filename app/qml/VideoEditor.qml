@@ -60,7 +60,47 @@ Window {
         const v = []
         for (let i = 0; i < (info.tracks || 0); i++) v.push(1)
         volumes = v
+        restore(info.edit)
     }
+
+    // ---------------------------------------------------------------- the edit kept (edit.json, D56)
+    // Opened, the editor takes up the edit where it was left (on the recording
+    // as recorded: a Replace keeps it), and keeps it 300 ms after each change
+    // (the design's §5.2, §5.3). What it doesn't know of the file stays in it.
+    property var editKept: null
+    property bool editReady: false              // false: a newer Snip's edit, left as it is
+    function restore(e) {
+        if (e && e.version > 1) return
+        editKept = e || null
+        if (e) {
+            if (e.trim) { inMs = Math.max(0, e.trim[0]); outMs = Math.min(duration, e.trim[1]) }
+            const gone = (e.cuts || []).filter(c => c[1] > c[0]), at = [0, duration], r = {}
+            for (const t of (e.splits || []).concat(...gone)) if (t > 0 && t < duration && !at.includes(t)) at.push(t)
+            for (const c of gone) r[String(c[0])] = true
+            cuts = at.sort((x, y) => x - y)
+            removed = r
+            if (e.audio) {
+                if ((e.audio.tracks || []).length === volumes.length) volumes = e.audio.tracks
+                mono = !!e.audio.mono
+            }
+            bg = e.background || null
+            studio = { zooms: e.zooms || [], zoom_style: e.zoom_style || "smooth" }
+            if (e.export) { maxHeight = e.export.height || 0; quality = e.export.quality || 23; gif = !!e.export.gif }
+        }
+        editReady = true
+    }
+    function editDoc() {
+        return Object.assign({}, editKept || {}, {
+            format: "snip-video-edit", version: 1,
+            trim: [inMs, outMs], cuts: parts.filter(p => p.cut).map(p => [p.a, p.b]), splits: cuts.slice(1, -1),
+            audio: { tracks: volumes, mono: mono }, background: bg,
+            zooms: studio.zooms, zoom_style: studio.zoom_style,
+            export: { height: maxHeight > 0 ? maxHeight : null, quality: quality, gif: gif }
+        })
+    }
+    readonly property string editText: JSON.stringify(editDoc())
+    onEditTextChanged: if (editReady) editSave.restart()
+    Timer { id: editSave; interval: 300; onTriggered: Engine.videoSaveEdit(ve.info.id, ve.editText) }
 
     readonly property var parts: {
         const out = []
@@ -196,7 +236,7 @@ Window {
         Engine.videoExport(info.id, JSON.stringify({
             keep: kept, tracks: volumes, mono: mono, height: maxHeight > 0 ? maxHeight : null, quality: quality,
             gif: gif ? { fps: cfg ? cfg.gif_fps : 15, width: cfg ? cfg.gif_width : 800 } : null, background: background,
-            scene: scene || null
+            scene: scene || null, edit: editReady ? editDoc() : null
         }), replace)
     }
     property bool coverReplace: false
@@ -217,7 +257,11 @@ Window {
             progress = s.progress
         }
     }
-    onClosing: { player.stop(); finished() }
+    onClosing: {
+        if (editSave.running) { editSave.stop(); Engine.videoSaveEdit(info.id, editText) }
+        player.stop()
+        finished()
+    }
 
     // ---------------------------------------------------------------- playback
     MediaPlayer {
@@ -1046,7 +1090,7 @@ Window {
         case "studio": studio = JSON.parse(a.slice(1).join(" ")); break
         case "where": Engine.log("video_where", JSON.stringify(Probe.where(ve, a[1])).slice(1, -1)); break
         case "state":
-            Engine.log("video_state", JSON.stringify({ id: info.id, duration: duration, cuts: cuts, cut: parts.filter(p => p.cut).map(p => [p.a, p.b]),
+            Engine.log("video_state", JSON.stringify({ id: info.id, path: info.path, duration: duration, cuts: cuts, cut: parts.filter(p => p.cut).map(p => [p.a, p.b]),
                                                      in: inMs, out: outMs, kept: kept, keptMs: keptMs, selected: selected, volumes: volumes,
                                                      playing: player.playbackState === MediaPlayer.PlayingState, position: headMs,
                                                      progress: progress, error: error, estimate: Math.round(estimate), thumbs: thumbs.length,
