@@ -34,5 +34,5 @@ Rectangle {
         onContainsMouseChanged: if (containsMouse) tipRest.restart(); else { tipRest.stop(); hint.shown = false }
     }
     Timer { id: tipRest; interval: 600; onTriggered: hint.shown = true }
-    Tip { id: hint; text: root.tip; above: root.tipAbove }
+    Tip { id: hint; objectName: root.objectName ? root.objectName + "-tip" : ""; text: root.tip; above: root.tipAbove }
 }

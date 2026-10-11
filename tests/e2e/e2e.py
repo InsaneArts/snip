@@ -2495,6 +2495,28 @@ def record_controls_stay_outside_the_area(s, env):
 
 
 @case
+def record_controls_tips_stay_outside_the_area(s, env):
+    """REC-05: the controls' tips point away from the area, so they're never recorded: with the
+    controls above the area, a tip under them reached ~8 px into it."""
+    x, y, w, h = 300, 400, 600, 440                                 # no room under it: the controls go above
+    p = s.bg("record", "area", "--x", str(x), "--y", str(y), "--w", str(w), "--h", str(h), "--monitor", OUT)
+    try:
+        assert wait_for(lambda: record_hud(s)["phase"] == "recording", 6), record_hud(s)
+        time.sleep(0.3)
+        c = where(s, "record", "record-pause")
+        assert 0 <= c["y"] < y, ("the controls are above the area", c)
+        s.move(c["x"] + 1, c["y"]); s.move(c["x"], c["y"])
+        tip = lambda: where(s, "record", "record-pause-tip")
+        assert wait_for(lambda: tip()["x"] >= 0, 2), "its tip shows"
+        assert tip()["y"] < c["y"], ("it points away from the area: up", tip(), c)
+    finally:
+        s.move(5, 5)
+        s.cli("record", "discard", check=False)
+        finish(p, timeout=8)
+        time.sleep(0.4)
+
+
+@case
 def record_controls_ask_first(s, env):
     """REC-05: Restart and Delete on the controls ask first, as CleanShot's do, and the
     recording goes on meanwhile; Cancel keeps it, Delete throws it away (no card)."""
