@@ -86,6 +86,7 @@ Rectangle {
             visible: bar.ed.tool !== "crop" && bar.ed.tool !== "background" && bar.ed.sizeKind !== "redact" && bar.ed.sizeKind !== "spotlight"
             ToolButton {
                 id: swatch
+                objectName: "color-swatch"
                 tip: "Colour"
                 chevron: true
                 Rectangle {

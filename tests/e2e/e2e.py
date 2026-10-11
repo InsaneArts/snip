@@ -4314,6 +4314,37 @@ def editor_colour_menu_fits_the_window(s, env):
 
 
 @case
+def editor_colour_drag_is_one_undo_step(s, env):
+    """ANN-13: a drag in the custom colour panel is one undo step. Every shade it passed
+    through was one, so Ctrl+Z stepped back through dozens of them."""
+    from PIL import Image
+    png = s.tmp / "colourdrag.png"
+    Image.new("RGB", (400, 300), "white").save(png)
+    s.json("edit", str(png))
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    time.sleep(0.3)
+    w, mon = editor_window(), env.monitor()
+    win = lambda p: (w["at"][0] - mon["x"] + p["x"], w["at"][1] - mon["y"] + p["y"])
+    s.debug("ui", "editor", "rect", 50, 50, 100, 80)
+    before = editor_state(s)
+    s.move(*win(where(s, "editor", "color-swatch"))); s.click()
+    assert wait_for(lambda: editor_state(s)["menuOpen"], 2), "the colour menu opens"
+    time.sleep(0.3)                                                 # laid out
+    s.move(*win(where(s, "editor", "color-custom"))); s.click()
+    assert wait_for(lambda: where(s, "editor", "color-square")["x"] >= 0, 2), "the custom panel shows"
+    sq = where(s, "editor", "color-square")
+    x, y = win(sq)
+    s.drag(x - 40, y - 30, x + 40, y + 30, steps=8)
+    st = editor_state(s)
+    assert st["items"][0]["color"] != before["items"][0]["color"], "the rect took the colour"
+    assert st["undo"] == before["undo"] + 1, ("one undo step", before["undo"], st["undo"])
+    s.debug("ui", "editor", "keys", "{Escape}")                     # the menu
+    s.debug("ui", "editor", "keys", "{ctrl+z}")
+    assert wait_for(lambda: editor_state(s)["items"][0]["color"] == before["items"][0]["color"], 2), "Ctrl+Z: its colour as before"
+    close_editor(s)
+
+
+@case
 def editor_checkerboard_at_400(s, env):
     """ANN-01: transparency shows as a checkerboard, zoomed in too. The canvas that painted
     it took 0.5 s and up to half a gigabyte at 400 %; a 16 px tile, repeated, takes neither."""
