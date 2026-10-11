@@ -611,6 +611,7 @@ Window {
             switch (e.key) {
             case Qt.Key_Escape:
                 if (ed.openedMenu) ed.openedMenu = null
+                else if (ed.draft) { pointer.gesture = ""; ed.draft = null; ed.draftIndex = -1; ed.guides = null }   // mid-drag: drop it
                 else if (ed.selected >= 0) ed.selected = -1
                 else ed.closeEditor()
                 break
