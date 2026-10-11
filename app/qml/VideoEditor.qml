@@ -120,6 +120,37 @@ Window {
         bgPreview = Object.assign({}, bgPreview || {}, patch)
     }
     function focusKeys() { keyboard.forceActiveFocus() }
+    // Studio Mode's zooms (D55), kept in order; none overlap (the zoom lane sees to it)
+    property int zoomSelected: -1             // the zoom selected (an index into studio.zooms)
+    property real zoomLevel: 2                // a new zoom's: the last level used
+    function setZooms(zs) { studio = Object.assign({}, studio, { zooms: zs.slice().sort((x, y) => x.from - y.from) }) }
+    function addZoom(a, b) {
+        const z = { from: a, to: b, level: zoomLevel, focus: [0.5, 0.5] }
+        setZooms(studio.zooms.concat([z]))
+        selectZoom(studio.zooms.indexOf(z))
+        return zoomSelected
+    }
+    function changeZoom(i, patch) {
+        const zs = studio.zooms.slice()
+        zs[i] = Object.assign({}, zs[i], patch)
+        setZooms(zs)
+    }
+    function removeZoom(i) {
+        if (i < 0 || i >= studio.zooms.length) return
+        setZooms(studio.zooms.filter((z, j) => j !== i))
+        zoomSelected = -1
+    }
+    function selectZoom(i) {
+        zoomSelected = i
+        if (i >= 0) selected = -1
+    }
+    // the preview at a zoom's middle, where it's zoomed in the most
+    function showZoom(i) {
+        const z = studio.zooms[i]
+        if (!z) return
+        player.pause()
+        seek(Math.round((z.from + z.to) / 2))
+    }
     // the recording, and the result around it
     readonly property var inner: ({ x: 0, y: 0, w: info.width || 16, h: info.height || 9 })
     readonly property var outer: bgLive ? Ed.bgRect(bgLive, inner) : inner
@@ -282,7 +313,9 @@ Window {
             const ctrl = e.modifiers & Qt.ControlModifier, shift = e.modifiers & Qt.ShiftModifier
             if (e.key === Qt.Key_Space) ve.playPause()
             else if (e.key === Qt.Key_B) ve.split(ve.headMs)
-            else if (e.key === Qt.Key_Delete || e.key === Qt.Key_Backspace) ve.toggleCut(ve.selected)
+            else if (e.key === Qt.Key_Delete || e.key === Qt.Key_Backspace) {
+                if (ve.zoomSelected >= 0) ve.removeZoom(ve.zoomSelected); else ve.toggleCut(ve.selected)
+            }
             else if (e.key === Qt.Key_Left) ve.step(shift ? -10 : -1)
             else if (e.key === Qt.Key_Right) ve.step(shift ? 10 : 1)
             else if (e.key === Qt.Key_Home) { player.pause(); ve.seek(ve.inMs) }
@@ -645,10 +678,20 @@ Window {
                     }
                 }
 
+                ZoomLane {
+                    id: zoomLane
+                    objectName: "studio-lane"
+                    y: ruler.height + 4
+                    width: parent.width
+                    height: 22
+                    ed: ve
+                    k: timeline.k
+                }
+
                 // the frames, as many as fit, each the one nearest its time
                 Item {
                     id: track
-                    y: ruler.height + 6
+                    y: zoomLane.y + zoomLane.height + 4
                     width: parent.width
                     height: 64
                     readonly property real cell: height * Math.max(0.5, (ve.info.width || 16) / Math.max(1, ve.info.height || 9))
@@ -716,7 +759,7 @@ Window {
                     // a press selects the part under it and moves the playhead there
                     MouseArea {
                         anchors.fill: parent
-                        onPressed: (m) => { ve.focusKeys(); const ms = timeline.msAt(m.x); ve.selected = ve.partAt(ms); player.pause(); ve.seek(ms) }
+                        onPressed: (m) => { ve.focusKeys(); const ms = timeline.msAt(m.x); ve.selected = ve.partAt(ms); ve.zoomSelected = -1; player.pause(); ve.seek(ms) }
                         onPositionChanged: (m) => { if (pressed) ve.seek(timeline.msAt(m.x)) }
                     }
                     // the trim handles
@@ -962,7 +1005,7 @@ Window {
                                                      playing: player.playbackState === MediaPlayer.PlayingState, position: headMs,
                                                      progress: progress, error: error, estimate: Math.round(estimate), thumbs: thumbs.length,
                                                      tracks: info.tracks || 0, gif: gif, exportOpen: exportOpen, zoom: zoom,
-                                                     section: section, bg: bgLive, outer: outer,
+                                                     section: section, bg: bgLive, outer: outer, studio: studio, zoomSelected: zoomSelected,
                                                      result: (p => [p.x, p.y, result.width, result.height])(result.mapToItem(contentItem, 0, 0))
                                                    }).slice(1, -1))
             break
