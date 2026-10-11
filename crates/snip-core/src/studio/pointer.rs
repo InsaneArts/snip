@@ -1,0 +1,304 @@
+//! A studio take's pointer, redrawn (the design's §6.2): where it is at any
+//! moment of the video, from its input log. Built once into a 240 Hz table,
+//! the same for the preview and the export.
+
+use serde::{Deserialize, Serialize};
+
+use super::log::{Clock, Event, Log};
+
+/// How the pointer's path is smoothed (CleanShot's choices).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Motion {
+    #[default]
+    Natural,
+    Smooth,
+    Off,
+}
+
+/// The edit's pointer, as edit.json keeps it (the design's §5.2), with
+/// CleanShot's defaults (D60).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Settings {
+    pub show: bool,
+    /// 1–5, times the theme's size
+    pub size: f64,
+    pub motion: Motion,
+    /// smaller while a button is down
+    pub press: bool,
+    pub hide_typing: bool,
+    pub hide_idle: bool,
+}
+
+impl Settings {
+    pub const DEFAULT: Settings = Settings { show: true, size: 2.0, motion: Motion::Natural, press: true, hide_typing: true, hide_idle: false };
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Settings::DEFAULT
+    }
+}
+
+/// The pointer at one moment: where (video px), how much it shows (0–1),
+/// and how far a press has it down (0–1).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Shown {
+    pub at: [f64; 2],
+    pub opacity: f64,
+    pub press: f64,
+}
+
+/// The table's step, and the poller's (ms).
+const STEP: f64 = 1000.0 / 240.0;
+const POLL: f64 = 1000.0 / 120.0;
+/// A gap between moves longer than this (ms) is a stop, not a slow move.
+const STILL: f64 = 67.0;
+/// How long the table runs on after the last place (ms): the spring settles.
+const SETTLE: f64 = 1000.0;
+
+/// A damped spring chasing the path: stiffness, mass, damping (the design's
+/// presets, Cap's "Fast" and "Mellow").
+#[derive(Clone, Copy)]
+struct Spring {
+    k: f64,
+    m: f64,
+    c: f64,
+}
+const NATURAL: Spring = Spring { k: 380.0, m: 1.0, c: 30.0 };
+const SMOOTH: Spring = Spring { k: 470.0, m: 3.0, c: 70.0 };
+/// The last moments before a press, and a drag (Cap's).
+const STIFF: Spring = Spring { k: 530.0, m: 1.0, c: 40.0 };
+const DRAG: Spring = Spring { k: 1000.0, m: 1.0, c: 40.0 };
+/// Landing on a click: the spring heads for it this long before (ms), stiff
+/// for the last of it; a press that travels further than this (px) is a drag.
+const LAND: f64 = 500.0;
+const LAND_STIFF: f64 = 175.0;
+const DRAG_PX: f64 = 8.0;
+
+impl Spring {
+    /// How far ahead (ms) it chases the path: by c/k, a spring trails what it chases.
+    fn lead(self) -> f64 {
+        1000.0 * self.c / self.k
+    }
+}
+
+/// A button held: when it went down and up (ms of the video), where (px),
+/// and whether the pointer travelled with it (a drag).
+struct Press {
+    down: f64,
+    up: f64,
+    at: [f64; 2],
+    drag: bool,
+}
+
+/// The presses in a log, each with its release (none: held to the end).
+fn presses(log: &Log, clock: &Clock, path: &[(f64, [f64; 2])]) -> Vec<Press> {
+    let mut out: Vec<Press> = vec![];
+    let mut held: Option<(u32, f64, [f64; 2])> = None;
+    for e in &log.events {
+        let Event::Button { t, button, down, at } = *e else { continue };
+        let Some(ms) = clock.video_ms(t) else { continue };
+        match (down, held) {
+            (true, None) => held = Some((button, ms, log.header.video_px(at))),
+            (false, Some((b, from, place))) if b == button => {
+                out.push(Press { down: from, up: ms, at: place, drag: false });
+                held = None;
+            }
+            _ => {}
+        }
+    }
+    out.extend(held.map(|(_, from, place)| Press { down: from, up: f64::INFINITY, at: place, drag: false }));
+    for p in &mut out {
+        p.drag = path.iter().any(|&(t, q)| t >= p.down && t <= p.up && (q[0] - p.at[0]).hypot(q[1] - p.at[1]) > DRAG_PX);
+    }
+    out
+}
+
+/// A take's pointer, ready to be asked about any moment.
+#[derive(Clone, Debug)]
+pub struct Track {
+    from: f64,
+    shown: Vec<Shown>,
+}
+
+impl Track {
+    /// None when the log can't be timed, or never says where the pointer was.
+    pub fn new(log: &Log, s: &Settings) -> Option<Track> {
+        let clock = Clock::of(log)?;
+        let path: Vec<(f64, [f64; 2])> = log.events.iter().filter_map(|e| Some((clock.video_ms(e.t())?, log.header.video_px(e.place()?)))).collect();
+        let (first, last) = (path.first()?.0, path.last()?.0);
+        let from = first.min(0.0);
+        let n = ((last + SETTLE - from) / STEP).ceil() as usize + 1;
+        let spring = match s.motion {
+            Motion::Natural => Some(NATURAL),
+            Motion::Smooth => Some(SMOOTH),
+            Motion::Off => None,
+        };
+        let presses = presses(log, &clock, &path);
+        // the spring, in fixed steps from the start: the same table every time.
+        // It chases the path ahead (Spring::lead); before a press it heads for
+        // the press, and sits on it until the release, unless it's a drag
+        let (mut x, mut v, dt) = (raw(&path, from), [0.0; 2], STEP / 1000.0);
+        let mut next = 0;
+        let shown = (0..n)
+            .map(|i| {
+                let t = from + i as f64 * STEP;
+                while next < presses.len() && presses[next].up < t {
+                    next += 1;
+                }
+                let since = if next > 0 { presses[next - 1].up } else { f64::NEG_INFINITY };
+                let at = match (spring, presses.get(next)) {
+                    (None, _) => raw(&path, t),
+                    // from a step before: on it when it happens, wherever between steps
+                    (Some(_), Some(p)) if t >= p.down - STEP && !p.drag => {
+                        (x, v) = (p.at, [0.0; 2]);
+                        x
+                    }
+                    (Some(sp), press) => {
+                        let (sp, target) = match press {
+                            Some(p) if t >= p.down => (DRAG, raw(&path, t + DRAG.lead())),
+                            Some(p) if t >= p.down - LAND && t >= since => (if p.down - t <= LAND_STIFF { STIFF } else { sp }, p.at),
+                            _ => (sp, raw(&path, t + sp.lead())),
+                        };
+                        for d in 0..2 {
+                            v[d] += dt * (sp.k * (target[d] - x[d]) - sp.c * v[d]) / sp.m;
+                            x[d] += dt * v[d];
+                        }
+                        x
+                    }
+                };
+                Shown { at, opacity: 1.0, press: 0.0 }
+            })
+            .collect();
+        Some(Track { from, shown })
+    }
+
+    /// The pointer at `ms` of the video.
+    pub fn at(&self, ms: f64) -> Shown {
+        let last = self.shown.len() - 1;
+        let f = ((ms - self.from) / STEP).clamp(0.0, last as f64);
+        let (i, k) = (f.floor() as usize, f.fract());
+        let (a, b) = (self.shown[i], self.shown[(i + 1).min(last)]);
+        let mix = |x: f64, y: f64| x + (y - x) * k;
+        Shown { at: [mix(a.at[0], b.at[0]), mix(a.at[1], b.at[1])], opacity: mix(a.opacity, b.opacity), press: mix(a.press, b.press) }
+    }
+}
+
+/// The logged path at `ms`: straight from place to place, but still through a
+/// long gap (a stop) until a poll before the next place.
+fn raw(path: &[(f64, [f64; 2])], ms: f64) -> [f64; 2] {
+    let i = path.partition_point(|&(t, _)| t <= ms);
+    if i == 0 || i == path.len() {
+        return path[i.saturating_sub(1)].1;
+    }
+    let ((ta, a), (tb, b)) = (path[i - 1], path[i]);
+    let ta = if tb - ta > STILL { tb - POLL } else { ta };
+    if ms <= ta {
+        return a;
+    }
+    let f = (ms - ta) / (tb - ta);
+    [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::studio::log::{Event, Header, Log};
+
+    const FRAME: f64 = 1e6 / 60.0;
+    // the moment `s` seconds into the video (see log's tests: gsr_ts 10 s, 60 fps, NVENC)
+    fn at(s: f64) -> i64 {
+        (10_000_000.0 - 3.0 * FRAME + FRAME + s * 1e6).round() as i64
+    }
+    fn take(events: Vec<Event>) -> Log {
+        let header = Header { gsr_ts: Some([10_000_000, 0]), fps: 60.0, area: [0, 0, 1000, 500], video: [1000, 500], ..Header::default() };
+        Log { header, events }
+    }
+    fn moved(s: f64, x: i32, y: i32) -> Event {
+        Event::Move { t: at(s), at: [x, y] }
+    }
+    fn near(a: [f64; 2], b: [f64; 2], px: f64) -> bool {
+        (a[0] - b[0]).hypot(a[1] - b[1]) <= px
+    }
+    const OFF: Settings = Settings { motion: Motion::Off, ..Settings::DEFAULT };
+
+    #[test]
+    fn unsmoothed_the_pointer_goes_straight_from_place_to_place() {
+        let p = Track::new(&take(vec![moved(0.0, 100, 100), moved(0.05, 200, 100), moved(0.1, 300, 150)]), &OFF).unwrap();
+        // a move's place is the middle of its pixel
+        assert!(near(p.at(25.0).at, [150.5, 100.5], 0.5), "{:?}", p.at(25.0));
+        assert!(near(p.at(75.0).at, [250.5, 125.5], 0.5), "{:?}", p.at(75.0));
+        assert!(near(p.at(-100.0).at, [100.5, 100.5], 0.5), "before its first move: where it started");
+        assert!(near(p.at(5000.0).at, [300.5, 150.5], 0.5), "after its last: where it stopped");
+    }
+
+    // across at 600 px/s for a second, polled at 120 Hz, wobbling ±12 px up and down
+    fn wobbling() -> Vec<Event> {
+        (0..=120).map(|i| moved(i as f64 / 120.0, 100 + i * 5, if i % 2 == 0 { 188 } else { 212 })).collect()
+    }
+
+    #[test]
+    fn smoothed_a_wobbling_path_is_calm() {
+        let raw = Track::new(&take(wobbling()), &OFF).unwrap();
+        let p = Track::new(&take(wobbling()), &Settings::DEFAULT).unwrap();
+        let swing = |t: &Track| (300..700).step_by(5).map(|ms| (t.at(ms as f64).at[1] - 200.5).abs()).fold(0.0, f64::max);
+        assert!(swing(&raw) > 10.0, "the raw path wobbles: {}", swing(&raw));
+        assert!(swing(&p) < 3.0, "Natural: {}", swing(&p));
+    }
+
+    #[test]
+    fn smoothed_a_steady_move_doesnt_trail_behind() {
+        // across at 600 px/s: a spring trails what it chases by c/k (79 ms for Natural, 47 px here)
+        let moves: Vec<Event> = (0..=120).map(|i| moved(i as f64 / 120.0, 100 + i * 5, 200)).collect();
+        let raw = Track::new(&take(moves.clone()), &OFF).unwrap();
+        for s in [Settings::DEFAULT, Settings { motion: Motion::Smooth, ..Settings::DEFAULT }] {
+            let p = Track::new(&take(moves.clone()), &s).unwrap();
+            for ms in [400.0, 550.0, 700.0] {
+                let (got, want) = (p.at(ms).at[0], raw.at(ms).at[0]);
+                assert!((got - want).abs() < 3.0, "{:?} at {ms} ms: {got:.1}, the path {want:.1}", s.motion);
+            }
+        }
+    }
+
+    fn button(s: f64, down: bool, x: f64, y: f64) -> Event {
+        Event::Button { t: at(s), button: 272, down, at: [x, y] }
+    }
+
+    #[test]
+    fn smoothed_the_pointer_lands_on_each_click() {
+        // a fast move (1200 px/s) that ends on a button, pressed for 120 ms
+        let mut events: Vec<Event> = (0..=60).map(|i| moved(i as f64 / 120.0, 100 + i * 10, 200)).collect();
+        events.push(button(0.5, true, 700.3, 200.4));
+        events.push(button(0.62, false, 700.3, 200.4));
+        for s in [Settings::DEFAULT, Settings { motion: Motion::Smooth, ..Settings::DEFAULT }] {
+            let p = Track::new(&take(events.clone()), &s).unwrap();
+            for ms in [500.0, 560.0, 615.0] {
+                assert!(near(p.at(ms).at, [700.3, 200.4], 0.5), "{:?} at {ms} ms: {:?}", s.motion, p.at(ms).at);
+            }
+        }
+    }
+
+    #[test]
+    fn smoothed_a_drag_follows_the_pointer_not_the_press() {
+        // pressed at 300, dragged to 500 over 0.3 s (a selection, a slider), released there
+        let mut events = vec![moved(0.0, 300, 200), button(0.2, true, 300.5, 200.5)];
+        events.extend((1..=36).map(|i| moved(0.2 + i as f64 / 120.0, 300 + i * 200 / 36, 200)));
+        events.push(button(0.5, false, 500.5, 200.5));
+        let raw = Track::new(&take(events.clone()), &OFF).unwrap();
+        let p = Track::new(&take(events), &Settings::DEFAULT).unwrap();
+        for ms in [300.0, 400.0] {
+            let (got, want) = (p.at(ms).at[0], raw.at(ms).at[0]);
+            assert!((got - want).abs() < 4.0, "at {ms} ms: {got:.1}, the path {want:.1}");
+        }
+    }
+
+    #[test]
+    fn a_long_still_moment_is_a_stop_not_a_slow_move() {
+        // a second between two moves: it stood still, then moved
+        let p = Track::new(&take(vec![moved(0.0, 100, 100), moved(1.0, 300, 100)]), &OFF).unwrap();
+        assert!(near(p.at(500.0).at, [100.5, 100.5], 0.5), "{:?}", p.at(500.0));
+        assert!(near(p.at(1000.0).at, [300.5, 100.5], 0.5), "{:?}", p.at(1000.0));
+    }
+}
