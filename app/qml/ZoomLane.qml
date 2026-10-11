@@ -12,7 +12,8 @@ Item {
     property var ed: null                   // the video editor
     property real k: 1                      // px per ms
     readonly property var zooms: ed ? ed.studio.zooms : []
-    readonly property real least: 250       // the shortest zoom, ms
+    readonly property real least: ed ? ed.zoomLeast : 0
+    signal menu(int index, real x, real y)   // a right-click on zoom `index`, at x, y here
 
     // the free time around `ms`, between the zooms other than zoom `skip`:
     // [from, to], or null inside one
@@ -102,12 +103,18 @@ Item {
         // what the press took: {index, part ("draw", "move", "from", "to"), x,
         // from, to, moved}; a draw keeps the room it's in
         property var grab: null
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
         cursorShape: grab && grab.part === "move" ? Qt.ClosedHandCursor
                    : over && over.part !== "move" ? Qt.SizeHorCursor
                    : over ? Qt.OpenHandCursor : Qt.PointingHandCursor
         onPressed: (m) => {
             lane.ed.focusKeys()
             const h = lane.hit(m.x), t = m.x / lane.k, r = lane.room(t, -1)
+            if (m.button === Qt.RightButton) {
+                grab = null
+                if (h) { lane.ed.selectZoom(h.index); lane.menu(h.index, m.x, m.y) }
+                return
+            }
             if (h) {
                 const z = lane.zooms[h.index]
                 grab = { index: h.index, part: h.part, x: m.x, from: z.from, to: z.to, moved: false }
