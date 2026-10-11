@@ -34,6 +34,10 @@ pub struct Header {
     /// a studio take: recorded without the pointer, for the editor to redraw
     /// (an ordinary take's pointer is the video's own)
     pub studio: bool,
+    /// why a studio take's pointer is in the picture (`baked`): the outputs
+    /// that kept Snip from moving it to the hardware plane ("HEADLESS-1"), or
+    /// "software" (the user's own Hyprland setting)
+    pub baked_why: String,
 }
 
 impl Default for Header {
@@ -53,6 +57,7 @@ impl Default for Header {
             keys: "commands".into(),
             baked: false,
             studio: false,
+            baked_why: String::new(),
         }
     }
 }
