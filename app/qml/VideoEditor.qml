@@ -842,6 +842,18 @@ Window {
                 }
             }
             Rectangle { width: parent.width; height: 1; color: Theme.hairline }
+            // an export error, whole and wrapped: ffmpeg's are long, and the estimate's
+            // line cut them to a few words
+            Text {
+                objectName: "video-error"
+                visible: ve.error !== ""
+                width: parent.width
+                wrapMode: Text.Wrap
+                text: ve.error
+                color: Theme.danger
+                font.family: Theme.fontUi
+                font.pixelSize: 12
+            }
             Item {
                 width: parent.width
                 height: 30
@@ -851,8 +863,8 @@ Window {
                     width: parent.width - exportButtons.width - 8
                     elide: Text.ElideRight
                     text: ve.progress >= 0 ? "Exporting… " + Math.round(ve.progress * 100) + "%"
-                        : ve.error !== "" ? ve.error : ve.clock(ve.keptMs) + "  ·  ≈ " + ve.size(ve.estimate)
-                    color: ve.error !== "" ? Theme.danger : Theme.textSecondary
+                        : ve.clock(ve.keptMs) + "  ·  ≈ " + ve.size(ve.estimate)
+                    color: Theme.textSecondary
                     font.family: Theme.fontUi
                     font.pixelSize: 12
                     font.features: { "tnum": 1 }
@@ -949,6 +961,7 @@ Window {
         case "bg": setBg(JSON.parse(a.slice(1).join(" "))); break
         case "keys": Platform.sendKeys(ve, a.slice(1).join(" ")); break
         case "export": exportIt(a[1] === "replace"); break
+        case "error": error = a.slice(1).join(" "); break
         case "where": Engine.log("video_where", JSON.stringify(Probe.where(ve, a[1])).slice(1, -1)); break
         case "state":
             Engine.log("video_state", JSON.stringify({ id: info.id, duration: duration, cuts: cuts, cut: parts.filter(p => p.cut).map(p => [p.a, p.b]),
