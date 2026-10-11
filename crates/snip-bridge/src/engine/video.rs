@@ -181,8 +181,9 @@ fn render_studio(src: &Path, dst: &Path, edit: &Edit, scene: &Value, report: &mu
     });
     let spec_path = dst.with_extension("render.json");
     std::fs::write(&spec_path, spec.to_string()).map_err(|e| e.to_string())?;
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let child = Command::new(exe).arg("--render-video").arg(&spec_path).stdin(Stdio::null()).stdout(Stdio::piped()).spawn();
+    // snipd's own file, even once a rebuild or an upgrade has replaced it
+    // (current_exe() then names a file that's gone)
+    let child = Command::new("/proc/self/exe").arg("--render-video").arg(&spec_path).stdin(Stdio::null()).stdout(Stdio::piped()).spawn();
     let mut child = match child {
         Ok(c) => c,
         Err(e) => {
