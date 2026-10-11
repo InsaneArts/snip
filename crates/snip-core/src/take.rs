@@ -276,7 +276,7 @@ pub fn recover(take: &Path) -> Result<PathBuf, String> {
 
 /// Everything a left-behind take wrote.
 pub fn forget(take: &Path) {
-    for f in [take.to_path_buf(), take.with_extension("recovered.mp4"), take.with_extension("log"), PathBuf::from(format!("{}.ts", take.display())), sock_for(take)] {
+    for f in [take.to_path_buf(), take.with_extension("recovered.mp4"), take.with_extension("log"), take.with_extension("input.jsonl"), PathBuf::from(format!("{}.ts", take.display())), sock_for(take)] {
         let _ = std::fs::remove_file(f);
     }
 }

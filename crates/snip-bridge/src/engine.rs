@@ -26,6 +26,7 @@ use crate::frames;
 use crate::ui::{Ui, UiOut};
 
 mod record;
+mod take_log;
 mod scroll;
 mod video;
 

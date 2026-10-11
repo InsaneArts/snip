@@ -190,8 +190,14 @@ pub struct Log {
 
 /// Frames from a take's start to gsr's first frame reaching its muxer
 /// (`-write-first-frame-ts`): 3 with NVENC, measured; spike S3 measures it
-/// for each encoder.
-const FIRST_FRAME_LAG: f64 = 3.0;
+/// for each encoder. The test pattern recorder ("fake") has none.
+fn first_frame_lag(encoder: &str) -> f64 {
+    if encoder == "fake" {
+        0.0
+    } else {
+        3.0
+    }
+}
 
 /// A take's clock (the design's §4.6): when it began, how long a frame is,
 /// and when it was paused, which gsr leaves out of the video.
@@ -210,7 +216,7 @@ impl Clock {
             return None;
         }
         let frame = 1e6 / log.header.fps;
-        let start = log.header.gsr_ts?[0] as f64 - FIRST_FRAME_LAG * frame;
+        let start = log.header.gsr_ts?[0] as f64 - first_frame_lag(&log.header.encoder) * frame;
         let (mut pauses, mut from) = (vec![], None);
         for e in &log.events {
             match (e, from) {
@@ -331,6 +337,13 @@ mod tests {
         assert!(close(c.video_ms(at(1.0)), 1000.0), "a second in: {:?}", c.video_ms(at(1.0)));
         assert!(close(c.video_ms(at(-0.5)), -500.0), "before the first frame, where the pointer starts");
         assert!(Clock::of(&Log { header: Header { gsr_ts: None, ..header() }, events: vec![] }).is_none(), "no first frame: no clock");
+    }
+
+    #[test]
+    fn a_test_takes_clock_starts_at_its_first_frame() {
+        // the test pattern recorder (SNIP_RECORDER=fake) has no encoder lag: its first frame is its start
+        let c = Clock::of(&Log { header: Header { encoder: "fake".into(), ..header() }, events: vec![] }).unwrap();
+        assert!(close(c.video_ms(10_000_000 + (FRAME as i64)), 0.0), "{:?}", c.video_ms(10_000_000 + FRAME as i64));
     }
 
     #[test]

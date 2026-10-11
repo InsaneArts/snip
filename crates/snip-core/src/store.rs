@@ -16,6 +16,8 @@ use crate::naming::{self, NameContext};
 /// before any edit, and the editor's objects (ANN-16).
 const ORIGINAL: &str = "original.png";
 const EDIT: &str = "edit.json";
+/// Beside a recording: its take's input log (the design's §4.7).
+const INPUT: &str = "input.jsonl";
 /// Next to a recording's video (or GIF): its first frame, for cards and history.
 const POSTER: &str = "poster.png";
 
@@ -396,6 +398,17 @@ impl Store {
     pub fn save_video_edit(&self, id: &str, doc: &str) -> Result<(), StoreError> {
         let rec = self.get(id)?;
         Ok(atomic_write(&rec.source.with_file_name(EDIT), doc.as_bytes())?)
+    }
+
+    /// A take's input log, kept beside its recording: moved in, or copied
+    /// from another filesystem.
+    pub fn keep_input_log(&self, id: &str, file: &Path) -> Result<(), StoreError> {
+        let to = self.get(id)?.source.with_file_name(INPUT);
+        if std::fs::rename(file, &to).is_err() {
+            std::fs::copy(file, &to)?;
+            let _ = std::fs::remove_file(file);
+        }
+        Ok(())
     }
 
     /// Keep `file` as recording `id`'s original, once (D56): before a Replace

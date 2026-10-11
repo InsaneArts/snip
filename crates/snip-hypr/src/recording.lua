@@ -1,6 +1,8 @@
 -- Snip's recording hooks (REC-09/10): the command keys and the clicks, sent to
--- snipd as socket2 events ("custom>>snip:<sid>:k:<code>:<0|1>" and
--- "custom>>snip:<sid>:c:<button>:<x>:<y>", global logical px) while it records.
+-- snipd as socket2 events ("custom>>snip:<sid>:k:<code>:<0|1>",
+-- "custom>>snip:<sid>:c:<button>:<x>:<y>" and, at the release,
+-- "...:u:<button>:<x>:<y>", global logical px) while it records; for a studio
+-- take, "...:t" when there's typing (no content, at most every 500 ms).
 -- Sent whole, so it's idempotent; SNIP_REC.off() removes everything, and a
 -- timer does it once snipd's heartbeat stops (a crash leaves nothing behind).
 SNIP_REC = SNIP_REC or {}
@@ -22,6 +24,7 @@ end
 -- xkb keycodes): only command keys leave the compositor, never typing.
 -- cfg.private / cfg.private_layers: window classes and layer namespaces (a
 -- password prompt) to stay silent in. cfg.buttons: { 272, 273 } or {}.
+-- cfg.typing: the typing marker (a studio take; cfg.keys is set then too).
 function S.on(cfg)
   S.off()
   S.sid, S.muted, S.miss, S.down = cfg.sid, false, 0, {}
@@ -53,7 +56,14 @@ function S.on(cfg)
       local down = st == 1
       if (S.down[code] == true) == down then return end -- an input method's echo
       S.down[code] = down or nil
-      if not (k.mods[code] or k.special[code] or cmd_held()) then return end
+      if not (k.mods[code] or k.special[code] or cmd_held()) then
+        -- typing: that it happened, never what (libinput's ms: Lua has no finer clock)
+        if cfg.typing and down and not S.muted and (S.typed == nil or ms - S.typed >= 500 or ms < S.typed) and not private() then
+          S.typed = ms
+          emit("t")
+        end
+        return
+      end
       if S.muted or private() then return end
       emit(fmt("k:%d:%d", code, st))
     end
@@ -62,21 +72,25 @@ function S.on(cfg)
 
   S.btns = {}
   for _, btn in ipairs(cfg.buttons or {}) do
-    local function on_click()
+    local function on_button(up)
       if S.muted then return end
       local p = hl.get_cursor_pos()
-      if p then emit(fmt("c:%d:%.1f:%.1f", btn, p.x, p.y)) end
+      if p then emit(fmt("%s:%d:%.1f:%.1f", up and "u" or "c", btn, p.x, p.y)) end
     end
     -- MOD3+MOD5 gives the bind a modmask nobody else uses: remove() takes out
-    -- every bind with the same modmask and key. ignore_mods matches anyway.
-    S.btns[#S.btns + 1] = hl.bind("MOD3 + MOD5 + mouse:" .. btn, function() pcall(on_click) end, {
-      non_consuming = true,
-      ignore_mods = true,
-      transparent = true,
-      submap_universal = true,
-      dont_inhibit = true,
-      description = "Snip: recording clicks",
-    })
+    -- every bind with the same modmask and key (the release's too: off()
+    -- skips a handle that's gone). ignore_mods matches anyway.
+    for _, up in ipairs({ false, true }) do
+      S.btns[#S.btns + 1] = hl.bind("MOD3 + MOD5 + mouse:" .. btn, function() pcall(on_button, up) end, {
+        non_consuming = true,
+        ignore_mods = true,
+        transparent = true,
+        submap_universal = true,
+        dont_inhibit = true,
+        release = up,
+        description = "Snip: recording clicks",
+      })
+    end
   end
 
   -- the watchdog: one timer per Lua state, reused

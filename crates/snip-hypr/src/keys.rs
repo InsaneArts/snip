@@ -71,15 +71,16 @@ const CMD_KEYS: &[u32] = &[37, 105, 64, 108, 133, 134];
 const SPECIAL_KEYS: &[u32] = &[9, 23, 36, 111, 113, 114, 116, 110, 115, 112, 117, 118, 119, 107, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 95, 96];
 
 /// Snip's recording hooks (REC-09/10, `recording.lua`), on for the
-/// recording `sid`: the command keys when `keys`, clicks when `clicks`.
+/// recording `sid`: the command keys when `keys`, clicks (presses and
+/// releases) when `clicks`, the typing marker when `typing` (with the keys).
 /// Silent while a password manager or the polkit prompt has the focus.
-pub(crate) fn recording_lua(sid: &str, keys: bool, clicks: bool) -> String {
+pub(crate) fn recording_lua(sid: &str, keys: bool, clicks: bool, typing: bool) -> String {
     let set = |codes: &[u32]| format!("{{ {} }}", codes.iter().map(|c| format!("[{c}] = true")).collect::<Vec<_>>().join(", "));
-    let keys = if keys { format!("{{ mods = {}, cmd = {}, special = {} }}", set(MOD_KEYS), set(CMD_KEYS), set(SPECIAL_KEYS)) } else { "nil".into() };
+    let keys = if keys || typing { format!("{{ mods = {}, cmd = {}, special = {} }}", set(MOD_KEYS), set(CMD_KEYS), set(SPECIAL_KEYS)) } else { "nil".into() };
     let buttons = if clicks { "{ 272, 273 }" } else { "{}" };
     format!(
         r#"{}
-return SNIP_REC.on({{ sid = "{sid}", keys = {keys}, buttons = {buttons},
+return SNIP_REC.on({{ sid = "{sid}", keys = {keys}, buttons = {buttons}, typing = {typing},
   private = {{ ["1password"] = true, ["1Password"] = true, ["Bitwarden"] = true }}, private_layers = {{ ["omarchy-polkit"] = true }} }})"#,
         include_str!("recording.lua")
     )
@@ -345,12 +346,12 @@ pub fn recorder_keys(on: bool) -> Result<(), String> {
 
 /// Snip's recording hooks for the recording `sid`: the command keys, the
 /// clicks (REC-09/10).
-pub fn recording_hooks(sid: &str, keys: bool, clicks: bool) -> Result<(), String> {
+pub fn recording_hooks(sid: &str, keys: bool, clicks: bool, typing: bool) -> Result<(), String> {
     crate::footprint(|f| {
-        f.hooks = Some((sid.to_string(), keys, clicks));
+        f.hooks = Some((sid.to_string(), keys, clicks, typing));
         f.muted = false;
     });
-    crate::run(&recording_lua(sid, keys, clicks))
+    crate::run(&recording_lua(sid, keys, clicks, typing))
 }
 
 /// The recording is over: its hooks go.
@@ -427,12 +428,14 @@ bind\n\tmodmask: 0\n\tsubmap: snip-record\n\tkey: Escape\n\tkeycode: 0\n\tcatcha
 
     #[test]
     fn recording_hooks_send_command_keys_and_clicks() {
-        let on = recording_lua("ab12", true, true);
+        let on = recording_lua("ab12", true, true, false);
         assert!(on.contains("function S.on(cfg)") && on.contains(r#"return SNIP_REC.on({ sid = "ab12""#), "{on}");
         assert!(on.contains("cmd = { [37] = true, [105] = true, [64] = true") && on.contains("buttons = { 272, 273 }"), "{on}");
         assert!(!on.contains("[65] = true") && !on.contains("[22] = true"), "Space and Backspace alone stay private");
-        let clicks = recording_lua("ab12", false, true);
-        assert!(clicks.contains("keys = nil, buttons = { 272, 273 }"), "{clicks}");
+        let clicks = recording_lua("ab12", false, true, false);
+        assert!(clicks.contains("keys = nil, buttons = { 272, 273 }, typing = false"), "{clicks}");
+        let studio = recording_lua("ab12", false, true, true);
+        assert!(studio.contains("cmd = { [37] = true") && studio.contains("typing = true"), "a studio take's typing needs the keys: {studio}");
         assert_eq!((key_label(37), key_label(54), key_label(36), key_label(999)), (Some("Ctrl"), Some("C"), Some("Enter"), None));
     }
 
