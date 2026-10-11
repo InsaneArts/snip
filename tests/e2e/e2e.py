@@ -1115,6 +1115,28 @@ def menu_closes_on_any_click(s, env):
 
 
 @case
+def cards_fit_the_screen(s, env):
+    """QAO-06: the stack shows as many cards as the screen has room for, newest at the
+    bottom; the rest wait under "+k more". Five cards ran off the top of an 864 px tall
+    screen."""
+    s.cli("close-all"); time.sleep(0.3)
+    ids = []
+    for i in range(5):
+        png = s.tmp / f"fit-{i}.png"
+        make_text_png(png, [f"card {i}"])
+        ids.append(open_card(s, png)["id"]); time.sleep(0.25)
+    time.sleep(0.8)
+    try:
+        shown = [p for p in (where(s, "qa", "card:" + i) for i in ids) if p["x"] >= 0]
+        half = round(280 * 0.705) / 2
+        assert shown and all(p["y"] - half >= 0 for p in shown), ("every card shown is on screen", shown)
+        assert where(s, "qa", "card:" + ids[-1])["x"] >= 0, "the newest shows"
+        assert len(shown) < 5 and where(s, "qa", "qa-more")["x"] >= 0, ("the rest under +k more", len(shown))
+    finally:
+        s.cli("close-all"); time.sleep(0.6)
+
+
+@case
 def alt_save_asks_where(s, env):
     """QAO-03: on a hovered card Ctrl+S saves; with Alt (Ctrl+Alt+S, or Alt held on Save)
     it asks where instead. (Alt with a click needs a real keyboard: checked by hand.)"""
