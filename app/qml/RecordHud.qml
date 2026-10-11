@@ -1117,9 +1117,9 @@ Window {
                 visible: hud.asking === ""
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 4
-                IconButton { objectName: "record-pause"; anchors.verticalCenter: parent.verticalCenter; icon: hud.phase === "paused" ? "play" : "pause"; tip: hud.phase === "paused" ? "Resume" : "Pause"; onClicked: Engine.recordPause(hud.phase !== "paused") }
-                IconButton { objectName: "record-restart"; anchors.verticalCenter: parent.verticalCenter; icon: "rotate-ccw"; tip: "Restart"; onClicked: hud.asking = "restart" }
-                IconButton { objectName: "record-discard"; anchors.verticalCenter: parent.verticalCenter; icon: "trash"; tip: "Delete"; onClicked: hud.asking = "discard" }
+                IconButton { objectName: "record-pause"; anchors.verticalCenter: parent.verticalCenter; tipAbove: controls.y < hud.area.y; icon: hud.phase === "paused" ? "play" : "pause"; tip: hud.phase === "paused" ? "Resume" : "Pause"; onClicked: Engine.recordPause(hud.phase !== "paused") }
+                IconButton { objectName: "record-restart"; anchors.verticalCenter: parent.verticalCenter; tipAbove: controls.y < hud.area.y; icon: "rotate-ccw"; tip: "Restart"; onClicked: hud.asking = "restart" }
+                IconButton { objectName: "record-discard"; anchors.verticalCenter: parent.verticalCenter; tipAbove: controls.y < hud.area.y; icon: "trash"; tip: "Delete"; onClicked: hud.asking = "discard" }
             }
             // Restart and Delete ask first, as CleanShot's do (it goes on recording)
             Row {
