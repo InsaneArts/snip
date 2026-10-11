@@ -11,6 +11,12 @@ local S = SNIP_REC
 function S.off()
   local key, btns = S.key, S.btns
   S.live, S.key, S.btns = false, nil, nil -- cleared first: no handle is removed twice
+  -- a studio take's hardware pointer (D57): the user's own setting again, even
+  -- when snipd is gone (the watchdog calls this)
+  if S.cursor_restore ~= nil then
+    hl.config({ cursor = { no_hardware_cursors = S.cursor_restore } })
+    S.cursor_restore = nil
+  end
   if key then key:remove() end
   for _, b in ipairs(btns or {}) do
     -- removing an expired bind handle crashes Hyprland 0.56; tostring() is safe
@@ -25,10 +31,16 @@ end
 -- cfg.private / cfg.private_layers: window classes and layer namespaces (a
 -- password prompt) to stay silent in. cfg.buttons: { 272, 273 } or {}.
 -- cfg.typing: the typing marker (a studio take; cfg.keys is set then too).
+-- cfg.cursor_restore: a studio take's (D57): the pointer on the hardware plane
+-- (gsr leaves it out), and this no_hardware_cursors again at off().
 function S.on(cfg)
   S.off()
   S.sid, S.muted, S.miss, S.down = cfg.sid, false, 0, {}
   S.private, S.private_layers = cfg.private or {}, cfg.private_layers or {}
+  if cfg.cursor_restore ~= nil then
+    S.cursor_restore = cfg.cursor_restore
+    hl.config({ cursor = { no_hardware_cursors = 0 } })
+  end
   local event, dispatch, fmt = hl.dsp.event, hl.dispatch, string.format
   local function emit(s) dispatch(event("snip:" .. S.sid .. ":" .. s)) end
 

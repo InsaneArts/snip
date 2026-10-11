@@ -38,7 +38,8 @@ impl Inner {
                 .ok()
                 .and_then(|f| std::io::BufReader::new(f).lines().next()?.ok())
                 .and_then(|first| snip_core::studio::log::read(&first))
-                .filter(|l| l.header.studio)
+                // in the picture from the start (D57's hardware pointer couldn't be had): nothing to redraw
+                .filter(|l| l.header.studio && !l.header.baked)
                 .map_or(Value::Null, |l| json!({ "log": log, "theme": l.header.cursor.theme, "size": l.header.cursor.size, "scale": l.header.scale }));
             let p = match media::probe(&path) {
                 Ok(p) => p,
