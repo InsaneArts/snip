@@ -4684,6 +4684,27 @@ def editor_alt_copy_keeps_the_editor_open(s, env):
 
 
 @case
+def editor_background_closes_to_the_last_tool(s, env):
+    """ANN-07: closing the Background panel with its button goes back to the tool you had,
+    as Esc does; it went to Select."""
+    from PIL import Image
+    png = s.tmp / "bgtool.png"
+    Image.new("RGB", (400, 300), "white").save(png)
+    s.json("edit", str(png))
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    time.sleep(0.3)
+    w, mon = editor_window(), env.monitor()
+    win = lambda p: (w["at"][0] - mon["x"] + p["x"], w["at"][1] - mon["y"] + p["y"])
+    s.debug("ui", "editor", "tool", "rect")
+    s.move(*win(where(s, "editor", "tool-background"))); s.click()
+    assert wait_for(lambda: editor_state(s)["tool"] == "background", 2), "the panel opens"
+    s.move(*win(where(s, "editor", "tool-background"))); s.click()
+    assert wait_for(lambda: editor_state(s)["tool"] != "background", 2), "and closes"
+    assert editor_state(s)["tool"] == "rect", ("back to the rectangle", editor_state(s)["tool"])
+    close_editor(s)
+
+
+@case
 def editor_crop_bar(s, env):
     """CleanShot's crop bar: the canvas beyond the image can be transparent, white, black or
     any colour; Cancel (or Escape) goes back to the crop it started with."""
