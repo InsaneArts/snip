@@ -6,6 +6,9 @@ Item {
     id: panel
     property string value: "#ff3b30"           // #rrggbb or #aarrggbb
     signal picked(string color)
+    // a drag in the square or a slider, from press to release: set before the press's
+    // colour is picked (a MouseArea's pressed changes only after onPressed)
+    property bool dragging: false
     signal eyedropper()
     signal save()
 
@@ -70,14 +73,17 @@ Item {
                 border.width: 2; border.color: "white"
             }
             MouseArea {
+                objectName: "color-square"
                 anchors.fill: parent
                 function set(m) {
                     panel.sat = Math.max(0, Math.min(1, m.x / width))
                     panel.val = Math.max(0, Math.min(1, 1 - m.y / height))
                     panel.emit()
                 }
-                onPressed: (m) => set(m)
+                onPressed: (m) => { panel.dragging = true; set(m) }
                 onPositionChanged: (m) => { if (pressed) set(m) }
+                onReleased: panel.dragging = false
+                onCanceled: panel.dragging = false
             }
         }
 
@@ -100,8 +106,10 @@ Item {
             MouseArea {
                 anchors.fill: parent
                 function set(m) { panel.hue = Math.max(0, Math.min(0.999, m.x / width)); panel.emit() }
-                onPressed: (m) => set(m)
+                onPressed: (m) => { panel.dragging = true; set(m) }
                 onPositionChanged: (m) => { if (pressed) set(m) }
+                onReleased: panel.dragging = false
+                onCanceled: panel.dragging = false
             }
         }
 
@@ -121,8 +129,10 @@ Item {
             MouseArea {
                 anchors.fill: parent
                 function set(m) { panel.alpha = Math.max(0, Math.min(1, m.x / width)); panel.emit() }
-                onPressed: (m) => set(m)
+                onPressed: (m) => { panel.dragging = true; set(m) }
                 onPositionChanged: (m) => { if (pressed) set(m) }
+                onReleased: panel.dragging = false
+                onCanceled: panel.dragging = false
             }
         }
 

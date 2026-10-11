@@ -51,8 +51,13 @@ Window {
     property int revision: 0
     property int savedRevision: 0
 
+    // a drag in a colour panel is one undo step, whatever shades it passes through
+    property bool dragStep: false
+    property bool stepTaken: false
+    onDragStepChanged: stepTaken = false
     function commit(next) {
-        undoStack = undoStack.concat([doc])
+        if (!stepTaken) undoStack = undoStack.concat([doc])
+        stepTaken = dragStep
         redoStack = []
         doc = next
         changed()
@@ -1703,7 +1708,7 @@ Window {
                             PathAngleArc { centerX: 11; centerY: 11; radiusX: 11; radiusY: 11; sweepAngle: 360 }
                         }
                     }
-                    MouseArea { id: rbMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                    MouseArea { id: rbMa; objectName: "color-custom"; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
                                 onClicked: ed.customOpen = !ed.customOpen }
                 }
             }
@@ -1712,6 +1717,7 @@ Window {
                 visible: ed.customOpen
                 value: ed.toolInk
                 onPicked: (c) => ed.setColor(c)
+                onDraggingChanged: ed.dragStep = dragging
                 onSave: ed.saveColor(current)
                 onEyedropper: ed.pickColor("ink")
             }
@@ -1978,6 +1984,7 @@ Window {
             width: 200
             value: ed.doc.fill && ed.doc.fill.startsWith("#") ? ed.doc.fill : "#ffffff"
             onPicked: (c) => ed.setFill(c)
+            onDraggingChanged: ed.dragStep = dragging
             onSave: ed.saveColor(current)
             onEyedropper: ed.pickColor("fill")
         }
