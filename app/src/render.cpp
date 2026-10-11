@@ -210,6 +210,8 @@ renderVideo(const QString& specPath)
                                                           { QStringLiteral("outer"), scene["outer"].toVariant() },
                                                           { QStringLiteral("inner"), scene["inner"].toVariant() },
                                                           { QStringLiteral("studio"), scene["studio"].toVariant() },
+                                                          { QStringLiteral("pointer"), scene["pointer"].toVariant() },
+                                                          { QStringLiteral("pointerLook"), scene["pointerLook"].toVariant() },
                                                           { QStringLiteral("pixelScale"), scale } });
   std::unique_ptr<QQuickItem> root(qobject_cast<QQuickItem*>(made));
   if (!root) {

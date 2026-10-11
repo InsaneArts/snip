@@ -306,6 +306,7 @@ impl Inner {
                 hide_on_key_press: snip_hypr::option_bool("cursor:hide_on_key_press").unwrap_or(false),
             },
             keys: if studio { "commands" } else { "none" }.into(),
+            studio,
             ..Header::default()
         };
         // the pointer twice a frame, as Hyprland has it

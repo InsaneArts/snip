@@ -197,6 +197,11 @@ impl Store {
         self.get(id)
     }
 
+    /// Where a recording's input log is (it may have none).
+    pub fn input_log(rec: &Record) -> PathBuf {
+        rec.source.with_file_name(INPUT)
+    }
+
     /// A recording's poster (its first frame); None for images.
     pub fn poster(rec: &Record) -> Option<PathBuf> {
         (rec.media() != crate::history::Media::Image).then(|| rec.source.with_file_name(POSTER))

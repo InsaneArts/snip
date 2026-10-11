@@ -52,6 +52,9 @@ Window {
     property string error: ""
     // Studio Mode (D55): the zooms on this recording and how they move ({zooms, zoom_style})
     property var studio: ({ zooms: [], zoom_style: "smooth" })
+    // a studio take's pointer, as the edit draws it (D60: CleanShot's defaults)
+    readonly property var pointerLook: Object.assign({ show: true, size: 2, motion: "natural", press: true, hide_typing: true, hide_idle: false }, studio.pointer || {})
+    function setPointer(patch) { studio = Object.assign({}, studio, { pointer: Object.assign({}, studio.pointer || {}, patch) }) }
     property string section: "audio"          // the sidebar's (D50)
     property bool exportOpen: false           // the Export popover
     property real zoom: 1                     // the timeline's: 1 (all of it) to 8
@@ -85,7 +88,7 @@ Window {
                 mono = !!e.audio.mono
             }
             bg = e.background || null
-            studio = { zooms: e.zooms || [], zoom_style: e.zoom_style || "smooth" }
+            studio = { zooms: e.zooms || [], zoom_style: e.zoom_style || "smooth", pointer: e.pointer || null }
             if (e.export) { maxHeight = e.export.height || 0; quality = e.export.quality || 23; gif = !!e.export.gif }
         }
         editReady = true
@@ -95,7 +98,7 @@ Window {
             format: "snip-video-edit", version: 1,
             trim: [inMs, outMs], cuts: parts.filter(p => p.cut).map(p => [p.a, p.b]), splits: cuts.slice(1, -1),
             audio: { tracks: volumes, mono: mono }, background: bg,
-            zooms: studio.zooms, zoom_style: studio.zoom_style,
+            zooms: studio.zooms, zoom_style: studio.zoom_style, pointer: studio.pointer || null,
             export: { height: maxHeight > 0 ? maxHeight : null, quality: quality, gif: gif }
         })
     }
@@ -276,9 +279,10 @@ Window {
         error = ""
         progress = 0
         player.pause()
-        // Studio Mode (D55): with zooms, snipd draws every frame with this scene
-        if (studio.zooms.length > 0)
-            return send(replace, null, { bg: bgLive, outer: outer, inner: inner, studio: studio, theme: Engine.theme })
+        // Studio Mode (D55): with zooms, or a pointer to redraw, snipd draws every frame with this scene
+        if (studio.zooms.length > 0 || info.pointer)
+            return send(replace, null, { bg: bgLive, outer: outer, inner: inner, studio: studio, theme: Engine.theme,
+                                         pointer: info.pointer || null, pointerLook: pointerLook })
         if (!bgLive) return send(replace, null)
         // the background first, as the export draws it: a grab, then ffmpeg
         coverReplace = replace
@@ -469,7 +473,7 @@ Window {
             spacing: 6
             Repeater {
                 // [section, icon, name]
-                model: [["audio", "volume", "Audio"], ["background", "image", "Background"], ["animations", "sparkles", "Animations"]]
+                model: [["audio", "volume", "Audio"], ["background", "image", "Background"], ["pointer", "pointer", "Pointer"], ["animations", "sparkles", "Animations"]]
                 SideButton {
                     required property var modelData
                     objectName: "video-section=" + modelData[0]
@@ -502,6 +506,53 @@ Window {
             anchors { fill: parent; rightMargin: 1 }
             ed: ve
             video: true
+        }
+        // Pointer (D55, D60): a studio take's, redrawn from its input log
+        Column {
+            visible: ve.section === "pointer"
+            anchors { fill: parent; margins: 16 }
+            spacing: 14
+            Text { text: "Pointer"; color: Theme.text; font.family: Theme.fontUi; font.pixelSize: 13; font.weight: Font.DemiBold }
+            Text {
+                visible: !ve.info.pointer
+                width: parent.width
+                wrapMode: Text.WordWrap
+                text: "This recording has its pointer in the picture. Turn on Studio on the recording panel to record one the editor redraws: smooth, any size, hidden while you type."
+                color: Theme.textSecondary
+                font.family: Theme.fontUi
+                font.pixelSize: 12
+            }
+            Column {
+                visible: !!ve.info.pointer
+                width: parent.width
+                spacing: 14
+                Check { objectName: "studio-pointer-show"; text: "Show the pointer"; on: ve.pointerLook.show; onToggled: ve.setPointer({ show: !ve.pointerLook.show }) }
+                Slider {
+                    objectName: "studio-pointer-size"
+                    width: parent.width
+                    label: "Size"
+                    from: 1
+                    to: 5
+                    value: ve.pointerLook.size
+                    onMoved: (v) => ve.setPointer({ size: Math.round(v * 10) / 10 })
+                    onReleased: (v) => ve.setPointer({ size: Math.round(v * 10) / 10 })
+                    onCancelled: ve.focusKeys()
+                }
+                Column {
+                    width: parent.width
+                    spacing: 8
+                    Text { text: "Motion"; color: Theme.textSecondary; font.family: Theme.fontUi; font.pixelSize: 12 }
+                    Segmented {
+                        objectName: "studio-pointer-motion"
+                        options: [["natural", "Natural"], ["smooth", "Smooth"], ["off", "Off"]]
+                        current: ve.pointerLook.motion
+                        onPicked: (v) => ve.setPointer({ motion: v })
+                    }
+                }
+                Check { objectName: "studio-pointer-press"; text: "Smaller while clicking"; on: ve.pointerLook.press; onToggled: ve.setPointer({ press: !ve.pointerLook.press }) }
+                Check { objectName: "studio-pointer-typing"; text: "Hide while typing"; on: ve.pointerLook.hide_typing; onToggled: ve.setPointer({ hide_typing: !ve.pointerLook.hide_typing }) }
+                Check { objectName: "studio-pointer-idle"; text: "Hide when still"; on: ve.pointerLook.hide_idle; onToggled: ve.setPointer({ hide_idle: !ve.pointerLook.hide_idle }) }
+            }
         }
         // Animations (D55): how zooms move in and out, for all of them
         Column {
@@ -628,6 +679,8 @@ Window {
                 outer: ve.outer
                 inner: ve.inner
                 studio: ve.studio
+                pointer: ve.info.pointer || null
+                pointerLook: ve.pointerLook
                 ms: frameTime.ms
                 pixelScale: result.k * Screen.devicePixelRatio
             }
