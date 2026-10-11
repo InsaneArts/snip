@@ -1753,6 +1753,39 @@ def editor_pins(s, env):
 
 
 @case
+def locked_pins_unlock_from_the_bar(s, env):
+    """PIN-06: a locked pin lets clicks through, so it can't be unlocked by clicking it.
+    Snip's menu in the bar offers Unlock Pins while one is locked (only `snip pins unlock`
+    could), and locking says where to find it."""
+    from PIL import Image
+    png = s.tmp / "lockme.png"
+    Image.new("RGB", (300, 200), (40, 120, 200)).save(png)
+    rec = s.json("open", str(png))["result"]
+    try:
+        s.json("pin", rec["id"])
+        assert wait_for(lambda: pin_windows(), 3), "pinned"
+        s.move(300, 5); s.debug("ui", "tray", "open")
+        assert wait_for(lambda: tray_state(s)["open"], 2)
+        assert "pins-unlock" not in dict(tray_state(s)["items"]), "nothing to unlock yet"
+        s.debug("ui", "tray", "keys", "{Escape}")
+        n = len(s.traces("toast"))
+        s.debug("ui", "pin", "act", "lock")
+        assert wait_for(lambda: not pin_windows(), 3), "locked: a layer now"
+        assert wait_for(lambda: [t for t in s.traces("toast")[n:] if "menu in the bar" in t["text"]], 2), "it says how to unlock"
+        s.move(300, 5); s.debug("ui", "tray", "open")
+        assert wait_for(lambda: tray_state(s)["open"], 2)
+        b = where(s, "tray", "menu:pins-unlock")
+        assert b["x"] >= 0, ("Unlock Pins", tray_state(s)["items"])
+        s.move(b["x"], b["y"]); time.sleep(0.1); s.click()
+        assert wait_for(lambda: pin_windows(), 3), "Unlock Pins brings it back"
+    finally:
+        s.debug("ui", "tray", "keys", "{Escape}")
+        s.cli("pins", "unlock", check=False)
+        s.debug("ui", "close-pins")
+        s.cli("close-all")
+
+
+@case
 def editor_floats(s, env):
     """The editor floats, centred, above the tiled windows: Snip's window rule matches its
     title (rules match the whole title, "Snip Editor — <name>"). The rule tags it."""

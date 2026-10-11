@@ -109,6 +109,7 @@ Window {
         Platform.setInputRects(lockLayer, [])
         locked = true
         visible = false
+        controller.toast.show("Clicks pass through it now. Unlock it from Snip's menu in the bar", place.output)
     }
     function unlock() {
         if (!locked) return
