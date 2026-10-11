@@ -257,7 +257,7 @@ Item {
             // A recording's (D51): close, Quick Look; the video editor, Open With… (for the cloud)
             FrostButton { visible: !card.isMedia; x: parent.width - width - 8; y: 8; icon: "pin"; onClicked: card.host.act("pin", card) }
             FrostButton { visible: card.isMedia; objectName: "card-quicklook"; x: parent.width - width - 8; y: 8; icon: "eye"; onClicked: card.host.act("preview", card) }
-            FrostButton { visible: card.data_.media !== "gif"; x: 8; y: parent.height - height - 8; icon: card.isMedia ? "scissors" : "pencil"; onClicked: card.host.act("annotate", card) }
+            FrostButton { visible: card.data_.media !== "gif"; objectName: "card-annotate"; x: 8; y: parent.height - height - 8; icon: card.isMedia ? "scissors" : "pencil"; onClicked: card.host.act("annotate", card) }
             FrostButton { visible: !card.isMedia; x: parent.width - width - 8; y: parent.height - height - 8; icon: "scan-text"; onClicked: card.host.act("text", card) }
             FrostButton { visible: card.isMedia; objectName: "card-open-with"; x: parent.width - width - 8; y: parent.height - height - 8; icon: "share"; onClicked: card.host.act("open-with", card) }
         }

@@ -390,10 +390,12 @@ Window {
                 Timer { id: leaveDelay; onTriggered: cardItem.leave(qa.outward) }
                 function leaveAfter(ms) { leaveDelay.interval = ms; leaveDelay.restart() }
 
-                // QAO-07: auto-close, paused while hovered, dragging, in a menu or hidden.
+                // QAO-07: auto-close, paused while hovered, dragging, in a menu, hidden,
+                // or while the capture's editor is open (closed, the card has its time again)
                 Timer {
                     interval: Math.max(2, qa.st.autoCloseSeconds || 10) * 1000
                     running: qa.st.autoClose !== false && !qa.hovering && !qa.dragging && !qa.menuCard && !qa.hidden && qa.visible && !cardItem.leaving
+                             && !qa.c.editing.includes(cardItem.cardId)
                     onTriggered: {
                         if (qa.st.autoCloseAction === "save_and_close") Engine.save(cardItem.cardId)
                         cardItem.leave(qa.outward)

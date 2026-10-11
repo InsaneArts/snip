@@ -352,8 +352,12 @@ QtObject {
         if (open) { open.raise(); open.requestActivate(); return }
         const e = editorComponent.createObject(null, { capture: capture, controller: root })
         editors[capture.id] = e
-        e.finished.connect(() => { delete editors[capture.id]; e.destroy(); trim.restart() })
+        editing = editing.concat([capture.id])
+        e.finished.connect(() => { delete editors[capture.id]; editing = editing.filter(x => x !== capture.id); e.destroy(); trim.restart() })
     }
+    // the captures with an editor (of either kind) open: their cards wait, not
+    // closing on their own (QAO-07), so they're still there to save from
+    property var editing: []
     // a big window just went (its pixels, its render thread's memory): give
     // the memory back once it's destroyed
     property Timer trim: Timer {
@@ -371,7 +375,8 @@ QtObject {
         if (open) { open.raise(); open.requestActivate(); return }
         const v = videoEditorComponent.createObject(null, { info: info, controller: root })
         videoEditors[info.id] = v
-        v.finished.connect(() => { delete videoEditors[info.id]; v.destroy(); trim.restart() })
+        editing = editing.concat([info.id])
+        v.finished.connect(() => { delete videoEditors[info.id]; editing = editing.filter(x => x !== info.id); v.destroy(); trim.restart() })
     }
     // Pins (PIN-01): one window each, created directly like editors
     property var pins: []
