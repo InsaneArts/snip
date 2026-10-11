@@ -529,7 +529,7 @@ Window {
                 wrapMode: Text.WordWrap
                 function why(kept) {
                     if (kept === undefined || kept === null)
-                        return "Not for this recording: its pointer was recorded into the picture. Turn on Studio (the sparkles button on the recording panel) before you record, and the pointer can be changed here."
+                        return "Not for this recording: its pointer was recorded into the picture. Turn on Studio (the clapperboard on the recording panel) before you record, and the pointer can be changed here."
                     if (kept === "software")
                         return "Not for this recording: Studio was on, but Hyprland's software pointer setting (cursor:no_hardware_cursors = 1) kept the pointer in the picture."
                     if (kept === "")
