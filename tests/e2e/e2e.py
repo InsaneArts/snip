@@ -2684,6 +2684,59 @@ def record_clicks_and_keys(s, env):
 
 
 @case
+def studio_take(s, env):
+    """D54, D58: with the panel's Studio switch, a take is a studio take: nothing drawn on it
+    as it records, its input log (where the pointer went, the clicks, the command keys and a
+    typing marker) kept beside it in history, and the video editor open on it when it stops.
+    The switch is remembered. (The test pattern stands in for gsr: -cursor no is gsr_args'.)"""
+    s.cli("close-all"); time.sleep(0.3)
+    p = record_panel(s)
+    s.drag(300, 200, 1100, 650)
+    assert wait_for(lambda: record_hud(s)["area"] == [300, 200, 800, 450], 3), record_hud(s)
+    record_click(s, "record-studio")
+    assert wait_for(lambda: record_hud(s)["studio"], 2), "Studio is on"
+    n = len(s.traces("record_hooks"))
+    record_click(s, "record-video")
+    assert wait_for(lambda: record_hud(s)["phase"] == "recording", 5), record_hud(s)
+    assert wait_for(lambda: len(s.traces("record_hooks")) > n, 3), "the hooks are in"
+    sid = s.traces("record_hooks")[-1]["sid"]
+    rings = record_hud(s)["rings"]                                  # (counted since Snip started)
+    for i in range(6):
+        s.move(400 + i * 40, 300 + i * 15); time.sleep(0.05)
+    s.move(700, 420); time.sleep(0.1); s.click(); time.sleep(0.3)
+    # Ctrl+C and some typing, as the key hook sends them
+    for code, st in ((37, 1), (54, 1), (54, 0), (37, 0)):
+        hypr_eval(f'hl.dispatch(hl.dsp.event("snip:{sid}:k:{code}:{st}"))')
+    hypr_eval(f'hl.dispatch(hl.dsp.event("snip:{sid}:t"))')
+    time.sleep(0.3)
+    hud = record_hud(s)
+    assert hud["rings"] == rings and hud["keystrokes"] == "", ("nothing drawn on it as it records", hud)
+    s.json("record", "stop")
+    try:
+        r, code = finish(p, timeout=20)
+        assert code == 0, r
+        rid = r["result"]["id"]
+        assert wait_for(lambda: video_editor_window(), 6), "the video editor opens on it (D58)"
+        assert video_state(s)["id"] == rid, video_state(s)
+        src = next(x for x in s.json("list", "-n", "5")["result"] if x["id"] == rid)["source"]
+        lines = (Path(src).parent / "input.jsonl").read_text().splitlines()
+        head, events = json.loads(lines[0]), [json.loads(l) for l in lines[1:]]
+        assert head["keys"] == "commands" and head["area"] == [300, 200, 800, 450], head
+        assert any("m" in e for e in events), "where the pointer went"
+        assert [e["d"] for e in events if "b" in e] == [1, 0], ("the click, pressed and released", events)
+        assert [(e["k"], e["d"]) for e in events if "k" in e] == [(37, 1), (54, 1), (54, 0), (37, 0)], "its command keys"
+        assert any("ty" in e for e in events), "that there was typing"
+        s.cli("debug", "ui", "close-editors")
+        p = record_panel(s)
+        assert record_hud(s)["studio"], "Studio stays on for the next take"
+        s.cli("record", "discard", check=False)
+    finally:
+        s.write_config("")
+        time.sleep(0.8)
+        s.cli("close-all")
+
+
+@case
 def recording_safety(s, env):
     """REC-14: takes left behind when Snip stopped mid-recording are recovered at its next
     start (a finished one as it is, one cut short from its fragments), each with its card;
