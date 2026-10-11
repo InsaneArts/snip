@@ -343,7 +343,8 @@ Window {
         if (outward && !doc.fill) next.fill = edgeFill || Engine.edgeColor(basePath)
         if (JSON.stringify(next) !== JSON.stringify(doc)) commit(next)
     }
-    function cropDone() { setTool(toolBeforeCrop === "crop" ? "arrow" : toolBeforeCrop) }
+    // a size being typed in the bar applies first (its field gives up the keys)
+    function cropDone() { focusKeys(); setTool(toolBeforeCrop === "crop" ? "arrow" : toolBeforeCrop) }
     // CleanShot's crop bar: Cancel goes back to the crop (and fill) it started with
     // the document as cropping found it: Cancel goes back to it, a rotation,
     // flip or resize made meanwhile included
@@ -1101,12 +1102,14 @@ Window {
                             color: Theme.text; font.family: Theme.fontUi; font.pixelSize: 13; font.features: { "tnum": 1 }
                             validator: IntValidator { bottom: 4; top: 100000 }
                             selectByMouse: true
-                            onAccepted: { sizeField.typed(parseInt(text)); ed.focusKeys() }
+                            onEditingFinished: sizeField.typed(parseInt(text))     // Enter, Tab or a click elsewhere
+                            onAccepted: ed.focusKeys()
                             Keys.onTabPressed: (e) => { sizeField.typed(parseInt(text)); e.accepted = false }
                             Keys.onEscapePressed: { text = sizeField.value; ed.focusKeys() }
                         }
                     }
                     SizeField {
+                        objectName: "crop-w"
                         value: Math.round(ed.cropShown.w)
                         onTyped: (v) => { const c = ed.cropShown; ed.setCrop({ x: c.x, y: c.y, w: v, h: ed.ratioValue ? Math.round(v / ed.ratioValue) : c.h }) }
                     }
@@ -1138,7 +1141,7 @@ Window {
                     ToolButton { id: resizeButton; objectName: "resize-button"; label: "Resize"; chevron: true; onClicked: { resizeMenu.load(); ed.openMenuNamed("resize", resizeButton) } }
                     ToolButton { label: "Revert to Original"; onClicked: { ed.cropRatio = 0; ed.setCrop(ed.full) } }
                     ToolButton { id: cropCancelButton; label: "Cancel"; onClicked: ed.cropCancel() }
-                    ToolButton { label: "Crop"; selected: true; onClicked: ed.cropDone() }
+                    ToolButton { objectName: "crop-done"; label: "Crop"; selected: true; onClicked: ed.cropDone() }
                 }
             }
         }
