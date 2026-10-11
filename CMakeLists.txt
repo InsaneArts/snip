@@ -83,6 +83,7 @@ qt_add_qml_module(snipd
     app/qml/VideoEditor.qml
     app/qml/QuickLook.qml
     app/qml/StudioFrame.qml
+    app/qml/ZoomLane.qml
     app/qml/editor.js
     app/qml/probe.js
   RESOURCES
