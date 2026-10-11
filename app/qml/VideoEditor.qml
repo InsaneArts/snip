@@ -198,6 +198,7 @@ Window {
     // Studio Mode's zooms (D55), kept in order; none overlap (the zoom lane sees to it)
     property int zoomSelected: -1             // the zoom selected (an index into studio.zooms)
     property real zoomLevel: 2                // a new zoom's: the last level used
+    readonly property real zoomLeast: 250     // the shortest zoom, ms
     function setZooms(zs) { studio = Object.assign({}, studio, { zooms: zs.slice().sort((x, y) => x.from - y.from) }) }
     function addZoom(a, b) {
         const z = { from: a, to: b, level: zoomLevel, focus: [0.5, 0.5] }
@@ -213,6 +214,23 @@ Window {
     function removeZoom(i) {
         if (i < 0 || i >= studio.zooms.length) return
         setZooms(studio.zooms.filter((z, j) => j !== i))
+        zoomSelected = -1
+    }
+    // the zoom menu's
+    function levelToAll(i) {
+        const level = studio.zooms[i].level
+        setZooms(studio.zooms.map(z => Object.assign({}, z, { level: level })))
+    }
+    function splitZoom(i, ms) {
+        const z = studio.zooms[i]
+        if (!z || ms < z.from + zoomLeast || ms > z.to - zoomLeast) return
+        const zs = studio.zooms.slice()
+        zs.splice(i, 1, Object.assign({}, z, { to: Math.round(ms) }), Object.assign({}, z, { from: Math.round(ms) }))
+        setZooms(zs)
+        selectZoom(i + 1)
+    }
+    function removeAllZooms() {
+        setZooms([])
         zoomSelected = -1
     }
     function selectZoom(i) {
@@ -403,6 +421,7 @@ Window {
             else if (ctrl && (e.key === Qt.Key_Y || (shift && e.key === Qt.Key_Z))) ve.redo()
             else if (ctrl && e.key === Qt.Key_Z) ve.undo()
             else if (e.key === Qt.Key_Escape && ve.exportOpen) ve.exportOpen = false
+            else if (e.key === Qt.Key_Escape && zoomMenu.index >= 0) zoomMenu.close()
             else if (e.key === Qt.Key_Escape && ve.zoomSelected >= 0) ve.selectZoom(-1)
             else if (e.key === Qt.Key_Escape || (ctrl && e.key === Qt.Key_W)) ve.close()
             else return
@@ -802,6 +821,7 @@ Window {
                     height: 22
                     ed: ve
                     k: timeline.k
+                    onMenu: (i, x, y) => { const p = mapToItem(ve.contentItem, x, y); zoomMenu.openAt(i, p.x, p.y, ve.contentItem) }
                 }
 
                 // the frames, as many as fit, each the one nearest its time
@@ -943,11 +963,25 @@ Window {
     ZoomPopover {
         id: zoomPopover
         objectName: "studio-zoom-popover"
+        visible: zoom !== null && zoomMenu.index < 0      // not under its menu
         ed: ve
         source: studioFrame.video
         readonly property real at: zoom ? tlView.x + timeline.x - tlView.contentX + (zoom.from + zoom.to) / 2 * timeline.k : 0
         x: Math.max(8, Math.min(ve.width - width - 8, at - width / 2))
         y: timelineArea.y + tlView.y + zoomLane.y - height - 6
+    }
+
+    // a zoom's right-click menu: a click outside closes it
+    MouseArea {
+        anchors.fill: parent
+        visible: zoomMenu.visible
+        acceptedButtons: Qt.AllButtons
+        onPressed: zoomMenu.close()
+    }
+    ZoomMenu {
+        id: zoomMenu
+        objectName: "studio-zoom-menu"
+        ed: ve
     }
 
     // ---------------------------------------------------------------- Export (VED-02): a popover under its button
