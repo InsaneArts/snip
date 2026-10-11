@@ -173,7 +173,11 @@ impl Store {
         let ext = file.extension().and_then(|e| e.to_str()).unwrap_or("mp4").to_ascii_lowercase();
         let source = rec.source.with_file_name(format!("source.{ext}"));
         if std::fs::rename(file, &source).is_err() {
-            std::fs::copy(file, &source)?;
+            // from another filesystem: copied beside it, then renamed in, so
+            // the old video's other name (D56's original) keeps the old video
+            let part = source.with_extension(format!("{ext}.part"));
+            std::fs::copy(file, &part)?;
+            std::fs::rename(&part, &source)?;
             let _ = std::fs::remove_file(file);
         }
         if source != rec.source {
@@ -379,6 +383,38 @@ impl Store {
         Ok((original, std::fs::read_to_string(dir.join(EDIT)).ok()))
     }
 
+    /// A recording's edit (D56): the recording as it was recorded (its
+    /// original, once a Replace has kept one, else its video) and the video
+    /// editor's edit.json, if it has one.
+    pub fn video_edit_state(&self, id: &str) -> Result<(PathBuf, Option<String>), StoreError> {
+        let rec = self.get(id)?;
+        let dir = rec.source.parent().unwrap_or(Path::new(".")).to_path_buf();
+        Ok((video_original(&dir).unwrap_or(rec.source), std::fs::read_to_string(dir.join(EDIT)).ok()))
+    }
+
+    /// The video editor's edit, kept as it changes (the design's §5.3).
+    pub fn save_video_edit(&self, id: &str, doc: &str) -> Result<(), StoreError> {
+        let rec = self.get(id)?;
+        Ok(atomic_write(&rec.source.with_file_name(EDIT), doc.as_bytes())?)
+    }
+
+    /// Keep `file` as recording `id`'s original, once (D56): before a Replace
+    /// writes over its video, or for the capture Save as New makes. A hard
+    /// link where the filesystem allows, else a copy.
+    pub fn keep_video_original(&self, id: &str, file: &Path) -> Result<(), StoreError> {
+        let rec = self.get(id)?;
+        let dir = rec.source.parent().unwrap_or(Path::new(".")).to_path_buf();
+        if video_original(&dir).is_some() {
+            return Ok(());
+        }
+        let ext = file.extension().and_then(|e| e.to_str()).unwrap_or("mp4").to_ascii_lowercase();
+        let original = dir.join(format!("original.{ext}"));
+        if std::fs::hard_link(file, &original).is_err() {
+            std::fs::copy(file, &original)?;
+        }
+        Ok(())
+    }
+
     /// Write an edit back (ANN-15): the original is kept once, next to the
     /// flattened image, together with the objects that made it. The text
     /// index is redone, so redacted text can't be found any more.
@@ -421,6 +457,12 @@ impl Store {
     pub fn disk_usage(&self) -> u64 {
         self.history.lock().unwrap().disk_usage()
     }
+}
+
+/// A recording's original in its folder (D56): `original.mp4`, or another
+/// video's extension (a GIF's).
+fn video_original(dir: &Path) -> Option<PathBuf> {
+    std::fs::read_dir(dir).ok()?.flatten().map(|e| e.path()).find(|p| p.file_stem().is_some_and(|s| s == "original"))
 }
 
 /// A small WebP of a PNG (at most 256 px on its long side), for a project.
