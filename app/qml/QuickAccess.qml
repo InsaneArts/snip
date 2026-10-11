@@ -24,6 +24,9 @@ Window {
     readonly property real cardWidth: st.size || 280
     readonly property real cardHeight: Math.round(cardWidth * 0.705)
     readonly property int maxVisible: Math.max(1, st.maxVisible || 5)
+    // as many cards as the screen has room for: under "+k more" (or all, expanded)
+    function fits(badge) { return Math.max(1, Math.floor((height - 2 * margin - (badge ? badgeRoom : 0) + spacing) / (cardHeight + spacing))) }
+    readonly property int shown: Math.min(maxVisible, fits(true))
     readonly property real margin: 24
     readonly property real spacing: 16
     readonly property real menuSpace: 236
@@ -43,8 +46,8 @@ Window {
     property real menuY: 0
     readonly property bool hovering: stackHover.hovered
     readonly property int count: cards.count
-    readonly property int firstVisible: expanded ? 0 : Math.max(0, count - maxVisible)
-    readonly property bool collapsed: count > maxVisible && !expanded
+    readonly property int firstVisible: Math.max(0, count - (expanded ? fits(false) : shown))
+    readonly property bool collapsed: count > shown && !expanded
 
     // mapped once at start, empty, like the overlays (Main.warming): the
     // first card then appears as quickly as the rest
@@ -145,7 +148,7 @@ Window {
         cards.remove(i)
         if (toClosed) Engine.cardClosed(id)
         if (menuCard && menuCard.cardId === id) menuCard = null
-        if (count <= maxVisible) expanded = false
+        if (count <= shown) expanded = false
         if (count === 0) hidden = false
         Qt.callLater(updateMask)
     }
@@ -246,7 +249,8 @@ Window {
 
     // ---------------------------------------------------------------- layout
     readonly property real cardX: right ? width - margin - cardWidth : margin
-    readonly property real badgeSpace: collapsed ? 26 + 10 : 0
+    readonly property real badgeRoom: 26 + 10
+    readonly property real badgeSpace: collapsed ? badgeRoom : 0
     readonly property real bottomY: height - margin - badgeSpace
     // oldest visible card in the corner slot; each newer one above it
     function yFor(i) {
@@ -410,11 +414,12 @@ Window {
         // "+k" for collapsed older cards (QAO-06), under the stack
         FrostButton {
             id: moreBadge
+            objectName: "qa-more"
             visible: qa.collapsed
             x: qa.cardX + (qa.cardWidth - width) / 2
             y: qa.height - qa.margin - height
             implicitHeight: 26
-            label: "+" + (qa.count - qa.maxVisible) + " more"
+            label: "+" + (qa.count - qa.shown) + " more"
             onClicked: qa.expanded = true
         }
 
