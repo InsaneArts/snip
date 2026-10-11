@@ -223,7 +223,7 @@ Window {
             else if (picking || drawing) { picking = false; drawing = false }
             else Engine.recordCancel()
             break
-        case Qt.Key_Space: picking = !picking; drawing = false; hoveredWindow = -1; break
+        case Qt.Key_Space: picking = !picking; drawing = false; hoveredWindow = -1; micsOpen = false; camerasOpen = false; break
         case Qt.Key_Left: if (!whole) setArea(moved(area, -step, 0)); break
         case Qt.Key_Right: if (!whole) setArea(moved(area, step, 0)); break
         case Qt.Key_Up: if (!whole) setArea(moved(area, 0, -step)); break
@@ -1160,7 +1160,7 @@ Window {
             Engine.log("record_hud", JSON.stringify({ open: visible, phase: phase, gif: gif, mic: mic, system: system, whole: whole, level: micLevel, micMuted: micMuted,
                                                     time: hud.clock(elapsed), area: [area.x, area.y, area.width, area.height],
                                                     panel: panel.visible ? [panel.x, panel.y, panel.width, panel.height] : null,
-                                                    picking: picking, drawing: drawing, windows: windows.length, hint: hint.visible ? hintText.text : "",
+                                                    picking: picking, drawing: drawing, menus: micsOpen || camerasOpen, windows: windows.length, hint: hint.visible ? hintText.text : "",
                                                     icons: ["record-mic", "record-system", "record-camera-button", "record-clicks", "record-keys"]
                                                            .map(n => { const c = Probe.find(contentItem, n); return c ? (c.lit ? "+" : "") + c.shownIcon : "" }),
                                                     controls: controls.visible ? [controls.x, controls.y, controls.width, controls.height] : null,
