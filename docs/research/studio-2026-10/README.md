@@ -6,7 +6,7 @@ How Snip could get CleanShot X 5's Studio Mode on Hyprland:
 - clicks and keystrokes added after the fact;
 - motion blur.
 
-**Status: a proposal.** D3 keeps Studio Mode out of v1, and nothing here is built or decided. The owner's decisions are §14 of the design, Q1–Q14, each with options and a recommendation. Q2 and Q13 are decided (D54): a Studio switch on the panel, and clicks kept for every take.
+**Status: the plan for milestone M4.5 (D55: Studio Mode now, in 1.0).** The owner's decisions are §14 of the design, Q1–Q14, each with options and a recommendation. Decided so far: Q1 (now, D55); Q2 and Q13 (a Studio switch on the panel, clicks kept for every take, D54); Q6 and Q10 (a zoom grows the card, Replace keeps the original, D56).
 
 Claims are tagged as measured on the reference machine, read in source, read in CleanShot's own app files, documented, or inferred. Paths under `/tmp/claude-1000/…` point to scratch files that no longer exist: harnesses, the offscreen-render prototype, source checkouts. The results are in the report.
 

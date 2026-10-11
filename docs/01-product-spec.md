@@ -5,7 +5,7 @@ Status: **DRAFT; product direction decided 2026-10-06**. The open questions left
 **Decided**
 - **Product:** the CleanShot X experience, UX and UI, matched feature for feature (the inventory is our feature list), except Cloud. Every part is Snip's own; nothing depends on Omasnap (D27).
 - **Name:** **Snip**.
-- **Scope:** Studio Mode is **out of v1**.
+- **Scope:** Studio Mode is **in v1**, built now (D55, 2026-10-11; it was out of v1, D3).
 - **Stack:** **Rust core plus Qt UI**.
 - **Licence:** **GPL-3.0-or-later**.
 - **Recording default:** the fast KMS backend, with private-window warnings.
@@ -68,7 +68,7 @@ None of them combines a resident daemon, the full CleanShot recording suite, mul
 ## 2. Goals and non-goals
 
 ### Goals
-1. **Parity with CleanShot X 5.0** in every area below except Cloud. Studio Mode comes after v1. Where we cannot match CleanShot exactly because of Wayland or Linux, §6 records the closest equivalent we will build instead.
+1. **Parity with CleanShot X 5.0** in every area below except Cloud, Studio Mode included (D55). Where we cannot match CleanShot exactly because of Wayland or Linux, §6 records the closest equivalent we will build instead.
 2. **As beautiful as CleanShot, in Omarchy's theme.** CleanShot's layout, motion and polish are rendered in the active Omarchy theme's colours, borders, corners and materials ([06-design-language.md](06-design-language.md)).
 3. **Instant feel.** The hotkey-to-frozen-overlay time is under 35 ms with a warm daemon (about 2–5 refreshes at 144 Hz, mostly the compositor's frame copy), a capture is stored in history within 30 ms of mouse release, and Copy is effectively instant (≤ 5 ms). [03-performance.md](03-performance.md) defines the budgets.
 4. **Omarchy-native.** Colours and fonts come from the active Omarchy theme and change with it. Keybinds are Lua snippets in Omarchy's style. Status appears in the Omarchy bar, and notifications and do-not-disturb go through omarchy-shell.
@@ -120,8 +120,8 @@ Priorities (re-ranked 2026-10-06 to match the features named as most important):
   - annotation editor (text, arrows, shapes and the rest)
   - Background tool with Omarchy-theme backgrounds and padding
   - pin to screen
-- **P1: the rest of 1.0 = full CleanShot parity** (M4): the recording suite, All-In-One, and the remaining parity items.
-- **P2: after 1.0:** Studio Mode (out of v1, decided) and extras.
+- **P1: the rest of 1.0 = full CleanShot parity** (M4): the recording suite, All-In-One, and the remaining parity items; Studio Mode (M4.5, D55).
+- **P2: after 1.0:** extras.
 
 The IDs are referenced by the roadmap and will become issues.
 
@@ -292,8 +292,8 @@ A normal floating window (Hyprland rule: float, centred, with optional pin / alw
 | VED-01 | Trimmer: in and out handles, thumbnail strip, frame stepping, play/pause on Space | P1 | CleanShot 5's layout (D50): the name and Export along the top, a sidebar of sections with the cut tool, the recording in the middle with play controls under it, a timeline across the bottom with a ruler, which zooms. |
 | VED-02 | Export: quality, resolution, mute or keep audio, estimated size, Replace or Save as new, export as GIF | P1 | |
 | VED-03 | Cuts: split at playhead (B / Ctrl+B), delete segments | P1 | |
-| VED-04 | **Studio Mode**: record the screen without the cursor, plus event logs (cursor path, clicks, keys) and the camera as a separate stream, saved as a project | P2 | **Out of v1 (decided 2026-10-06).** The v1 recording design keeps the door open (architecture §6.4). D54: a Studio switch on the recording panel, off until turned on and remembered; every take keeps its clicks and pointer positions (no keys). |
-| VED-05 | Studio editor: auto zooms and manual zooms (follow-cursor or fixed), smooth cursor, cursor size and style, click ripple, keystrokes after the fact, camera layout, motion blur, hardware export | P2 | The background and aspect ratio are VED-06, for every recording (D50). Zooms, auto zooms and follow work on every recording, from its click log (D54); the pointer, keystrokes and ripples need a studio take. |
+| VED-04 | **Studio Mode**: record the screen without the cursor, plus event logs (cursor path, clicks, keys) and the camera as a separate stream, saved as a project | P1 | **In v1, built now (D55, 2026-10-11; it was out, D3).** The plan: [research/studio-2026-10/design.md](research/studio-2026-10/design.md). D54: a Studio switch on the recording panel, off until turned on and remembered; every take keeps its clicks and pointer positions (no keys). |
+| VED-05 | Studio editor: auto zooms and manual zooms (follow-cursor or fixed), smooth cursor, cursor size and style, click ripple, keystrokes after the fact, camera layout, motion blur, hardware export | P1 | The background and aspect ratio are VED-06, for every recording (D50). Zooms, auto zooms and follow work on every recording, from its click log (D54); the pointer, keystrokes and ripples need a studio take. |
 | VED-06 | Background around the recording: gradients, wallpapers (blurred too), plain colours, aspect ratio, alignment, padding, inset, shadow, corners; shown in the preview and drawn into the export (MP4 and GIF) | P1 | D50. The Background tool's (BG-01…06), without presets, Auto-balance or the capture blurred. The export puts one image over the video: the background, with a hole where the video shows. |
 
 ### 5.11 Capture history (HIS)
@@ -396,7 +396,7 @@ Inside overlays (no Hyprland binds needed, because the overlay has keyboard focu
 | # | Question | Decision |
 |---|---|---|
 | Q1 | Name | **Snip** (AUR package `snip-screenshot`; see §1) |
-| Q2 | Studio Mode in 1.0? | **Out of v1** |
+| Q2 | Studio Mode in 1.0? | **In v1, built now** (D55, 2026-10-11; was out of v1) |
 | Q5 | Recording default | **gpu-screen-recorder KMS** (fast), with private-window warnings; privacy-safe mode later (REC-15) |
 | Q8 | Licence | **GPL-3.0-or-later** |
 | Q10 | Strategy towards Omasnap | **Independent competitor** (D27): the full CleanShot experience, no shared code (§1.1) |

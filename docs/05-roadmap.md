@@ -243,6 +243,22 @@ Recording came first after all (D43). Then:
 - External stop, crash, suspend and lock are all handled.
 - Every P1 item is done or explicitly waived.
 
+## M4.5: Studio Mode (XL; D55)
+
+CleanShot 5's Studio Mode on Hyprland: zooms placed by hand and automatic, a smooth redrawn pointer, clicks and keystrokes after the fact, motion blur. The plan, measurements and constants: [research/studio-2026-10/design.md](research/studio-2026-10/design.md). Decided so far: a Studio switch on the recording panel, and clicks kept for every take (D54); a zoom grows the whole card, and Replace keeps the original (D56).
+
+| Phase | What you get | Status |
+|---|---|---|
+| 0. Spikes | S1 the offscreen renderer in snipd; S2 the pointer left out on DP-2; S3 timing; S4 the logger's cost; S5 how the pointer feels; S6 the pointer's shape | ⏳ |
+| 1. Zooms you place, on every recording | The zoom lane and its popover in the video editor; level 1–4, Smooth or Dynamic; touching zooms pan; the edit kept (`edit.json`), Replace keeps the original (D56) | ⏳ |
+| 2. Studio takes, the redrawn pointer | The Studio switch on the panel (D54); the Pointer section: size, smoothing, hide when typing or idle | ⏳ |
+| 3. Auto zoom and follow | Zooms placed from every take's clicks (D54); Follow Cursor; Re-run Auto Zoom | ⏳ |
+| 4. Clicks and keys after the fact | Ripples; the Keystrokes section | ⏳ |
+| 5. Polish | Motion blur, Snip's own pointer set, ratios, Export Current Frame | ⏳ |
+| 6. The camera as its own stream | The camera recorded apart, laid out after the fact | ⏳ |
+
+Phase 1's tests are the studio evaluator's, in `cargo test` (the owner's choice).
+
 ## M5: 1.0 hardening (M)
 
 - Multi-monitor matrix: 1, 2 and 3 outputs; mixed scales; rotation; hotplug.
@@ -250,17 +266,16 @@ Recording came first after all (D43). Then:
 - Soak tests pass.
 - Fuzzing of every parser is clean.
 - AUR `snip-screenshot`, onboarding, docs, THIRD_PARTY.md.
-- **Snip 1.0 = CleanShot parity, without Cloud and Studio Mode.**
+- **Snip 1.0 = CleanShot parity, Studio Mode included (D55), without Cloud.**
 
 ## M6: After 1.0
 
-- Studio Mode (VED-04, VED-05; decided to be out of v1).
 - Redaction suggestions (ANN-06b), URL scheme (API-02).
 
 ## Dependencies between milestones
 
 ```
-M0 spikes ──▶ M1 capture + QAO ──▶ M2 editor/background/pins ──▶ M3 screenshot parity ──▶ M4 recording ──▶ M5 1.0 ──▶ M6
+M0 spikes ──▶ M1 capture + QAO ──▶ M2 editor/background/pins ──▶ M3 screenshot parity ──▶ M4 recording ──▶ M4.5 Studio ──▶ M5 1.0 ──▶ M6
                        └────────────────────────────────────── (M4 can start after M1 with a second person) ─┘
 ```
 
