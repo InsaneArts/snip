@@ -2517,6 +2517,26 @@ def record_controls_tips_stay_outside_the_area(s, env):
 
 
 @case
+def record_panel_space_closes_its_menus(s, env):
+    """REC-02: Space picks a window, and the panel hides meanwhile; an open microphone or
+    camera menu stayed on screen, orphaned. It closes with the panel."""
+    p = record_panel(s)
+    try:
+        record_click(s, "record-mic")
+        assert wait_for(lambda: record_hud(s)["menus"], 2), "the microphone menu opens"
+        s.debug("ui", "record", "keys", "{Space}")
+        assert wait_for(lambda: record_hud(s)["picking"], 2), "Space picks a window"
+        assert not record_hud(s)["menus"], "and the menu closes"
+    finally:
+        for _ in range(4):
+            if not record_hud(s)["open"]:
+                break
+            s.debug("ui", "record", "keys", "{Escape}"); time.sleep(0.3)
+        finish(p, timeout=5)
+        s.write_config("")
+
+
+@case
 def record_controls_ask_first(s, env):
     """REC-05: Restart and Delete on the controls ask first, as CleanShot's do, and the
     recording goes on meanwhile; Cancel keeps it, Delete throws it away (no card)."""
