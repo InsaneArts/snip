@@ -76,6 +76,19 @@ const DRAG: Spring = Spring { k: 1000.0, m: 1.0, c: 40.0 };
 const LAND: f64 = 500.0;
 const LAND_STIFF: f64 = 175.0;
 const DRAG_PX: f64 = 8.0;
+/// Fades (ms): out while typing, and back; out when idle (after IDLE still);
+/// a press's ease at each edge. Moving TYPING_PX (px) shows it again.
+const TYPING_FADE: f64 = 150.0;
+const TYPING_PX: f64 = 4.0;
+const IDLE: f64 = 2000.0;
+const IDLE_FADE: f64 = 400.0;
+const PRESS_EASE: f64 = 130.0;
+
+/// 0 → 1 between 0 and 1, eased at both ends (all of the pointer's fades).
+fn smooth(x: f64) -> f64 {
+    let x = x.clamp(0.0, 1.0);
+    x * x * (3.0 - 2.0 * x)
+}
 
 impl Spring {
     /// How far ahead (ms) it chases the path: by c/k, a spring trails what it chases.
@@ -128,7 +141,8 @@ impl Track {
     pub fn new(log: &Log, s: &Settings) -> Option<Track> {
         let clock = Clock::of(log)?;
         let path: Vec<(f64, [f64; 2])> = log.events.iter().filter_map(|e| Some((clock.video_ms(e.t())?, log.header.video_px(e.place()?)))).collect();
-        let (first, last) = (path.first()?.0, path.last()?.0);
+        let first = path.first()?.0;
+        let last = log.events.iter().filter_map(|e| clock.video_ms(e.t())).fold(first, f64::max);
         let from = first.min(0.0);
         let n = ((last + SETTLE - from) / STEP).ceil() as usize + 1;
         let spring = match s.motion {
@@ -137,6 +151,21 @@ impl Track {
             Motion::Off => None,
         };
         let presses = presses(log, &clock, &path);
+        // when it was moved, typed over (and moved more than TYPING_PX from
+        // there), and in the picture already (a software cursor)
+        let moves: Vec<f64> = log.events.iter().filter(|e| matches!(e, Event::Move { .. })).filter_map(|e| clock.video_ms(e.t())).collect();
+        let typed: Vec<(f64, f64)> = log
+            .events
+            .iter()
+            .filter(|e| matches!(e, Event::Typing { .. }))
+            .filter_map(|e| clock.video_ms(e.t()))
+            .map(|m| {
+                let there = raw(&path, m);
+                let back = path.iter().find(|&&(t, q)| t > m && (q[0] - there[0]).hypot(q[1] - there[1]) > TYPING_PX).map_or(f64::INFINITY, |&(t, _)| t);
+                (m, back)
+            })
+            .collect();
+        let baked = baked_spans(log, &clock);
         // the spring, in fixed steps from the start: the same table every time.
         // It chases the path ahead (Spring::lead); before a press it heads for
         // the press, and sits on it until the release, unless it's a drag
@@ -169,7 +198,16 @@ impl Track {
                         x
                     }
                 };
-                Shown { at, opacity: 1.0, press: 0.0 }
+                let press = if !s.press {
+                    0.0
+                } else {
+                    let held = |p: &Press| smooth((t - p.down) / PRESS_EASE) - smooth((t - p.up) / PRESS_EASE);
+                    presses.get(next).map_or(0.0, held).max(if next > 0 { held(&presses[next - 1]) } else { 0.0 })
+                };
+                let typing = if s.hide_typing { typing_shown(&typed, t) } else { 1.0 };
+                let idle = if s.hide_idle { idle_shown(&moves, t) } else { 1.0 };
+                let drawn = s.show && !baked.iter().any(|&(a, b)| t >= a && t < b);
+                Shown { at, opacity: if drawn { typing.min(idle) } else { 0.0 }, press }
             })
             .collect();
         Some(Track { from, shown })
@@ -184,6 +222,49 @@ impl Track {
         let mix = |x: f64, y: f64| x + (y - x) * k;
         Shown { at: [mix(a.at[0], b.at[0]), mix(a.at[1], b.at[1])], opacity: mix(a.opacity, b.opacity), press: mix(a.press, b.press) }
     }
+}
+
+/// How much the pointer shows at `t` for typing: gone TYPING_FADE after the
+/// last typing before `t`, until it moved TYPING_PX from there (`typed`:
+/// each typing's time and that move's).
+fn typing_shown(typed: &[(f64, f64)], t: f64) -> f64 {
+    let i = typed.partition_point(|&(m, _)| m <= t);
+    let Some(&(m, back)) = i.checked_sub(1).map(|i| &typed[i]) else { return 1.0 };
+    if t >= back {
+        smooth((t - back) / TYPING_FADE)
+    } else {
+        1.0 - smooth((t - m) / TYPING_FADE)
+    }
+}
+
+/// How much the pointer shows at `t` for stillness: gone IDLE_FADE after
+/// IDLE without a move, and back by the next move.
+fn idle_shown(moves: &[f64], t: f64) -> f64 {
+    let i = moves.partition_point(|&m| m <= t);
+    let Some(&last) = i.checked_sub(1).map(|i| &moves[i]) else { return 1.0 };
+    let out = 1.0 - smooth((t - last - IDLE) / IDLE_FADE);
+    let back = moves.get(i).map_or(0.0, |&next| smooth((t - next + TYPING_FADE) / TYPING_FADE));
+    out.max(back)
+}
+
+/// When the pointer was in the picture already ([from, to) ms of the video):
+/// a software cursor, from the start (the header) or from a `baked` event.
+fn baked_spans(log: &Log, clock: &Clock) -> Vec<(f64, f64)> {
+    let (mut out, mut from) = (vec![], log.header.baked.then_some(f64::NEG_INFINITY));
+    for e in &log.events {
+        let Event::Baked { t, baked } = *e else { continue };
+        let Some(ms) = clock.video_ms(t) else { continue };
+        match (baked, from) {
+            (true, None) => from = Some(ms),
+            (false, Some(a)) => {
+                out.push((a, ms));
+                from = None;
+            }
+            _ => {}
+        }
+    }
+    out.extend(from.map(|a| (a, f64::INFINITY)));
+    out
 }
 
 /// The logged path at `ms`: straight from place to place, but still through a
@@ -292,6 +373,51 @@ mod tests {
             let (got, want) = (p.at(ms).at[0], raw.at(ms).at[0]);
             assert!((got - want).abs() < 4.0, "at {ms} ms: {got:.1}, the path {want:.1}");
         }
+    }
+
+    #[test]
+    fn the_pointer_fades_while_typing_until_it_moves() {
+        let events = vec![moved(0.0, 100, 100), Event::Typing { t: at(1.0) }, moved(2.0, 110, 100)];
+        let p = Track::new(&take(events.clone()), &Settings::DEFAULT).unwrap();
+        assert!(((p.at(900.0).opacity) - 1.0).abs() < 1e-3);
+        assert!(((p.at(1200.0).opacity) - 0.0).abs() < 1e-3, "gone 150 ms after the typing");
+        assert!(((p.at(1900.0).opacity) - 0.0).abs() < 1e-3, "still, it stays gone");
+        assert!(((p.at(2200.0).opacity) - 1.0).abs() < 1e-3, "back once it moved");
+        let shown = Track::new(&take(events), &Settings { hide_typing: false, ..Settings::DEFAULT }).unwrap();
+        assert!(((shown.at(1500.0).opacity) - 1.0).abs() < 1e-3, "unless the edit keeps it");
+    }
+
+    #[test]
+    fn a_still_pointer_fades_when_the_edit_asks() {
+        let events = vec![moved(0.0, 100, 100), moved(5.0, 300, 100)];
+        let p = Track::new(&take(events.clone()), &Settings { hide_idle: true, ..Settings::DEFAULT }).unwrap();
+        assert!(((p.at(1900.0).opacity) - 1.0).abs() < 1e-3);
+        assert!(((p.at(2500.0).opacity) - 0.0).abs() < 1e-3, "gone 400 ms after 2 s still");
+        assert!(((p.at(5000.0).opacity) - 1.0).abs() < 1e-3, "back by the time it moves");
+        let kept = Track::new(&take(events), &Settings::DEFAULT).unwrap();
+        assert!(((kept.at(2500.0).opacity) - 1.0).abs() < 1e-3, "CleanShot's default keeps it");
+    }
+
+    #[test]
+    fn a_press_shrinks_the_pointer_while_its_held() {
+        let events = vec![moved(0.0, 100, 100), button(0.5, true, 100.5, 100.5), button(0.8, false, 100.5, 100.5)];
+        let p = Track::new(&take(events.clone()), &Settings::DEFAULT).unwrap();
+        assert!(((p.at(400.0).press) - 0.0).abs() < 1e-3);
+        assert!(((p.at(700.0).press) - 1.0).abs() < 1e-3, "down after 130 ms");
+        assert!(((p.at(1000.0).press) - 0.0).abs() < 1e-3, "up 130 ms after the release");
+        let flat = Track::new(&take(events), &Settings { press: false, ..Settings::DEFAULT }).unwrap();
+        assert!(((flat.at(700.0).press) - 0.0).abs() < 1e-3, "unless the edit turns it off");
+    }
+
+    #[test]
+    fn the_pointer_isnt_drawn_where_the_video_has_it() {
+        let events = vec![moved(0.0, 100, 100), Event::Baked { t: at(1.0), baked: true }, Event::Baked { t: at(2.0), baked: false }];
+        let p = Track::new(&take(events.clone()), &Settings::DEFAULT).unwrap();
+        assert!(((p.at(500.0).opacity) - 1.0).abs() < 1e-3);
+        assert!(((p.at(1500.0).opacity) - 0.0).abs() < 1e-3, "in the picture already: not drawn twice");
+        assert!(((p.at(2500.0).opacity) - 1.0).abs() < 1e-3);
+        let off = Track::new(&take(events), &Settings { show: false, ..Settings::DEFAULT }).unwrap();
+        assert!(((off.at(500.0).opacity) - 0.0).abs() < 1e-3, "the edit hides it");
     }
 
     #[test]
