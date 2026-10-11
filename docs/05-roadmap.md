@@ -245,11 +245,11 @@ Recording came first after all (D43). Then:
 
 ## M4.5: Studio Mode (XL; D55)
 
-CleanShot 5's Studio Mode on Hyprland: zooms placed by hand and automatic, a smooth redrawn pointer, clicks and keystrokes after the fact, motion blur. The plan, measurements and constants: [research/studio-2026-10/design.md](research/studio-2026-10/design.md). Decided so far: a Studio switch on the recording panel, and clicks kept for every take (D54); a zoom grows the whole card, and Replace keeps the original (D56).
+CleanShot 5's Studio Mode on Hyprland: zooms placed by hand and automatic, a smooth redrawn pointer, clicks and keystrokes after the fact, motion blur. The plan, measurements and constants: [research/studio-2026-10/design.md](research/studio-2026-10/design.md). Decided so far: a Studio switch on the recording panel, and clicks kept for every take (D54); a zoom grows the whole card, and Replace keeps the original (D56); a hardware pointer for studio takes (D57); the editor opens when a take stops (D58); the user's cursor theme and CleanShot's pointer defaults (D59, D60).
 
 | Phase | What you get | Status |
 |---|---|---|
-| 0. Spikes | S1 the offscreen renderer in snipd; S2 the pointer left out on DP-2; S3 timing; S4 the logger's cost; S5 how the pointer feels; S6 the pointer's shape | S1 ✅, the rest ⏳ |
+| 0. Spikes | S1 the offscreen renderer in snipd; S2 the pointer left out on DP-2; S3 timing; S4 the logger's cost; S5 how the pointer feels; S6 the pointer's shape | S1 ✅; S2 ⚠️ the pointer was in the video (D57, S2b next); the rest ⏳ |
 | 1. Zooms you place, on every recording | The zoom lane and its popover in the video editor; level 1–4, Smooth or Dynamic; touching zooms pan; the edit kept (`edit.json`), Replace keeps the original (D56) | ✅ |
 | 2. Studio takes, the redrawn pointer | The Studio switch on the panel (D54); the Pointer section: size, smoothing, hide when typing or idle | ⏳ |
 | 3. Auto zoom and follow | Zooms placed from every take's clicks (D54); Follow Cursor; Re-run Auto Zoom | ⏳ |
@@ -259,7 +259,7 @@ CleanShot 5's Studio Mode on Hyprland: zooms placed by hand and automatic, a smo
 
 Phase 1's tests are the studio evaluator's, in `cargo test` (the owner's choice).
 
-Phase 1 is built (2026-10-12): the zoom lane, its popover (level, the spotlight on what a zoom shows) and its right-click menu, Smooth or Dynamic under Animations, touching zooms that pan, the edit kept in `edit.json` with a Replace that keeps the original (D56), undo, and an export drawn frame by frame with the preview's scene (`snipd --render-video`; S1 answered: 172 fps at 2688×1568, the frames made I420 on the GPU). Its "done when" asks the owner to like the ramps: that's still to hear.
+Phase 1 is built (2026-10-12): the zoom lane, its popover (level, the spotlight on what a zoom shows) and its right-click menu, Smooth or Dynamic under Animations, touching zooms that pan, the edit kept in `edit.json` with a Replace that keeps the original (D56), undo, and an export drawn frame by frame with the preview's scene (`snipd --render-video`; S1 answered: 172 fps at 2688×1568, the frames made I420 on the GPU). The owner liked Smooth and Dynamic (2026-10-12), its "done when".
 
 ## M5: 1.0 hardening (M)
 

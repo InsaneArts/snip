@@ -996,6 +996,8 @@ Each question has options and a recommendation. Recorded answers become D-number
 
 *Recommend (a).*
 
+**Decided (D58, 2026-10-12): (a).**
+
 **Q4. Auto zoom on new studio takes?**
 - (a) **On, as CleanShot does, with Remove All Zooms one click away.**
 - (b) Off.
@@ -1023,6 +1025,8 @@ Each question has options and a recommendation. Recorded answers become D-number
 
 *Recommend (a) first, then (b) in Phase 5.* Never Apple's or Microsoft's art.
 
+**Decided (D59, 2026-10-12): (a)** first; Snip's own set can follow in Phase 5.
+
 **Q8. What if the pointer can't be left out** (software cursor at the start)?
 - (a) **Say so on the panel ("VRR is on: the pointer will be in the video") and record the studio take with the pointer baked in. Zooms, keys and clicks still work; the Pointer section is greyed out.**
 - (b) Refuse Studio for that take.
@@ -1030,11 +1034,15 @@ Each question has options and a recommendation. Recorded answers become D-number
 
 *Recommend (a).* Never (c): it changes the user's own setting, and brings back NVIDIA's VRR problems.
 
+**Decided (D57, 2026-10-12): a hardware pointer for the take,** not a baked one: (c), or another way to the same end. Spike S2 found the pointer in the video with `-cursor no` on DP-2 although none of §4.1's conditions held (Aquamarine had opened two DRM backends for the one card: a suspect for the auto rule's "two GPUs"). How Snip gets the hardware plane, and whether forcing `cursor:no_hardware_cursors = 0` for the take does it, is spike S2b: a first try was inconclusive, the pointer hidden by a key press.
+
 **Q9. Pointer defaults.**
 - (a) **CleanShot's: size 2, Natural, press effect on, hide when typing on, hide when idle off, ripple only if Highlight Clicks was on.**
 - (b) Snip's own.
 
 *Recommend (a).*
+
+**Decided (D60, 2026-10-12): (a),** CleanShot's.
 
 **Q10. Replace keeps the original** (`original.mp4` + `edit.json`, as screenshots do with D28).
 - (a) **Yes: edits stay editable.** It costs one more video once Replace is used.
