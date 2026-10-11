@@ -3433,6 +3433,47 @@ def tray_menu(s, env):
 
 
 @case
+def history_header_fits(s, env):
+    """HIS-01: History's header fits its window: the title, filters, search and count on the
+    left never run into the keys and Clear History on the right, nor into the question
+    before deleting. The search box grew with what was typed, into them."""
+    png = s.tmp / "fits.png"
+    make_text_png(png, ["header"])
+    open_card(s, png); time.sleep(0.3)
+    s.json("history")
+    try:
+        assert wait_for(lambda: history_state(s)["open"], 3), "History opens"
+        def clear(st):
+            hx, hy, hw, hh = st["header"]
+            rx, ry, rw, rh = st["right"]
+            return rx >= hx + hw + 8 or ry >= hy + hh, (st["header"], st["right"])
+        ok, why = clear(history_state(s))
+        assert ok, ("the keys and Clear History", why)
+        long = "where did i see that long error message about the build cache and the linker on the arm runner it said something about a missing symbol"
+        time.sleep(0.5)                                             # laid out (a frame after a change)
+        w0 = history_state(s)["header"][2]
+        s.debug("ui", "history", "keys", long)
+        assert wait_for(lambda: history_state(s)["query"] == long, 2), "typing searches"
+        assert wait_for(lambda: history_state(s)["header"][2] >= w0 + 60, 2), "the search box grows"
+        time.sleep(0.4)                                             # the results, and so the count, 120 ms later
+        ok, why = clear(history_state(s))
+        assert ok, ("a long search grew into them", why)
+        s.debug("ui", "history", "keys", "{Escape}")                # clears the search
+        assert wait_for(lambda: (lambda st: st["query"] == "" and st["items"])(history_state(s)), 2), "the list is back"
+        s.debug("ui", "history", "keys", "{Right}{Delete}")         # the question before deleting one
+        assert wait_for(lambda: history_state(s)["asking"] not in ("", "all"), 2), "it asks"
+        ok, why = clear(history_state(s))
+        assert ok, ("the question", why)
+        s.debug("ui", "history", "keys", "{Escape}")                # no
+    finally:
+        for _ in range(3):
+            if not history_state(s)["open"]:
+                break
+            s.debug("ui", "history", "keys", "{Escape}"); time.sleep(0.3)
+        s.cli("close-all")
+
+
+@case
 def history_window(s, env):
     """HIS-01, 05: `snip history` shows past captures newest first; ←/→ move, Enter restores
     one to Quick Access (the band stays for more), typing searches their text, Ctrl+C copies,
