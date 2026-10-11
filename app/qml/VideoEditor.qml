@@ -50,6 +50,8 @@ Window {
     property int maxHeight: 0                 // 0: as recorded
     property real progress: -1                // an export's, 0…1; -1: none
     property string error: ""
+    // Studio Mode (D55): the zooms on this recording and how they move ({zooms, zoom_style})
+    property var studio: ({ zooms: [], zoom_style: "smooth" })
     property string section: "audio"          // the sidebar's (D50)
     property bool exportOpen: false           // the Export popover
     property real zoom: 1                     // the timeline's: 1 (all of it) to 8
@@ -186,7 +188,7 @@ Window {
     MediaPlayer {
         id: player
         source: ve.info.path ? "file://" + ve.info.path : ""
-        videoOutput: video
+        videoOutput: studioFrame.video
         // paused, the first frame shows (stopped, the picture stays black)
         onMediaStatusChanged: if (mediaStatus === MediaPlayer.LoadedMedia) pause()
         audioOutput: AudioOutput {
@@ -262,8 +264,10 @@ Window {
         const x = timeline.x + headMs * timeline.k
         if (x < tlView.contentX || x > tlView.contentX + tlView.width) scrollTo(x - tlView.width * 0.1)
     }
+    // the time of the frame shown: zooms follow the picture, every frame
+    FrameTime { id: frameTime; sink: studioFrame.video.videoSink }
     Connections {
-        target: video.videoSink
+        target: studioFrame.video.videoSink
         function onVideoFrameChanged() { if (ve.seeking) { seekGuard.stop(); ve.seekDone() } }
     }
 
@@ -444,32 +448,16 @@ Window {
             anchors.centerIn: parent
             width: ve.outer.w * k
             height: ve.outer.h * k
-            // in the recording's pixels, its corner at 0, 0
-            Item {
-                x: -ve.outer.x * result.k
-                y: -ve.outer.y * result.k
+            // the recording in its background, as the export draws it (Studio Mode, D55)
+            StudioFrame {
+                id: studioFrame
                 transform: Scale { xScale: result.k; yScale: result.k }
-                BackgroundLayer { visible: ve.bgLive !== null; bg: ve.bgLive; rect: ve.outer; inner: ve.inner }
-                VideoOutput {
-                    id: video
-                    objectName: "video-preview"
-                    width: ve.inner.w
-                    height: ve.inner.h
-                    // its corners rounded, at the size it shows
-                    readonly property size shown: Qt.size(Math.ceil(width * result.k * Screen.devicePixelRatio), Math.ceil(height * result.k * Screen.devicePixelRatio))
-                    layer.enabled: !!ve.bgLive && ve.bgLive.radius > 0
-                    layer.textureSize: shown
-                    layer.effect: MultiEffect { maskEnabled: true; maskSource: videoMask; maskThresholdMin: 0.5; maskSpreadAtMin: 1.0 }
-                }
-                Item {
-                    id: videoMask
-                    visible: false
-                    width: ve.inner.w
-                    height: ve.inner.h
-                    layer.enabled: true
-                    layer.textureSize: video.shown
-                    Rectangle { anchors.fill: parent; radius: ve.bgLive ? ve.bgLive.radius : 0; color: "white" }
-                }
+                bg: ve.bgLive
+                outer: ve.outer
+                inner: ve.inner
+                studio: ve.studio
+                ms: frameTime.ms
+                pixelScale: result.k * Screen.devicePixelRatio
             }
         }
         MouseArea { anchors.fill: parent; onPressed: ve.focusKeys(); onClicked: ve.playPause() }
@@ -962,6 +950,7 @@ Window {
         case "keys": Platform.sendKeys(ve, a.slice(1).join(" ")); break
         case "export": exportIt(a[1] === "replace"); break
         case "error": error = a.slice(1).join(" "); break
+        case "studio": studio = JSON.parse(a.slice(1).join(" ")); break
         case "where": Engine.log("video_where", JSON.stringify(Probe.where(ve, a[1])).slice(1, -1)); break
         case "state":
             Engine.log("video_state", JSON.stringify({ id: info.id, duration: duration, cuts: cuts, cut: parts.filter(p => p.cut).map(p => [p.a, p.b]),
