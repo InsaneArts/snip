@@ -131,15 +131,30 @@ fn cover_input(edit: &Edit) -> Vec<String> {
 /// `select` had left frames over at each cut, and the sound up to 43 ms
 /// off the picture (ffmpeg research: this is exact).
 fn cut_graph(edit: &Edit, sound: bool) -> String {
+    parts_graph(edit, 0, true, sound)
+}
+
+/// The parts kept, each cut on a frame (`edit.fps`), in seconds.
+fn kept_frames(edit: &Edit) -> Vec<(f64, f64)> {
     let fps = if edit.fps > 0.0 { edit.fps } else { 30.0 };
     let snap = |t: f64| (t * fps).round() / fps;
-    let keep: Vec<(f64, f64)> = edit.keep.iter().map(|&(a, b)| (snap(a), snap(b))).filter(|(a, b)| b > a).collect();
+    edit.keep.iter().map(|&(a, b)| (snap(a), snap(b))).filter(|(a, b)| b > a).collect()
+}
+
+/// `cut_graph` for input `input`: its picture joined as `[vc]` when
+/// `video`, its tracks mixed as `[ac]` when `sound`.
+fn parts_graph(edit: &Edit, input: usize, video: bool, sound: bool) -> String {
+    let fps = if edit.fps > 0.0 { edit.fps } else { 30.0 };
+    let keep = kept_frames(edit);
     let k = keep.len().max(1);
     let fan = |name: &str| (0..k).map(|i| format!("[{name}{i}]")).collect::<String>();
-    let mut g = vec![format!("[0:v]fps={fps},split={k}{}", fan("vin"))];
+    let mut g = vec![];
+    if video {
+        g.push(format!("[{input}:v]fps={fps},split={k}{}", fan("vin")));
+    }
     if sound {
         let live: Vec<(usize, f64)> = edit.tracks.iter().copied().enumerate().filter(|&(_, v)| v > 0.0).collect();
-        let mut parts: Vec<String> = live.iter().map(|(i, v)| format!("[0:a:{i}]volume={v:.3}[t{i}]")).collect();
+        let mut parts: Vec<String> = live.iter().map(|(i, v)| format!("[{input}:a:{i}]volume={v:.3}[t{i}]")).collect();
         let ins: String = live.iter().map(|(i, _)| format!("[t{i}]")).collect();
         let mix = if live.len() > 1 { format!("amix=inputs={}:normalize=0:duration=first,", live.len()) } else { "anull,".into() };
         let mono = if edit.mono { "pan=mono|c0=0.5*c0+0.5*c1," } else { "" };
@@ -148,15 +163,60 @@ fn cut_graph(edit: &Edit, sound: bool) -> String {
     }
     let mut joined = String::new();
     for (i, (a, b)) in keep.iter().enumerate() {
-        g.push(format!("[vin{i}]trim=start={a:.6}:end={b:.6},setpts=PTS-STARTPTS[v{i}]"));
-        joined += &format!("[v{i}]");
+        if video {
+            g.push(format!("[vin{i}]trim=start={a:.6}:end={b:.6},setpts=PTS-STARTPTS[v{i}]"));
+            joined += &format!("[v{i}]");
+        }
         if sound {
             g.push(format!("[ain{i}]atrim=start={a:.6}:end={b:.6},asetpts=PTS-STARTPTS[a{i}]"));
             joined += &format!("[a{i}]");
         }
     }
-    g.push(format!("{joined}concat=n={k}:v=1:a={}[vc]{}", sound as u8, if sound { "[ac]" } else { "" }));
+    let outs = format!("{}{}", if video { "[vc]" } else { "" }, if sound { "[ac]" } else { "" });
+    g.push(format!("{joined}concat=n={k}:v={}:a={}{outs}", video as u8, sound as u8));
     g.join(";")
+}
+
+/// A Studio export (D55, the design's §8.2): ffmpeg decodes the kept parts
+/// (`decode`: raw 4:2:0 frames of the recording's size on stdout) for
+/// snipd's renderer, which draws each frame (the background still, the card
+/// zoomed) and hands it (raw RGBA, `size`) to a second ffmpeg (`encode`)
+/// that adds the sound and writes `dst`. `keep` is where each part starts
+/// and ends in the recording, cut on frames, so the renderer knows each
+/// frame's time.
+pub struct Render {
+    pub decode: Vec<String>,
+    pub encode: Vec<String>,
+    pub keep: Vec<(f64, f64)>,
+    pub fps: f64,
+}
+
+pub fn render_args(src: &Path, dst: &Path, edit: &Edit, size: (u32, u32)) -> Render {
+    let fps = if edit.fps > 0.0 { edit.fps } else { 30.0 };
+    let src_s = src.to_string_lossy().into_owned();
+    let mut decode: Vec<String> = ["-v", "error", "-nostdin", "-i"].map(String::from).to_vec();
+    decode.extend([src_s.clone(), "-filter_complex".into(), format!("{};[vc]format=yuv420p[v]", parts_graph(edit, 0, true, false))]);
+    decode.extend(["-map", "[v]", "-f", "rawvideo", "-pix_fmt", "yuv420p", "pipe:1"].map(String::from));
+    let sound = edit.tracks.iter().any(|&v| v > 0.0);
+    let mut encode: Vec<String> = ["-v", "error", "-nostdin", "-y", "-f", "rawvideo", "-pix_fmt", "rgba", "-s"].map(String::from).to_vec();
+    encode.extend([format!("{}x{}", size.0, size.1), "-r".into(), format!("{fps}"), "-i".into(), "pipe:0".into()]);
+    // the picture in BT.709, as gsr records it, and tagged so
+    let picture = "[0:v]scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv[v]";
+    if sound {
+        encode.extend(["-i".into(), src_s, "-filter_complex".into(), format!("{picture};{}", parts_graph(edit, 1, false, true))]);
+        encode.extend(["-map", "[v]", "-map", "[ac]", "-c:a", "aac", "-b:a", "160k"].map(String::from));
+    } else {
+        encode.extend(["-filter_complex".into(), picture.into(), "-map".into(), "[v]".into()]);
+    }
+    let q = edit.quality.min(51);
+    if edit.encoder == "h264_nvenc" {
+        encode.extend(["-c:v", "h264_nvenc", "-preset", "p4", "-rc", "vbr", "-cq", &(q + 9).min(51).to_string()].map(String::from));
+    } else {
+        encode.extend(["-c:v", "libx264", "-preset", "medium", "-crf", &q.to_string()].map(String::from));
+    }
+    encode.extend(["-movflags".into(), "+faststart".into()]);
+    encode.push(dst.to_string_lossy().into_owned());
+    Render { decode, encode, keep: kept_frames(edit), fps }
 }
 
 /// A GIF's frames from the joined video: its rate, at most `width` wide

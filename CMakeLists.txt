@@ -94,7 +94,8 @@ qt_add_qml_module(snipd
     app/src/loupe.cpp app/src/loupe.h
     app/src/platform.cpp app/src/platform.h
     app/src/tray.cpp app/src/tray.h
-    app/src/redact.cpp app/src/redact.h)
+    app/src/redact.cpp app/src/redact.h
+    app/src/render.cpp app/src/render.h)
 
 target_link_libraries(snipd PRIVATE
   snip_core_qml

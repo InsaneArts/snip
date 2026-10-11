@@ -152,16 +152,20 @@ Window {
         error = ""
         progress = 0
         player.pause()
+        // Studio Mode (D55): with zooms, snipd draws every frame with this scene
+        if (studio.zooms.length > 0)
+            return send(replace, null, { bg: bgLive, outer: outer, inner: inner, studio: studio, theme: Engine.theme })
         if (!bgLive) return send(replace, null)
         // the background first, as the export draws it: a grab, then ffmpeg
         coverReplace = replace
         cover.active = true
     }
-    function send(replace, background) {
+    function send(replace, background, scene) {
         const cfg = controller && controller.settings.config ? controller.settings.config.recording : null
         Engine.videoExport(info.id, JSON.stringify({
             keep: kept, tracks: volumes, mono: mono, height: maxHeight > 0 ? maxHeight : null, quality: quality,
-            gif: gif ? { fps: cfg ? cfg.gif_fps : 15, width: cfg ? cfg.gif_width : 800 } : null, background: background
+            gif: gif ? { fps: cfg ? cfg.gif_fps : 15, width: cfg ? cfg.gif_width : 800 } : null, background: background,
+            scene: scene || null
         }), replace)
     }
     property bool coverReplace: false
