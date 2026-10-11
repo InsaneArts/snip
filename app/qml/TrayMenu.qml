@@ -23,6 +23,8 @@ Window {
     readonly property string recordPhase: controller ? controller.recordHud.phase : "closed"
     readonly property bool recording: ["countdown", "starting", "launching", "recording", "paused"].includes(recordPhase)
     readonly property bool pausable: recordPhase === "recording" || recordPhase === "paused"
+    // a locked pin lets clicks through: this menu is the way back (as it opens)
+    property bool pinsLocked: false
 
     flags: Qt.FramelessWindowHint
     color: "transparent"
@@ -41,7 +43,8 @@ Window {
         ["scroll", "Scrolling Capture"], ["text", "Capture Text"],
         ["record", tray.recording ? "Stop Recording" : "Record Screen"]
     ].concat(tray.pausable ? [["record-pause", tray.recordPhase === "paused" ? "Resume Recording" : "Pause Recording"]] : [], [null,
-        ["open", "Open…"], ["edit-clipboard", "Open from Clipboard"], ["pin", "Pin to the Screen…"],
+        ["open", "Open…"], ["edit-clipboard", "Open from Clipboard"], ["pin", "Pin to the Screen…"]],
+        tray.pinsLocked ? [["pins-unlock", "Unlock Pins"]] : [], [
         ["history", "Capture History…"], ["restore", "Restore Recently Closed"], null,
         ["desktop-toggle", tray.controller && tray.controller.quickAccess.clutterHidden ? "Show Desktop Clutter" : "Hide Desktop Clutter"], null,
         ["settings", "Settings…"], ["about", "About Snip"], ["quit", "Quit Snip"]
@@ -58,6 +61,7 @@ Window {
         const k = {}
         for (const s of JSON.parse(Engine.shortcuts() || "[]")) if (s.keys.length) k[s.id] = s.keys[0]
         keys = k
+        pinsLocked = !!controller && controller.pins.some(p => p.locked)
         menu.opacity = 1
         visible = true
         keyCatcher.forceActiveFocus()
