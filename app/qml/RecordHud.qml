@@ -791,7 +791,7 @@ Window {
                             ["record-camera-button", "webcam", "webcam-off", hud.cameraEntry ? hud.cameraEntry.name : "No camera", hud.cameraEntry !== null],
                             ["record-clicks", "click", "", "Highlight clicks", hud.clicks],
                             ["record-keys", "command", "", "Show keystrokes (command keys only)", hud.keys],
-                            ["record-studio", "sparkles", "", "Studio: the editor redraws the pointer, smooth", hud.studio && !hud.gif]]
+                            ["record-studio", "clapperboard", "", "Studio: the editor redraws the pointer, smooth", hud.studio && !hud.gif]]
                     PanelCell {
                         required property var modelData
                         objectName: modelData[0]
