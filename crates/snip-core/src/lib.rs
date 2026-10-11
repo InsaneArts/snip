@@ -20,6 +20,7 @@ pub mod record;
 pub mod take;
 pub mod redact;
 pub mod stitch;
+pub mod studio;
 pub mod store;
 pub mod text;
 pub mod theme;
