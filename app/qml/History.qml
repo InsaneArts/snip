@@ -82,6 +82,10 @@ Window {
     }
     // HIS-03: delete from history (a copy saved in your folders stays), asked first
     property string asking: ""               // the id to delete, "all" for Clear History, or ""
+    // the header's width with all of it shown: while a question doesn't fit
+    // beside it, only the title stays
+    readonly property real headerFull: titleText.implicitWidth + filterRow.implicitWidth + searchBox.width + countText.implicitWidth + 3 * 14
+    readonly property bool crowded: asking !== "" && 24 + headerFull + 24 + question.implicitWidth + 24 > width
     property bool dontAsk: false
     function askDelete(i) {
         if (!items[i]) return
@@ -154,10 +158,12 @@ Window {
             id: header
             x: 24; y: 16
             spacing: 14
-            Text { text: "Capture History"; color: Theme.text; font.family: Theme.fontUi; font.pixelSize: 15; font.weight: Font.DemiBold
+            Text { id: titleText; text: "Capture History"; color: Theme.text; font.family: Theme.fontUi; font.pixelSize: 15; font.weight: Font.DemiBold
                    anchors.verticalCenter: parent.verticalCenter }
             // HIS-01
             Row {
+                id: filterRow
+                visible: !hist.crowded
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 2
                 Repeater {
@@ -185,20 +191,26 @@ Window {
                 }
             }
             Rectangle {
+                id: searchBox
+                visible: !hist.crowded
                 anchors.verticalCenter: parent.verticalCenter
-                width: Math.max(180, searchText.implicitWidth + 44); height: 28; radius: 14
+                width: Math.min(320, Math.max(180, searchText.implicitWidth + 44)); height: 28; radius: 14
                 color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
                 border.width: hist.query !== "" ? 1 : 0; border.color: Theme.accent
                 Icon { x: 10; anchors.verticalCenter: parent.verticalCenter; name: "search"; size: 14; color: Theme.textSecondary }
                 Text {
                     id: searchText
                     x: 30; anchors.verticalCenter: parent.verticalCenter
+                    width: parent.width - 40
+                    elide: hist.query !== "" ? Text.ElideLeft : Text.ElideRight     // the end of what's typed
                     text: hist.query !== "" ? hist.query : "Type to search the text in captures"
                     color: hist.query !== "" ? Theme.text : Theme.textSecondary
                     font.family: Theme.fontUi; font.pixelSize: 12
                 }
             }
             Text {
+                id: countText
+                visible: !hist.crowded
                 anchors.verticalCenter: parent.verticalCenter
                 text: hist.items.length === 0 ? (hist.query !== "" || hist.filter !== "all" ? "Nothing matches" : "No captures yet")
                       : hist.items.length + (hist.items.length === 1 ? " capture" : " captures")
@@ -206,17 +218,20 @@ Window {
             }
         }
         Row {
+            id: actions
             visible: hist.asking === ""
             anchors { right: parent.right; rightMargin: 24; verticalCenter: header.verticalCenter }
             spacing: 16
             Text { anchors.verticalCenter: parent.verticalCenter
+                   visible: 24 + hist.headerFull + 24 + implicitWidth + 16 + clearButton.width + 24 <= hist.width   // only with room
                    text: "←→ Move   ⏎ Restore   Space Preview   ⌫ Delete   Esc Close"
                    color: Theme.textSecondary; font.family: Theme.fontUi; font.pixelSize: 11 }
-            ToolButton { label: "Clear History…"; enabled: hist.all.length > 0
+            ToolButton { id: clearButton; label: "Clear History…"; enabled: hist.all.length > 0
                          onClicked: { hist.asking = "all"; hist.dontAsk = false } }
         }
         // the question before deleting
         Row {
+            id: question
             visible: hist.asking !== ""
             anchors { right: parent.right; rightMargin: 24; verticalCenter: header.verticalCenter }
             spacing: 12
@@ -423,7 +438,10 @@ Window {
         case "where": Engine.log("history_where", JSON.stringify(Probe.where(hist, a[1])).slice(1, -1)); break
         case "state":
             Engine.log("history_state", JSON.stringify({ open: visible, items: items.map(i => i.id), current: current, query: query, filter: filter,
-                                                        restored: Object.keys(restored), asking: asking, menu: menu.visible }).slice(1, -1))
+                                                        restored: Object.keys(restored), asking: asking, menu: menu.visible,
+                                                        // tests: the header, and the actions or question at its right
+                                                        header: [header.x, header.y, header.width, header.height],
+                                                        right: (r => [r.x, r.y, r.width, r.height])(asking === "" ? actions : question) }).slice(1, -1))
             break
         }
     }
