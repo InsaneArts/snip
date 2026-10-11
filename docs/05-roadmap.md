@@ -249,9 +249,9 @@ CleanShot 5's Studio Mode on Hyprland: zooms placed by hand and automatic, a smo
 
 | Phase | What you get | Status |
 |---|---|---|
-| 0. Spikes | S1 the offscreen renderer in snipd; S2 the pointer left out on DP-2; S3 timing; S4 the logger's cost; S5 how the pointer feels; S6 the pointer's shape | S1 ✅; S2 ⚠️ the pointer was in the video (D57, S2b next); the rest ⏳ |
+| 0. Spikes | S1 the offscreen renderer in snipd; S2 the pointer left out on DP-2; S3 timing; S4 the logger's cost; S5 how the pointer feels; S6 the pointer's shape | S1 ✅; S2 ✅ (in the video on auto; out with the hardware plane forced: D57); the rest ⏳ |
 | 1. Zooms you place, on every recording | The zoom lane and its popover in the video editor; level 1–4, Smooth or Dynamic; touching zooms pan; the edit kept (`edit.json`), Replace keeps the original (D56) | ✅ |
-| 2. Studio takes, the redrawn pointer | The Studio switch on the panel (D54); the Pointer section: size, smoothing, hide when typing or idle | ⏳ |
+| 2. Studio takes, the redrawn pointer | The Studio switch on the panel (D54); the Pointer section: size, smoothing, hide when typing or idle | built; S5 (how it feels) to come |
 | 3. Auto zoom and follow | Zooms placed from every take's clicks (D54); Follow Cursor; Re-run Auto Zoom | ⏳ |
 | 4. Clicks and keys after the fact | Ripples; the Keystrokes section | ⏳ |
 | 5. Polish | Motion blur, Snip's own pointer set, ratios, Export Current Frame | ⏳ |
@@ -260,6 +260,8 @@ CleanShot 5's Studio Mode on Hyprland: zooms placed by hand and automatic, a smo
 Phase 1's tests are the studio evaluator's, in `cargo test` (the owner's choice). Phase 2's (the owner's choice, 2026-10-12): `cargo test` for the input log, its timing and the pointer's path; one e2e case for a studio take with the fake recorder (it stops, the editor opens, the log is there); the UI checked by hand.
 
 Phase 1 is built (2026-10-12): the zoom lane, its popover (level, the spotlight on what a zoom shows) and its right-click menu, Smooth or Dynamic under Animations, touching zooms that pan, the edit kept in `edit.json` with a Replace that keeps the original (D56), undo, and an export drawn frame by frame with the preview's scene (`snipd --render-video`; S1 answered: 172 fps at 2688×1568, the frames made I420 on the GPU). The owner liked Smooth and Dynamic (2026-10-12), its "done when".
+
+Phase 2 is built (2026-10-12): every take keeps its input log (D54); the Studio switch on the panel, a studio take recorded without the pointer (D57: the hardware plane forced for it, with DRM outputs alone) and opened in the editor at its end (D58); the pointer redrawn from the log in the preview and the export, the theme's arrow (D59), with the Pointer section (D60). Still to come: spike S5, the owner's feel for the smoothing, and S3, the timing measured per encoder.
 
 ## M5: 1.0 hardening (M)
 

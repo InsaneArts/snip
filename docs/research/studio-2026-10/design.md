@@ -403,7 +403,7 @@ Stop ─▶ history/<id>/: original.mp4 · input.jsonl · edit.json (defaults + 
 - **While recording**, once a second (on the hooks' existing heartbeat thread), it rereads `zoom_factor` and `activelyTearing`. It writes `baked` spans into the input log, so the editor never draws a second pointer over one that is already in the picture.
 - **Snip never changes the user's `no_hardware_cursors`.** Hyprland applies a change only at the next cursor change anyway (source).
 - **Accepted:** drag-and-drop icons are surfaces, so they are always in the frame.
-- **Not yet verified on screen.** Earlier research could only show the cursor plane is used (review §11). A 160×128 area under the pointer, recorded with `-cursor no`, closes it. That needs the owner's OK (spike S2).
+- **Verified on screen (spikes S2 and S2b, 2026-10-12).** On the owner's DP-2, with none of the conditions above, Hyprland's auto mode drew the pointer in software: `-cursor no` still had it. With `no_hardware_cursors` forced to 0 it was left out. Aquamarine opened two DRM backends for the one card: a suspect for the auto rule's "two GPUs". D57: a studio take forces it to 0 and puts it back. Forced on a nested session's `WAYLAND-` output, Hyprland 0.56 crashes at the next pointer move, so Snip does it only when every output is a DRM one.
 
 ### 4.2 Pointer positions
 
