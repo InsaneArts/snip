@@ -40,14 +40,15 @@ impl Meter {
         let _ = std::thread::Builder::new().name("snip-meter".into()).spawn(move || match recorder {
             Recorder::Gsr => listen(&mic, &stopped, &slot, &mut on),
             Recorder::TestPattern => {
-                let (t0, mut level) = (Instant::now(), 0.0);
+                let (t0, mut fill) = (Instant::now(), Fill::default());
                 loop {
                     std::thread::sleep(Duration::from_millis(33));
                     if stopped.load(Ordering::Relaxed) {
                         return;
                     }
-                    level = shown(level, voice(t0.elapsed().as_secs_f32()));
-                    on(Reading::Level(level));
+                    if let Some(level) = fill.feed(voice(t0.elapsed().as_secs_f32())) {
+                        on(Reading::Level(level));
+                    }
                 }
             }
         });
@@ -95,10 +96,11 @@ fn listen(mic: &str, stop: &AtomicBool, slot: &Mutex<Option<Child>>, on: &mut im
         if stop.load(Ordering::Relaxed) {
             break;
         }
-        let (mut level, mut checked, mut block) = (0.0, None::<Instant>, [0u8; 4]);
+        let (mut fill, mut checked, mut block) = (Fill::default(), None::<Instant>, [0u8; 4]);
         while peaks.read_exact(&mut block).is_ok() && !stop.load(Ordering::Relaxed) {
-            level = shown(level, f32::from_le_bytes(block));
-            on(Reading::Level(level));
+            if let Some(level) = fill.feed(f32::from_le_bytes(block)) {
+                on(Reading::Level(level));
+            }
             if checked.is_none_or(|t| t.elapsed() >= Duration::from_secs(1)) {
                 checked = Some(Instant::now());
                 let answer = Command::new("pactl").args(["get-source-mute", source]).env("LC_ALL", "C").stdin(Stdio::null()).stderr(Stdio::null()).output();
@@ -110,7 +112,7 @@ fn listen(mic: &str, stop: &AtomicBool, slot: &Mutex<Option<Child>>, on: &mut im
             }
         }
         end(slot);
-        if level > 0.0 && !stop.load(Ordering::Relaxed) {
+        if fill.showing() && !stop.load(Ordering::Relaxed) {
             on(Reading::Level(0.0));
         }
         for _ in 0..20 {
@@ -121,6 +123,33 @@ fn listen(mic: &str, stop: &AtomicBool, slot: &Mutex<Option<Child>>, on: &mut im
         }
     }
     end(slot);
+}
+
+/// The fill as drawn, sent only when it moves a step (1/64 of the cell, under a
+/// pixel of it): silence decayed by 12 % a block without ever reaching zero,
+/// so the full-screen recording HUD redrew 30 times a second for a whole take.
+#[derive(Default)]
+struct Fill {
+    level: f32,
+    sent: Option<u32>,
+}
+
+impl Fill {
+    /// The level to show for a block whose loudest sample is `peak`, when it
+    /// moved a step.
+    fn feed(&mut self, peak: f32) -> Option<f32> {
+        self.level = shown(self.level, peak);
+        let step = (self.level * 64.0).round() as u32;
+        if self.sent == Some(step) {
+            return None;
+        }
+        self.sent = Some(step);
+        Some(step as f32 / 64.0)
+    }
+
+    fn showing(&self) -> bool {
+        self.sent.is_some_and(|s| s > 0)
+    }
 }
 
 /// The fill for a block whose loudest sample is `peak` (0–1), after `prev`:
@@ -210,6 +239,23 @@ mod tests {
         std::thread::sleep(Duration::from_millis(50)); // one reading may be on its way
         while rx.try_recv().is_ok() {}
         assert!(rx.recv_timeout(Duration::from_millis(200)).is_err(), "and stops once dropped");
+    }
+
+    #[test]
+    fn silence_empties_the_fill_once_then_sends_nothing() {
+        let mut fill = Fill::default();
+        assert!(fill.feed(0.5).is_some_and(|l| l > 0.8), "a loud block shows");
+        let sent: Vec<f32> = (0..300).filter_map(|_| fill.feed(0.0)).collect();
+        assert_eq!(sent.last(), Some(&0.0), "it empties: {sent:?}");
+        assert!(sent.len() < 40, "falling, a step at a time: {sent:?}");
+        assert_eq!((0..300).filter_map(|_| fill.feed(0.0)).count(), 0, "then nothing, however long the silence");
+    }
+
+    #[test]
+    fn a_steady_voice_is_sent_once() {
+        let mut fill = Fill::default();
+        assert!(fill.feed(0.1).is_some());
+        assert_eq!((0..30).filter_map(|_| fill.feed(0.1)).count(), 0, "the same fill: nothing to redraw");
     }
 
     #[test]
