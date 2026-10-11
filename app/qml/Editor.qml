@@ -161,7 +161,7 @@ Window {
     function setTool(t) {
         if (t !== "crop" && t !== "background") lastTool = t
         finishText()
-        if (t === "crop" && tool !== "crop") { toolBeforeCrop = tool; cropStart = { crop: doc.crop, fill: doc.fill } }
+        if (t === "crop" && tool !== "crop") { toolBeforeCrop = tool; cropStart = doc }
         tool = t
         if (t !== "select") selected = -1
     }
@@ -345,14 +345,11 @@ Window {
     }
     function cropDone() { setTool(toolBeforeCrop === "crop" ? "arrow" : toolBeforeCrop) }
     // CleanShot's crop bar: Cancel goes back to the crop (and fill) it started with
+    // the document as cropping found it: Cancel goes back to it, a rotation,
+    // flip or resize made meanwhile included
     property var cropStart: null
     function cropCancel() {
-        const was = cropStart || { crop: null, fill: undefined }
-        if (JSON.stringify([doc.crop, doc.fill]) !== JSON.stringify([was.crop, was.fill])) {
-            const next = Object.assign({}, doc, { crop: was.crop })
-            if (was.fill === undefined) delete next.fill; else next.fill = was.fill
-            commit(next)
-        }
+        if (cropStart && JSON.stringify(doc) !== JSON.stringify(cropStart)) commit(cropStart)
         cropDone()
     }
     // what the canvas shows beyond the image: the edge colour (automatic),
