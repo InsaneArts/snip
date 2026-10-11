@@ -2704,6 +2704,35 @@ def video_click(s, env, name):
 
 
 @case
+def quick_look_closes_with_its_button(s, env):
+    """D51: Quick Look has a close button, top left, with its controls: with no title bar,
+    only its card's eye, Esc (with the keyboard) or Super+W closed it."""
+    s.cli("close-all"); time.sleep(0.3)
+    clip = s.tmp / "qlclose.mp4"
+    make_clip(clip, seconds=3, size="640x360")
+    vid = s.json("open", str(clip))["result"]
+    time.sleep(0.6)
+    try:
+        c = where(s, "qa", "card:" + vid["id"])
+        s.move(c["x"] + 1, c["y"]); s.move(c["x"], c["y"]); time.sleep(0.5)
+        b = where(s, "qa", "card-quicklook")
+        s.move(b["x"], b["y"]); time.sleep(0.15); s.click()
+        assert wait_for(lambda: quick_look_window(), 3), "Quick Look opens"
+        assert wait_for(lambda: quick_look_state(s)["playing"], 3), "it plays"
+        w, m = quick_look_window(), env.monitor()
+        cx, cy = w["at"][0] - m["x"] + w["size"][0] / 2, w["at"][1] - m["y"] + w["size"][1] / 3
+        s.move(cx + 1, cy); s.move(cx, cy); time.sleep(0.1); s.click()   # a click pauses it: the controls show
+        assert wait_for(lambda: not quick_look_state(s)["playing"], 2), "paused"
+        x = lambda: where(s, "quicklook", "quicklook-close")
+        assert wait_for(lambda: x()["x"] >= 0, 2), "the close button shows with the controls"
+        s.move(w["at"][0] - m["x"] + x()["x"], w["at"][1] - m["y"] + x()["y"]); time.sleep(0.15); s.click()
+        assert wait_for(lambda: not quick_look_window(), 3), "a click on it closes Quick Look"
+    finally:
+        s.debug("ui", "quicklook", "keys", "{Escape}")
+        s.cli("close-all")
+
+
+@case
 def video_editor(s, env):
     """VED-01…03, D50: `snip edit` opens a video in the video editor, laid out as CleanShot
     5's (frames along a timeline across the bottom); Split and Cut (by hand), and a trim,
