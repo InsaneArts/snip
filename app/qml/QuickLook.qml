@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Window
 import QtMultimedia
 import Snip.Core
+import "probe.js" as Probe
 
 // Quick Look (D51), CleanShot's: a recording (or a GIF) plays in a small
 // window, from its card's eye button or Space. It floats, centred, at the
@@ -113,6 +114,22 @@ Window {
         }
     }
 
+    // with no title bar, a close button: top left, shown with the controls
+    Rectangle {
+        objectName: "quicklook-close"
+        x: 10
+        y: 10
+        width: 28
+        height: 28
+        radius: 14
+        color: closeArea.containsMouse ? Qt.rgba(0.2, 0.2, 0.22, 0.9) : Qt.rgba(0.08, 0.08, 0.09, 0.78)
+        opacity: hover.hovered || !ql.playing ? 1 : 0
+        visible: opacity > 0.01
+        Behavior on opacity { NumberAnimation { duration: 160 } }
+        Icon { anchors.centerIn: parent; name: "x"; size: 14; stroke: 2; color: "white" }
+        MouseArea { id: closeArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: ql.dismiss() }
+    }
+
     // ---------------------------------------------------------------- the controls
     Rectangle {
         objectName: "quicklook-controls"
@@ -180,6 +197,7 @@ Window {
     function debug(a) {
         switch (a[0]) {
         case "keys": Platform.sendKeys(ql, a.slice(1).join(" ")); break
+        case "where": Engine.log("quicklook_where", JSON.stringify(Probe.where(ql, a[1])).slice(1, -1)); break
         case "state":
             Engine.log("quicklook_state", JSON.stringify({ open: visible, id: card ? card.id : "", gif: gif, playing: playing, frac: frac,
                                                          position: gif ? anim.currentFrame : player.position, muted: muted }).slice(1, -1))
