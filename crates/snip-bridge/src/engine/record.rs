@@ -17,10 +17,12 @@ use snip_core::geometry::{self, Rect};
 use snip_core::meter::{Meter, Reading};
 use snip_core::record::{self, Audio, Spec, Target};
 use snip_core::store::CaptureMeta;
+use snip_core::studio::log::{Cursor, Event as Input, Header};
 use snip_core::take::{self, Event, Recorder, Stopped, Take};
 use snip_core::trace::{self, js};
 use snip_core::media;
 
+use super::take_log::{now_us, TakeLog};
 use super::{cancelled, card_json, reply, Inner, Waiter};
 use crate::ui::Ui;
 use snip_ipc::Response;
@@ -72,6 +74,10 @@ struct Run {
     /// the Hyprland hooks for clicks and keys (REC-09/10), by this take's id
     sid: String,
     hooks: Option<(bool, bool)>,
+    /// what the HUD shows of them as it records: keys, clicks
+    hud: (bool, bool),
+    /// where the pointer went and the clicks, for the editor (D54)
+    log: Option<TakeLog>,
     /// this take put the desktop cover up (CAP-12): it takes it down
     covered: bool,
     /// this take turned Do Not Disturb on (REC-11): it turns it off, whatever
@@ -265,7 +271,9 @@ impl Inner {
         // the largest size only to shrink it: gsr scales up to fit too
         let max_size = spec.max_size.filter(|&(w, h)| size.0 > w || size.1 > h);
         let spec = Spec { cpu: !record::gpu_can_encode(size.0, size.1), max_size, ..spec };
-        let take = match Take::start(&spec, size, has_audio, Recorder::from_env()) {
+        let recorder = Recorder::from_env();
+        let fake = matches!(recorder, Recorder::TestPattern);
+        let take = match Take::start(&spec, size, has_audio, recorder) {
             Ok(t) => Arc::new(t),
             Err(e) => {
                 drop(r);
@@ -274,12 +282,31 @@ impl Inner {
             }
         };
         rec.state = State::Recording;
-        let hooks = (cfg.show_keystrokes || cfg.highlight_clicks).then_some((cfg.show_keystrokes, cfg.highlight_clicks));
+        // every take logs its clicks (D54); the HUD shows what it's asked to
+        let hooks = Some((cfg.show_keystrokes, true));
+        let hud = (cfg.show_keystrokes, cfg.highlight_clicks);
         let sid = stamp.replace('-', "");
+        let header = Header {
+            fps: spec.fps as f64,
+            encoder: if fake { "fake" } else if spec.cpu { "x264" } else { "nvenc" }.into(),
+            output: rec.output.clone(),
+            scale: rec.scale,
+            area: [rec.logical.x, rec.logical.y, rec.logical.w, rec.logical.h],
+            video: [size.0, size.1],
+            cursor: Cursor {
+                theme: ["HYPRCURSOR_THEME", "XCURSOR_THEME"].iter().filter_map(|v| std::env::var(v).ok()).find(|v| !v.is_empty()).unwrap_or_else(|| "default".into()),
+                size: ["HYPRCURSOR_SIZE", "XCURSOR_SIZE"].iter().filter_map(|v| std::env::var(v).ok()?.parse().ok()).next().unwrap_or(24),
+                hide_on_key_press: snip_hypr::option_bool("cursor:hide_on_key_press").unwrap_or(false),
+            },
+            keys: "none".into(),
+            ..Header::default()
+        };
+        // the pointer twice a frame, as Hyprland has it
+        let log = TakeLog::start(file.with_extension("input.jsonl"), header, take.clone(), (2.0 * spec.fps as f64).min(240.0));
         // CAP-12: with Hide desktop clutter on, the bars show the wallpaper and
         // pins step aside while it records (unless they're hidden already)
         let covered = self.cfg().capture.hide_desktop && !self.desktop_is_hidden();
-        rec.run = Some(Run { take: take.clone(), sid: sid.clone(), hooks, covered, dnd: cfg.dnd });
+        rec.run = Some(Run { take: take.clone(), sid: sid.clone(), hooks, hud, log: Some(log), covered, dnd: cfg.dnd });
         drop(r);
         if covered {
             self.desktop("hide");
@@ -350,6 +377,9 @@ impl Inner {
         // still this take: it may have been stopped meanwhile
         let Some(rec) = r.as_mut().filter(|rec| rec.run.as_ref().is_some_and(|run| Arc::ptr_eq(&run.take, &take))) else { return };
         rec.state = if pause { State::Paused } else { State::Recording };
+        if let Some(log) = rec.run.as_ref().and_then(|run| run.log.as_ref()) {
+            log.pause(pause);
+        }
         drop(r);
         self.record_status(json!({ "elapsed": take.elapsed().as_millis() as u64 }));
     }
@@ -462,7 +492,7 @@ impl Inner {
     /// them as socket2 events; a heartbeat keeps the hooks, which remove
     /// themselves once it stops (Snip gone).
     fn record_hooks(self: &Arc<Self>, sid: &str, keys: bool, clicks: bool) {
-        if let Err(e) = snip_hypr::keys::recording_hooks(sid, keys, clicks) {
+        if let Err(e) = snip_hypr::keys::recording_hooks(sid, keys, clicks, false) {
             return trace::warn("record_hooks", &format!("\"reply\":{}", js(&e)));
         }
         trace::trace("record_hooks", &format!("\"sid\":\"{sid}\",\"keys\":{keys},\"clicks\":{clicks}"));
@@ -477,22 +507,36 @@ impl Inner {
         });
     }
 
-    /// A click or a key from the hooks (`snip:<sid>:c:<button>:<x>:<y>`, in
-    /// global logical px, or `snip:<sid>:k:<code>:<0|1>`), for the HUD.
+    /// A click, its release or a key from the hooks (`snip:<sid>:c:<button>:
+    /// <x>:<y>` in global logical px, `...:u:...` at the release, or
+    /// `snip:<sid>:k:<code>:<0|1>`): into the take's log, and to the HUD
+    /// what it shows.
     pub fn record_input(&self, data: &str) {
+        let t = now_us();
         let Some(rest) = data.strip_prefix("snip:") else { return };
         let parts: Vec<&str> = rest.split(':').collect();
         let r = self.recording.lock().unwrap();
         let Some(rec) = r.as_ref().filter(|r| r.run.as_ref().is_some_and(|run| Some(&run.sid.as_str()) == parts.first())) else { return };
+        let Some(run) = rec.run.as_ref() else { return };
         let origin = self.outputs.lock().unwrap().iter().find(|o| o.name == rec.output).map(|o| (o.logical.x as f64, o.logical.y as f64));
         let j = match parts.as_slice() {
             [_, "k", code, st] => {
                 let Ok(code) = code.parse::<u32>() else { return };
+                if !run.hud.0 {
+                    return;
+                }
                 json!({ "kind": "key", "code": code, "down": *st == "1", "label": snip_hypr::keys::key_label(code) })
             }
-            [_, "c", button, x, y] => {
+            [_, c @ ("c" | "u"), button, x, y] => {
                 let (Ok(x), Ok(y), Some((ox, oy))) = (x.parse::<f64>(), y.parse::<f64>(), origin) else { return };
-                json!({ "kind": "click", "button": button.parse::<u32>().unwrap_or(272), "x": x - ox, "y": y - oy })
+                let button = button.parse::<u32>().unwrap_or(272);
+                if let Some(log) = run.log.as_ref() {
+                    log.push(Input::Button { t, button, down: *c == "c", at: [x, y] });
+                }
+                if *c == "u" || !run.hud.1 {
+                    return;
+                }
+                json!({ "kind": "click", "button": button, "x": x - ox, "y": y - oy })
             }
             _ => return,
         };
@@ -503,8 +547,13 @@ impl Inner {
 
     /// Stop a take's recorder (its file is finished, or deleted), then what
     /// the take turned on around it: none of that may end up in the video.
-    fn record_end_run(&self, run: Run, keep: bool) -> Option<PathBuf> {
+    fn record_end_run(&self, mut run: Run, keep: bool) -> Option<PathBuf> {
         let stopped = run.take.stop(keep);
+        // the log, all of it, beside the take (`<take>.input.jsonl`); none for a take not kept
+        let log = run.log.take().and_then(TakeLog::finish);
+        if let (Some(log), false) = (log, matches!(stopped, Stopped::Kept(_))) {
+            let _ = std::fs::remove_file(log);
+        }
         self.wl(snip_wayland::Request::KeepAwake(false));
         if run.covered {
             self.desktop("show");
@@ -565,7 +614,17 @@ impl Inner {
         };
         self.play("shutter");
         let meta = CaptureMeta { kind: "recording".into(), scale: rec.scale, output: rec.output.clone(), app: rec.app, title: rec.title };
-        match self.ingest_media(&file, true, meta) {
+        let log = file.with_extension("input.jsonl");
+        let ingested = self.ingest_media(&file, true, meta);
+        // its input log goes with it (D54)
+        match ingested.as_ref().map(|r| self.store.keep_input_log(&r.id, &log)) {
+            Ok(Err(e)) if log.exists() => trace::warn("input_log", &format!("\"msg\":{}", js(&e.to_string()))),
+            Err(_) => {
+                let _ = std::fs::remove_file(&log);
+            }
+            _ => {}
+        }
+        match ingested {
             Ok(r) => {
                 self.show_card(&r, &rec.output);
                 reply(rec.waiter, Response::ok(card_json(&r, &rec.output)));
@@ -593,6 +652,8 @@ impl Inner {
                 let meta = CaptureMeta { kind: "recording".into(), scale: 1.0, output: output.clone(), app: None, title: None };
                 match take::recover(&t).and_then(|f| me.ingest_media(&f, true, meta)) {
                     Ok(r) => {
+                        // its input log, as far as it got
+                        let _ = me.store.keep_input_log(&r.id, &t.with_extension("input.jsonl"));
                         trace::trace("record_recovered", &format!("\"id\":\"{}\",\"ms\":{}", r.id, r.duration_ms));
                         me.show_card(&r, &output);
                         kept += 1;

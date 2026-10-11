@@ -187,6 +187,10 @@ pub fn option_int(name: &str) -> Option<i64> {
     json(&format!("j/getoption {name}"))["int"].as_i64()
 }
 
+pub fn option_bool(name: &str) -> Option<bool> {
+    json(&format!("j/getoption {name}"))["bool"].as_bool()
+}
+
 pub fn option_str(name: &str) -> Option<String> {
     json(&format!("j/getoption {name}"))["str"].as_str().map(String::from)
 }
@@ -224,8 +228,8 @@ pub(crate) struct Footprint {
     pub(crate) session: Option<String>,
     /// the shortcut recorder's empty submap (SET-08)
     pub(crate) recorder: bool,
-    /// a recording's hooks (REC-09/10): its id, keys, clicks; muted while paused
-    pub(crate) hooks: Option<(String, bool, bool)>,
+    /// a recording's hooks (REC-09/10): its id, keys, clicks, typing; muted while paused
+    pub(crate) hooks: Option<(String, bool, bool, bool)>,
     pub(crate) muted: bool,
 }
 
@@ -250,8 +254,8 @@ pub fn reinstall() -> Result<(), String> {
     if recorder {
         done = done.and(run(keys::record_lua(true)));
     }
-    if let Some((sid, keys_on, clicks)) = hooks {
-        done = done.and(run(&keys::recording_lua(&sid, keys_on, clicks)));
+    if let Some((sid, keys_on, clicks, typing)) = hooks {
+        done = done.and(run(&keys::recording_lua(&sid, keys_on, clicks, typing)));
         if muted {
             done = done.and(run(&keys::recording_mute_lua(true)));
         }
