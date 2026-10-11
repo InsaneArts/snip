@@ -1648,8 +1648,13 @@ Window {
         onVisibleChanged: if (!visible) ed.customOpen = false
         Row {
             spacing: 10
-            Column {
+            // one column, or more when the window is too short for it (the rainbow
+            // and the saved colours fell off a small capture's window, out of reach)
+            Flow {
+                flow: Flow.TopToBottom
                 spacing: 4
+                readonly property real natural: (Ed.palette.length + ed.savedColors.length) * 34 + (ed.savedColors.length > 0 ? 5 : 0) + 5 + 30
+                height: Math.min(natural, Math.max(4 * 34, ed.height - colorMenu.y - 12 - 8))
                 Repeater { model: Ed.palette; delegate: Swatch {} }
                 Rectangle { visible: ed.savedColors.length > 0; width: 30; height: 1; color: Theme.hairline }
                 Repeater {
