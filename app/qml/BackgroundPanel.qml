@@ -283,14 +283,14 @@ Rectangle {
             Slider { id: paddingSlider; width: parent.width; label: "Padding"; from: 0; to: 240; unit: " px"
                      value: panel.bg ? panel.bg.padding / panel.ed.unit : 0
                      onMoved: (v) => panel.ed.previewBg({ padding: Math.round(v * panel.ed.unit) })
-                     onReleased: (v) => panel.release({ padding: Math.round(v * panel.ed.unit) }) }
+                     onReleased: (v) => panel.release({ padding: Math.round(v * panel.ed.unit) }); onCancelled: panel.ed.focusKeys() }
             // CleanShot's pairs: Inset with Auto-balance, Shadow with Corners
             Row {
                 width: parent.width; spacing: 16
                 Slider { width: panel.video ? parent.width : (parent.width - 16) / 2; label: "Inset"; from: 0; to: 60; unit: " px"
                          value: panel.bg ? panel.bg.inset / panel.ed.unit : 0
                          onMoved: (v) => panel.ed.previewBg({ inset: Math.round(v * panel.ed.unit) })
-                         onReleased: (v) => panel.release({ inset: Math.round(v * panel.ed.unit) }) }
+                         onReleased: (v) => panel.release({ inset: Math.round(v * panel.ed.unit) }); onCancelled: panel.ed.focusKeys() }
                 // Auto-balance (BG-02): even margins around the content
                 Item {
                     visible: !panel.video
@@ -315,11 +315,11 @@ Rectangle {
                 Slider { width: (parent.width - 16) / 2; label: "Shadow"; from: 0; to: 100; unit: "%"
                          value: panel.bg ? panel.bg.shadow * 100 : 0
                          onMoved: (v) => panel.ed.previewBg({ shadow: v / 100 })
-                         onReleased: (v) => panel.release({ shadow: v / 100 }) }
+                         onReleased: (v) => panel.release({ shadow: v / 100 }); onCancelled: panel.ed.focusKeys() }
                 Slider { width: (parent.width - 16) / 2; label: "Corners"; from: 0; to: 60; unit: " px"
                          value: panel.bg ? panel.bg.radius / panel.ed.unit : 0
                          onMoved: (v) => panel.ed.previewBg({ radius: Math.round(v * panel.ed.unit) })
-                         onReleased: (v) => panel.release({ radius: Math.round(v * panel.ed.unit) }) }
+                         onReleased: (v) => panel.release({ radius: Math.round(v * panel.ed.unit) }); onCancelled: panel.ed.focusKeys() }
             }
 
             Heading { text: "Aspect ratio" }

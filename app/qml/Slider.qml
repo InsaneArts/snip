@@ -15,6 +15,7 @@ Item {
     readonly property alias valueBox: valueBox
     signal moved(real value)
     signal released(real value)
+    signal cancelled()                       // Esc in the typed value: the host takes the keys back
 
     implicitWidth: 240
     implicitHeight: 40
@@ -43,6 +44,7 @@ Item {
     Text { text: root.label; color: Theme.textSecondary; font.family: Theme.fontUi; font.pixelSize: 12 }
     Rectangle {
         id: valueBox
+        objectName: root.objectName ? root.objectName + "-value" : ""
         visible: hover.hovered || root.editing || drag.pressed
         anchors.right: parent.right
         y: -2
@@ -61,7 +63,7 @@ Item {
             Keys.onTabPressed: root.commit()
             Keys.onUpPressed: (e) => root.step(e)
             Keys.onDownPressed: (e) => root.step(e)
-            Keys.onEscapePressed: { root.editing = false; root.moved(root.value) }
+            Keys.onEscapePressed: { root.editing = false; root.moved(root.value); root.cancelled() }
             onActiveFocusChanged: if (!activeFocus) root.commit()
         }
         MouseArea { visible: !root.editing; anchors.fill: parent; cursorShape: Qt.IBeamCursor; onClicked: root.edit() }
