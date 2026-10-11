@@ -4553,6 +4553,24 @@ def editor_checkerboard_at_400(s, env):
 
 
 @case
+def editor_crop_cancel_undoes_its_turns(s, env):
+    """ANN-11: Cancel in the crop bar goes back to the image as it was when cropping started,
+    a rotation, flip or resize made meanwhile too: only the crop and the fill came back."""
+    from PIL import Image
+    png = s.tmp / "turns.png"
+    Image.new("RGB", (400, 300), (90, 140, 220)).save(png)
+    s.json("edit", str(png))
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    s.debug("ui", "editor", "tool", "crop")
+    s.debug("ui", "editor", "transform", "rotate-left")
+    assert wait_for(lambda: (editor_state(s)["imgW"], editor_state(s)["imgH"]) == (300, 400), 3), "turned"
+    s.debug("ui", "editor", "keys", "{Escape}")                    # Cancel
+    st = editor_state(s)
+    assert st["tool"] != "crop" and (st["imgW"], st["imgH"]) == (400, 300), ("as it was", st["tool"], st["imgW"], st["imgH"])
+    close_editor(s)
+
+
+@case
 def editor_crop_bar(s, env):
     """CleanShot's crop bar: the canvas beyond the image can be transparent, white, black or
     any colour; Cancel (or Escape) goes back to the crop it started with."""
