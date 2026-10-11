@@ -2950,10 +2950,8 @@ def video_editor_fits_a_small_screen(s, env):
         size = video_editor_window()["size"]
         assert size[0] <= W and size[1] <= H, ("on screen", size, (W, H))
     finally:
-        for _ in range(3):
-            if not video_editor_window():
-                break
-            s.debug("ui", "video", "keys", "{Escape}"); time.sleep(0.4)
+        # (never clicked, the editor hasn't the keyboard: Escape wouldn't reach it)
+        s.cli("debug", "ui", "close-editors")
         env.configure(1.25)
         s.cli("close-all")
 
@@ -5627,7 +5625,7 @@ def main():
                 env.configure(1.25)
             s.cli("close-all", check=False)
             s.cli("record", "discard", check=False)              # nor a recording
-            s.cli("debug", "ui", "close-editors", check=False)   # a failed case must not leave its editor to the next
+            s.cli("debug", "ui", "close-editors", check=False)   # a failed case must not leave its editors to the next
             s.cli("debug", "ui", "close-pins", check=False)
             time.sleep(0.2)
             (s.tmp / "data/snip/editor.json").unlink(missing_ok=True)   # each case's editor starts with the arrow

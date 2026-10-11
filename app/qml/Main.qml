@@ -215,7 +215,11 @@ QtObject {
         if (a[0] === "save-as") { const card = quickAccess.cardById(a[1]); if (card) quickAccess.act("save-as", card); return }
         if (a[0] === "cancel-dialogs") { Platform.closeFileDialogs(); return }
         if (a[0] === "answer-dialog") { Platform.answerNextFileDialog(a.slice(1).join(" ")); return }
-        if (a[0] === "close-editors") { for (const e of Object.values(editors)) e.closeEditor(); return }
+        if (a[0] === "close-editors") {
+            for (const e of Object.values(editors)) e.closeEditor()
+            for (const v of Object.values(videoEditors)) v.close()
+            return
+        }
         if (a[0] === "close-pins") { closePins(); return }
         if (a[0] === "history") { history.debug(a.slice(1)); return }
         if (a[0] === "settings") { if (settingsWindow) settingsWindow.debug(a.slice(1)); return }
