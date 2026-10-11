@@ -126,6 +126,13 @@ pub mod qobject {
         #[qinvokable]
         fn editor_transform(self: &Engine, path: QString, op: QString, w: i32, h: i32) -> QString;
 
+        /// Studio Mode (D55): where a recording's card is drawn at `t` (its
+        /// own ms) for the zooms in `edit` ({zooms, zoom_style}), in a canvas
+        /// `canvas_w` × `canvas_h` where it sits at `x, y, w, h` unzoomed.
+        /// Answers "[x, y, w, h]".
+        #[qinvokable]
+        fn studio_card(self: &Engine, edit: QString, t: f64, canvas_w: f64, canvas_h: f64, x: f64, y: f64, w: f64, h: f64) -> QString;
+
         /// Add image (ANN-12): copy `src` beside the editor's image at `base`;
         /// answers the new file's name, or "" on failure.
         #[qinvokable]
@@ -726,6 +733,14 @@ impl qobject::Engine {
 
     fn remove_wallpaper(&self, path: QString) {
         editor_files::remove_wallpaper(std::path::Path::new(&path.to_string()));
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn studio_card(&self, edit: QString, t: f64, canvas_w: f64, canvas_h: f64, x: f64, y: f64, w: f64, h: f64) -> QString {
+        use snip_core::studio;
+        let e: studio::Edit = serde_json::from_str(&edit.to_string()).unwrap_or_default();
+        let r = studio::card(studio::view(&e.zooms, e.motion, t), [canvas_w, canvas_h], [x, y, w, h]);
+        QString::from(format!("[{},{},{},{}]", r[0], r[1], r[2], r[3]).as_str())
     }
 
     fn editor_transform(&self, path: QString, op: QString, w: i32, h: i32) -> QString {

@@ -24,6 +24,16 @@ pub enum Motion {
     Dynamic,
 }
 
+/// The Studio part of a recording's edit, as its `edit.json` keeps it (the
+/// design's §5.2): the zooms, and how they move.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Edit {
+    pub zooms: Vec<Zoom>,
+    #[serde(rename = "zoom_style")]
+    pub motion: Motion,
+}
+
 /// What the export shows at one moment: the recording drawn `scale` times
 /// its size, with its point `center` (0–1) in the middle of the view.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -246,6 +256,14 @@ mod tests {
         assert_eq!(view(&low, Motion::Smooth, 2000.0), WHOLE);
         let high = [zoom(0.0, 4000.0, 9.0, [0.5, 0.5])];
         assert_eq!(view(&high, Motion::Smooth, 2000.0).scale, 4.0);
+    }
+
+    #[test]
+    fn an_edit_reads_from_its_json_as_the_editor_writes_it() {
+        let e: Edit = serde_json::from_str(r#"{"zooms":[{"from":1000,"to":5000,"level":2,"focus":[0.3,0.6]}],"zoom_style":"dynamic"}"#).unwrap();
+        assert_eq!(e, Edit { zooms: vec![zoom(1000.0, 5000.0, 2.0, [0.3, 0.6])], motion: Motion::Dynamic });
+        let none: Edit = serde_json::from_str("{}").unwrap();
+        assert_eq!(none, Edit::default(), "no zooms yet, Smooth");
     }
 
     #[test]

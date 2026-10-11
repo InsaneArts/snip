@@ -4,7 +4,7 @@ project(snip VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick DBus QmlImportScanner)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick DBus Multimedia QmlImportScanner)
 find_package(Qt6 REQUIRED COMPONENTS GuiPrivate)
 find_package(KF6CoreAddons REQUIRED)
 find_package(LayerShellQt REQUIRED)
@@ -82,12 +82,14 @@ qt_add_qml_module(snipd
     app/qml/PanelCell.qml
     app/qml/VideoEditor.qml
     app/qml/QuickLook.qml
+    app/qml/StudioFrame.qml
     app/qml/editor.js
     app/qml/probe.js
   RESOURCES
     app/fonts/Nunito.ttf
     app/icons/snip.png
   SOURCES
+    app/src/frametime.cpp app/src/frametime.h
     app/src/frozenframe.cpp app/src/frozenframe.h
     app/src/loupe.cpp app/src/loupe.h
     app/src/platform.cpp app/src/platform.h
@@ -96,7 +98,7 @@ qt_add_qml_module(snipd
 
 target_link_libraries(snipd PRIVATE
   snip_core_qml
-  Qt::Quick Qt::GuiPrivate Qt::DBus
+  Qt::Quick Qt::GuiPrivate Qt::DBus Qt::Multimedia
   KF6::CoreAddons LayerShellQt::Interface PkgConfig::WAYLAND_CLIENT PkgConfig::SQLITE3)
 target_include_directories(snipd PRIVATE app/src)
 qt_import_qml_plugins(snipd)
