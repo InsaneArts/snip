@@ -83,6 +83,8 @@ const TYPING_PX: f64 = 4.0;
 const IDLE: f64 = 2000.0;
 const IDLE_FADE: f64 = 400.0;
 const PRESS_EASE: f64 = 130.0;
+/// Motion blur reaches back this far at most (px).
+const TRAIL: f64 = 480.0;
 
 /// 0 → 1 between 0 and 1, eased at both ends (all of the pointer's fades).
 fn smooth(x: f64) -> f64 {
@@ -217,6 +219,23 @@ impl Track {
     /// The size (px) of the video its places are in.
     pub fn video(&self) -> [f64; 2] {
         self.video
+    }
+
+    /// Its motion blur at `ms` (the design's §6.6, Cap's): where it was over
+    /// the last `level`/60 s (Low 0.5, Medium 1, High 2), at most TRAIL px
+    /// back, as eight places, the nearest first; none while it's still.
+    pub fn trail(&self, ms: f64, level: f64) -> Vec<[f64; 2]> {
+        let now = self.at(ms).at;
+        let mut span = level * 1000.0 / 60.0;
+        let far = self.at(ms - span).at;
+        let back = (now[0] - far[0]).hypot(now[1] - far[1]);
+        if back < 1.0 {
+            return vec![];
+        }
+        if back > TRAIL {
+            span *= TRAIL / back;
+        }
+        (1..=8).map(|k| self.at(ms - span * k as f64 / 8.0).at).collect()
     }
 
     /// The pointer at `ms` of the video.
@@ -432,5 +451,29 @@ mod tests {
         let p = Track::new(&take(vec![moved(0.0, 100, 100), moved(1.0, 300, 100)]), &OFF).unwrap();
         assert!(near(p.at(500.0).at, [100.5, 100.5], 0.5), "{:?}", p.at(500.0));
         assert!(near(p.at(1000.0).at, [300.5, 100.5], 0.5), "{:?}", p.at(1000.0));
+    }
+
+    #[test]
+    fn a_moving_pointer_leaves_a_trail_and_a_still_one_none() {
+        // across at 600 px/s: at Medium (1) the trail reaches back 1/60 s, 10 px
+        let p = Track::new(&take((0..=120).map(|i| moved(i as f64 / 120.0, 100 + i * 5, 200)).collect()), &OFF).unwrap();
+        let trail = p.trail(500.0, 1.0);
+        assert_eq!(trail.len(), 8, "eight copies");
+        let back = p.at(500.0).at[0] - trail[7][0];
+        assert!((back - 10.0).abs() < 0.5, "{back} px back");
+        assert!(trail.windows(2).all(|w| w[1][0] < w[0][0]), "each further back: {trail:?}");
+        assert!((p.at(500.0).at[0] - p.trail(500.0, 2.0)[7][0] - 20.0).abs() < 0.5, "High: twice as long");
+        // still: none
+        let still = Track::new(&take(vec![moved(0.0, 100, 100)]), &OFF).unwrap();
+        assert!(still.trail(500.0, 1.0).is_empty());
+    }
+
+    #[test]
+    fn a_trail_is_480_px_at_most() {
+        // a flick at 12,000 px/s: 8/60 s of it would be 1600 px
+        let p = Track::new(&take((0..=30).map(|i| moved(i as f64 / 120.0, 100 + i * 100, 200)).collect()), &OFF).unwrap();
+        let trail = p.trail(200.0, 8.0);
+        let back = p.at(200.0).at[0] - trail[7][0];
+        assert!(back <= 480.0 + 1e-9 && back > 470.0, "{back}");
     }
 }

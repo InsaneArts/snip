@@ -136,10 +136,11 @@ pub mod qobject {
 
         /// A studio take's redrawn pointer at `ms` of its video (D55): from
         /// its input log at `log`, as the edit's pointer `settings` have it,
-        /// in px of the `video_w` × `video_h` video. Answers
-        /// {"x", "y", "opacity", "press"}, or null without a log.
+        /// in px of the `video_w` × `video_h` video, with its motion blur at
+        /// `blur` (0 none, 0.5 Low, 1 Medium, 2 High). Answers {"x", "y",
+        /// "opacity", "press", "trail": [[x, y]…]}, or null without a log.
         #[qinvokable]
-        fn studio_pointer(self: &Engine, log: QString, settings: QString, ms: f64, video_w: f64, video_h: f64) -> QString;
+        fn studio_pointer(self: &Engine, log: QString, settings: QString, ms: f64, blur: f64, video_w: f64, video_h: f64) -> QString;
 
         /// A studio take's clicks and keys at `ms` of its video, from its input
         /// log at `log` (px of its `video_w` × `video_h` video), those since
@@ -769,7 +770,7 @@ impl qobject::Engine {
         editor_files::remove_wallpaper(std::path::Path::new(&path.to_string()));
     }
 
-    fn studio_pointer(&self, log: QString, settings: QString, ms: f64, video_w: f64, video_h: f64) -> QString {
+    fn studio_pointer(&self, log: QString, settings: QString, ms: f64, blur: f64, video_w: f64, video_h: f64) -> QString {
         use snip_core::studio::pointer;
         use std::cell::RefCell;
         // built once for a log, its settings and its video (60 times a second otherwise)
@@ -784,7 +785,9 @@ impl qobject::Engine {
             match cell.as_ref().and_then(|(_, t)| t.as_ref()) {
                 Some(t) => {
                     let s = t.at(ms);
-                    QString::from(format!(r#"{{"x":{},"y":{},"opacity":{},"press":{}}}"#, s.at[0], s.at[1], s.opacity, s.press).as_str())
+                    let trail = if blur > 0.0 { t.trail(ms, blur) } else { vec![] };
+                    let j = serde_json::json!({ "x": s.at[0], "y": s.at[1], "opacity": s.opacity, "press": s.press, "trail": trail });
+                    QString::from(j.to_string().as_str())
                 }
                 None => QString::from("null"),
             }
