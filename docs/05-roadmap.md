@@ -249,12 +249,12 @@ CleanShot 5's Studio Mode on Hyprland: zooms placed by hand and automatic, a smo
 
 | Phase | What you get | Status |
 |---|---|---|
-| 0. Spikes | S1 the offscreen renderer in snipd; S2 the pointer left out on DP-2; S3 timing; S4 the logger's cost; S5 how the pointer feels; S6 the pointer's shape | S1 ✅; S2 ✅ (in the video on auto; out with the hardware plane forced: D57); S5 ✅ (the defaults kept); the rest ⏳ |
+| 0. Spikes | S1 the offscreen renderer in snipd; S2 the pointer left out on DP-2; S3 timing; S4 the logger's cost; S5 how the pointer feels; S6 the pointer's shape | S1 ✅; S2 ✅ (in the video on auto; out with the hardware plane forced: D57); S3 ✅ (k: 3 frames with NVENC, 7 with x264); S4 ✅ (120 Hz polling: +0.37 % of a core in Hyprland); S5 ✅ (the defaults kept); S6 ⏳ |
 | 1. Zooms you place, on every recording | The zoom lane and its popover in the video editor; level 1–4, Smooth or Dynamic; touching zooms pan; the edit kept (`edit.json`), Replace keeps the original (D56) | ✅ |
 | 2. Studio takes, the redrawn pointer | The Studio switch on the panel (D54); the Pointer section: size, smoothing, hide when typing or idle | ✅ |
 | 3. Auto zoom and follow | Zooms placed from every take's clicks (D54); Follow Pointer; Re-run Auto Zoom | built; the owner's rating on real takes to come |
 | 4. Clicks and keys after the fact | Ripples; the Keystrokes section | built |
-| 5. Polish | Motion blur, Snip's own pointer set, ratios, Export Current Frame | ⏳ |
+| 5. Polish | Motion blur, Snip's own pointer set, ratios, Export Current Frame | built in part |
 | 6. The camera as its own stream | The camera recorded apart, laid out after the fact | ⏳ |
 
 Phase 1's tests are the studio evaluator's, in `cargo test` (the owner's choice). Phase 2's (the owner's choice, 2026-10-12): `cargo test` for the input log, its timing and the pointer's path; one e2e case for a studio take with the fake recorder (it stops, the editor opens, the log is there); the UI checked by hand.
@@ -266,6 +266,10 @@ Phase 2 is built (2026-10-12): every take keeps its input log (D54); the Studio 
 Phase 3 is built (2026-10-12): a zoom can follow the pointer (the popover's Follow Pointer or Manual), and a take the editor opens unedited gets auto zooms where its clicks and typing were (the design's §6.4), on ordinary recordings too (D54); Re-run Auto Zoom in the zoom lane's menu places them again around the zooms the user changed. Tests: `cargo test` for the follow rules and every auto zoom rule (fixtures of clicks, typing, drags, pauses, the user's zooms), and one e2e case (`auto_zoom`). Not built: the design's wheel rule (scrolling ends a zoom early), which needs the wheel in the take's log. Its "done when", the owner's rating of the zooms on five real takes, is to come.
 
 Phase 4 is built (2026-10-12): a studio take's clicks get ripples and its command keys a keystroke pill, drawn after the fact in the preview and the export, on as the panel's Clicks and Keys were (D60); ripples in the Pointer section (outline or filled, the accent or one of seven colours), and a Keystrokes section (size, Dark or Light, nine positions). A click or key in a part that's cut out doesn't show after the cut. Tests: `cargo test` for the ripple and keystroke rules, and one e2e case (`studio_clicks_and_keys`: the exports with and without them differ where the ring and the pill are, and nowhere else). Not built: "All keys" (Q5's (b), the owner's to decide): command keys only, as today.
+
+Phase 5 is built in part (2026-10-12): the redrawn pointer's motion blur (Off, Low, Medium, High; Medium first, as CleanShot's), CleanShot's aspect-ratio list (4:5 added), and Export Current Frame as Image (the frame shown, drawn as the export draws it, as a new screenshot). Not built: the view's blur while a zoom moves, Snip's own pointer set, the shape guess (S6), and a background put on window takes by themselves.
+
+Spikes S3 and S4 (2026-10-12, on the owner's idle session): gsr's first frame reaches its muxer 3 frames after a take's start with NVENC, as Snip had it, and 7 with x264, which Snip now counts; polling the pointer 120 times a second costs Hyprland 0.37 % of a core (the design's budget is 0.4 %), so a take polls at most that often.
 
 ## M5: 1.0 hardening (M)
 
