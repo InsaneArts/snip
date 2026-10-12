@@ -312,6 +312,9 @@ pub mod qobject {
         /// recording or as a new capture
         #[qinvokable]
         fn video_export(self: Pin<&mut Engine>, id: QString, spec: QString, replace: bool);
+        /// The video editor's frame as a new screenshot ({ms, scene})
+        #[qinvokable]
+        fn video_export_frame(self: Pin<&mut Engine>, id: QString, spec: QString);
         /// Keep the video editor's edit of a recording (edit.json, D56)
         #[qinvokable]
         fn video_save_edit(self: Pin<&mut Engine>, id: QString, doc: QString);
@@ -1166,6 +1169,12 @@ impl qobject::Engine {
     fn video_export(self: Pin<&mut Self>, id: QString, spec: QString, replace: bool) {
         if let Some(i) = self.inner() {
             i.video_export(&id.to_string(), &spec.to_string(), replace);
+        }
+    }
+
+    fn video_export_frame(self: Pin<&mut Self>, id: QString, spec: QString) {
+        if let Some(i) = self.inner() {
+            i.video_export_frame(&id.to_string(), &spec.to_string());
         }
     }
 

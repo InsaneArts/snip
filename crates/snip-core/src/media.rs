@@ -219,6 +219,15 @@ pub fn render_args(src: &Path, dst: &Path, edit: &Edit, size: (u32, u32)) -> Ren
     Render { decode, encode, keep: kept_frames(edit), fps }
 }
 
+/// ffmpeg's arguments for the one frame of `src` at `ms`, raw I420 on its
+/// stdout (Export Current Frame: the renderer draws it).
+pub fn frame_args(src: &Path, ms: f64) -> Vec<String> {
+    let mut a: Vec<String> = ["-v", "error", "-nostdin", "-ss"].map(String::from).to_vec();
+    a.extend([format!("{:.3}", ms.max(0.0) / 1000.0), "-i".into(), src.to_string_lossy().into_owned()]);
+    a.extend(["-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "yuv420p", "pipe:1"].map(String::from));
+    a
+}
+
 /// A GIF's frames from the joined video: its rate, at most `width` wide
 /// (never wider).
 fn gif_frames(edit: &Edit, fps: u32, width: u32) -> String {

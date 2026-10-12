@@ -16,7 +16,7 @@ use snip_core::store::{CaptureMeta, Store};
 use snip_core::trace::{self, js};
 use snip_core::paths;
 
-use super::{card_json, Inner};
+use super::{card_json, now_secs, Inner};
 use crate::ui::Ui;
 
 impl Inner {
@@ -188,6 +188,83 @@ impl Inner {
     }
 }
 
+impl Inner {
+    /// Export Current Frame as Image (CleanShot's; the design's §8.2): the
+    /// editor's frame at `ms` ({ms, scene}: the scene as for an export),
+    /// drawn at the recording's full size, as a new screenshot with its card.
+    pub fn video_export_frame(self: &Arc<Self>, id: &str, spec: &str) {
+        let (me, id) = (self.clone(), id.to_string());
+        let spec: Value = serde_json::from_str(spec).unwrap_or(Value::Null);
+        std::thread::spawn(move || {
+            let made = (|| -> Result<String, String> {
+                let rec = me.store.get(&id).map_err(|e| e.to_string())?;
+                // D56: from the recording as recorded, as any export
+                let (input, _) = me.store.video_edit_state(&id).map_err(|e| e.to_string())?;
+                let probe = media::probe(&input)?;
+                let scene = &spec["scene"];
+                let side = |k: &str, full: u32| scene["outer"][k].as_f64().unwrap_or(full as f64);
+                let (ow, oh) = (side("w", probe.width), side("h", probe.height));
+                let size = ((ow.round() as u32).max(2) & !1, (oh.round() as u32).max(2) & !1);
+                let (ms, fps) = (spec["ms"].as_f64().unwrap_or(0.0), if probe.fps > 0.0 { probe.fps } else { 30.0 });
+                let dir = paths::runtime_dir().join("export");
+                let _ = paths::ensure_private_dir(&dir);
+                let png = dir.join(format!("frame-{}.png", chrono::Local::now().format("%H%M%S%3f")));
+                let render = json!({
+                    "decode": media::frame_args(&input, ms), "encode": [], "keep": [[ms / 1000.0, ms / 1000.0 + 1.0 / fps]], "fps": fps,
+                    "source": [probe.width, probe.height], "size": [size.0, size.1], "scale": size.0 as f64 / ow, "scene": scene, "image": png,
+                });
+                run_renderer(&render, &png.with_extension("render.json"), &mut |_| {})?;
+                let bytes = std::fs::read(&png).map_err(|e| e.to_string());
+                let _ = std::fs::remove_file(&png);
+                let output = me.cursor_output().unwrap_or_default();
+                let meta = CaptureMeta { kind: "frame".into(), scale: rec.scale, output: output.clone(), app: rec.app.clone(), title: rec.title.clone() };
+                let r = me.store.ingest(bytes?, size.0, size.1, meta, now_secs()).map_err(|e| e.to_string())?;
+                me.show_card(&r, &output);
+                Ok(r.id)
+            })();
+            match made {
+                Ok(new) => trace::trace("video_frame_exported", &format!("\"id\":\"{id}\",\"new\":\"{new}\"")),
+                Err(e) => {
+                    trace::warn("video_frame_export", &format!("\"msg\":{}", js(&e)));
+                    me.toast(format!("Couldn't export the frame: {e}"));
+                }
+            }
+        });
+    }
+}
+
+/// `snipd --render-video` on `spec`, written to `spec_path` for it: each
+/// "frame N" it prints to `report`, its "error …" lines the error.
+fn run_renderer(spec: &Value, spec_path: &Path, report: &mut dyn FnMut(f64)) -> Result<(), String> {
+    std::fs::write(spec_path, spec.to_string()).map_err(|e| e.to_string())?;
+    // snipd's own file, even once a rebuild or an upgrade has replaced it
+    // (current_exe() then names a file that's gone)
+    let child = Command::new("/proc/self/exe").arg("--render-video").arg(spec_path).stdin(Stdio::null()).stdout(Stdio::piped()).spawn();
+    let mut child = match child {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = std::fs::remove_file(spec_path);
+            return Err(format!("render: {e}"));
+        }
+    };
+    let mut why = vec![];
+    if let Some(out) = child.stdout.take() {
+        for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
+            if let Some(n) = line.strip_prefix("frame ").and_then(|v| v.trim().parse::<f64>().ok()) {
+                report(n);
+            } else if let Some(e) = line.strip_prefix("error ") {
+                why.push(e.to_string());
+            }
+        }
+    }
+    let status = child.wait().map_err(|e| format!("render: {e}"));
+    let _ = std::fs::remove_file(spec_path);
+    if !status?.success() {
+        return Err(format!("render: {}", why.join("\n")));
+    }
+    Ok(())
+}
+
 /// An edit that couldn't be kept goes to the trace (the export itself worked).
 fn edit_kept(r: Result<(), snip_core::store::StoreError>) {
     if let Err(e) = r {
@@ -218,35 +295,11 @@ fn render_studio(src: &Path, dst: &Path, edit: &Edit, scene: &Value, report: &mu
         "decode": r.decode, "encode": r.encode, "keep": r.keep, "fps": r.fps,
         "source": [probe.width, probe.height], "size": [size.0, size.1], "scale": size.0 as f64 / ow, "scene": scene,
     });
-    let spec_path = dst.with_extension("render.json");
-    std::fs::write(&spec_path, spec.to_string()).map_err(|e| e.to_string())?;
-    // snipd's own file, even once a rebuild or an upgrade has replaced it
-    // (current_exe() then names a file that's gone)
-    let child = Command::new("/proc/self/exe").arg("--render-video").arg(&spec_path).stdin(Stdio::null()).stdout(Stdio::piped()).spawn();
-    let mut child = match child {
-        Ok(c) => c,
-        Err(e) => {
-            let _ = std::fs::remove_file(&spec_path);
-            return Err(format!("render: {e}"));
-        }
-    };
     // a GIF's last fifth is the GIF itself
     let share = if edit.gif.is_some() { 0.8 } else { 1.0 };
-    let mut why = vec![];
-    if let Some(out) = child.stdout.take() {
-        for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
-            if let Some(n) = line.strip_prefix("frame ").and_then(|v| v.trim().parse::<f64>().ok()) {
-                report((n / frames).clamp(0.0, 1.0) * share);
-            } else if let Some(e) = line.strip_prefix("error ") {
-                why.push(e.to_string());
-            }
-        }
-    }
-    let status = child.wait().map_err(|e| format!("render: {e}"));
-    let _ = std::fs::remove_file(&spec_path);
-    if !status?.success() {
+    if let Err(e) = run_renderer(&spec, &dst.with_extension("render.json"), &mut |n| report((n / frames).clamp(0.0, 1.0) * share)) {
         let _ = std::fs::remove_file(&mp4);
-        return Err(format!("render: {}", why.join("\n")));
+        return Err(e);
     }
     if let Some((fps, width)) = edit.gif {
         let made = media::gif(&mp4, dst, fps, width);

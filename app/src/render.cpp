@@ -2,13 +2,16 @@
 // ffmpeg (`decode`, raw I420 frames, read ahead in a thread), each is drawn
 // with StudioFrame.qml (the background still, the card where the zoom
 // evaluator puts it), made I420 again on the GPU (yuv.frag), and goes to a
-// second ffmpeg (`encode`) that adds the sound. It prints "frame N" as it
-// goes, and "error …" lines when it fails (its stderr is the daemon's). A
-// child of snipd: its GPU work, and a crash, stay out of the daemon.
+// second ffmpeg (`encode`) that adds the sound. Or, with `image` (a PNG's
+// path), its first frame is drawn into that, as it is. It prints "frame N"
+// as it goes, and "error …" lines when it fails (its stderr is the
+// daemon's). A child of snipd: its GPU work, and a crash, stay out of the
+// daemon.
 
 #include "render.h"
 
 #include <QFile>
+#include <QImage>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -193,6 +196,7 @@ renderVideo(const QString& specPath)
   const int iw = source[0].toInt(), ih = source[1].toInt(), W = size[0].toInt(), H = size[1].toInt();
   const double fps = spec["fps"].toDouble(30), scale = spec["scale"].toDouble(1);
   const QJsonObject scene = spec["scene"].toObject();
+  const QString image = spec["image"].toString();
   if (iw < 2 || ih < 2 || W < 2 || H < 2 || W % 2 || H % 2)
     return fail(QStringLiteral("no size to draw at"));
 
@@ -233,7 +237,7 @@ renderVideo(const QString& specPath)
   if (!control.initialize())
     return fail(QStringLiteral("no GPU to draw with"));
   QRhi* rhi = control.rhi();
-  std::unique_ptr<QRhiTexture> texture(rhi->newTexture(QRhiTexture::RGBA8, QSize(W, H), 1, QRhiTexture::RenderTarget));
+  std::unique_ptr<QRhiTexture> texture(rhi->newTexture(QRhiTexture::RGBA8, QSize(W, H), 1, QRhiTexture::RenderTarget | QRhiTexture::UsedAsTransferSource));
   texture->create();
   std::unique_ptr<QRhiRenderBuffer> depth(rhi->newRenderBuffer(QRhiRenderBuffer::DepthStencil, QSize(W, H), 1));
   depth->create();
@@ -285,9 +289,11 @@ renderVideo(const QString& specPath)
     return fail(QStringLiteral("the scene has no video"));
 
   QProcess encode;
-  encode.start(QStringLiteral("ffmpeg"), strings(spec["encode"]));
-  if (!encode.waitForStarted())
-    return fail(QStringLiteral("ffmpeg didn't start"));
+  if (image.isEmpty()) {
+    encode.start(QStringLiteral("ffmpeg"), strings(spec["encode"]));
+    if (!encode.waitForStarted())
+      return fail(QStringLiteral("ffmpeg didn't start"));
+  }
   QVideoFrameFormat format(QSize(iw, ih), QVideoFrameFormat::Format_YUV420P);
   format.setColorSpace(QVideoFrameFormat::ColorSpace_BT709);
   format.setColorRange(QVideoFrameFormat::ColorRange_Video);
@@ -307,6 +313,21 @@ renderVideo(const QString& specPath)
     control.sync();
     control.render();
     QRhiCommandBuffer* cb = control.commandBuffer();
+    if (!image.isEmpty()) {
+      // the frame as it's drawn: its first row is its top
+      QRhiReadbackResult back;
+      QRhiResourceUpdateBatch* readback = rhi->nextResourceUpdateBatch();
+      readback->readBackTexture(QRhiReadbackDescription(texture.get()), &back);
+      cb->resourceUpdate(readback);
+      control.endFrame();
+      reader.stop();
+      const QImage drawn(reinterpret_cast<const uchar*>(back.data.constData()), W, H, QImage::Format_RGBA8888_Premultiplied);
+      if (back.data.size() < qint64(W) * H * 4 || !drawn.convertToFormat(QImage::Format_RGB888).save(image, "PNG"))
+        return fail(QStringLiteral("the frame couldn't be written"));
+      printf("frame 1\n");
+      fflush(stdout);
+      return 0;
+    }
     QRhiResourceUpdateBatch* first = rhi->nextResourceUpdateBatch();
     first->updateDynamicBuffer(sizes.get(), 0, sizeof(wh), wh);
     cb->beginPass(yuvTarget.get(), Qt::black, { 1.0f, 0 }, first);
