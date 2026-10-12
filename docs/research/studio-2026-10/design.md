@@ -1005,6 +1005,8 @@ Each question has options and a recommendation. Recorded answers become D-number
 
 *Recommend (a).* A setting can come later if people ask.
 
+**Decided (D54, 2026-10-11): (a),** auto zoom on every take.
+
 **Q5. Which keys are logged in a studio take?**
 - (a) **Command keys only (today's filter), plus the typing marker with no content.**
 - (b) As (a), with "All keys" as an opt-in chosen before recording, with a warning.

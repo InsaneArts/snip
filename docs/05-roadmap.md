@@ -249,10 +249,10 @@ CleanShot 5's Studio Mode on Hyprland: zooms placed by hand and automatic, a smo
 
 | Phase | What you get | Status |
 |---|---|---|
-| 0. Spikes | S1 the offscreen renderer in snipd; S2 the pointer left out on DP-2; S3 timing; S4 the logger's cost; S5 how the pointer feels; S6 the pointer's shape | S1 ✅; S2 ✅ (in the video on auto; out with the hardware plane forced: D57); the rest ⏳ |
+| 0. Spikes | S1 the offscreen renderer in snipd; S2 the pointer left out on DP-2; S3 timing; S4 the logger's cost; S5 how the pointer feels; S6 the pointer's shape | S1 ✅; S2 ✅ (in the video on auto; out with the hardware plane forced: D57); S5 ✅ (the defaults kept); the rest ⏳ |
 | 1. Zooms you place, on every recording | The zoom lane and its popover in the video editor; level 1–4, Smooth or Dynamic; touching zooms pan; the edit kept (`edit.json`), Replace keeps the original (D56) | ✅ |
-| 2. Studio takes, the redrawn pointer | The Studio switch on the panel (D54); the Pointer section: size, smoothing, hide when typing or idle | built; S5 (how it feels) to come |
-| 3. Auto zoom and follow | Zooms placed from every take's clicks (D54); Follow Cursor; Re-run Auto Zoom | ⏳ |
+| 2. Studio takes, the redrawn pointer | The Studio switch on the panel (D54); the Pointer section: size, smoothing, hide when typing or idle | ✅ |
+| 3. Auto zoom and follow | Zooms placed from every take's clicks (D54); Follow Pointer; Re-run Auto Zoom | built; the owner's rating on real takes to come |
 | 4. Clicks and keys after the fact | Ripples; the Keystrokes section | ⏳ |
 | 5. Polish | Motion blur, Snip's own pointer set, ratios, Export Current Frame | ⏳ |
 | 6. The camera as its own stream | The camera recorded apart, laid out after the fact | ⏳ |
@@ -261,7 +261,9 @@ Phase 1's tests are the studio evaluator's, in `cargo test` (the owner's choice)
 
 Phase 1 is built (2026-10-12): the zoom lane, its popover (level, the spotlight on what a zoom shows) and its right-click menu, Smooth or Dynamic under Animations, touching zooms that pan, the edit kept in `edit.json` with a Replace that keeps the original (D56), undo, and an export drawn frame by frame with the preview's scene (`snipd --render-video`; S1 answered: 172 fps at 2688×1568, the frames made I420 on the GPU). The owner liked Smooth and Dynamic (2026-10-12), its "done when".
 
-Phase 2 is built (2026-10-12): every take keeps its input log (D54); the Studio switch on the panel, a studio take recorded without the pointer (D57: the hardware plane forced for it, with DRM outputs alone) and opened in the editor at its end (D58); the pointer redrawn from the log in the preview and the export, the theme's arrow (D59), with the Pointer section (D60). Still to come: spike S5, the owner's feel for the smoothing, and S3, the timing measured per encoder.
+Phase 2 is built (2026-10-12): every take keeps its input log (D54); the Studio switch on the panel, a studio take recorded without the pointer (D57: the hardware plane forced for it, with DRM outputs alone) and opened in the editor at its end (D58); the pointer redrawn from the log in the preview and the export, the theme's arrow (D59), with the Pointer section (D60). The owner liked how the pointer moves (S5, 2026-10-12: "it looks nice"), its "done when". Still to come: S3, the timing measured per encoder.
+
+Phase 3 is built (2026-10-12): a zoom can follow the pointer (the popover's Follow Pointer or Manual), and a take the editor opens unedited gets auto zooms where its clicks and typing were (the design's §6.4), on ordinary recordings too (D54); Re-run Auto Zoom in the zoom lane's menu places them again around the zooms the user changed. Tests: `cargo test` for the follow rules and every auto zoom rule (fixtures of clicks, typing, drags, pauses, the user's zooms), and one e2e case (`auto_zoom`). Not built: the design's wheel rule (scrolling ends a zoom early), which needs the wheel in the take's log. Its "done when", the owner's rating of the zooms on five real takes, is to come.
 
 ## M5: 1.0 hardening (M)
 
