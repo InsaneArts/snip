@@ -2742,6 +2742,34 @@ def studio_take(s, env):
         s.cli("close-all")
 
 
+@case
+def video_editor_exports_a_frame(s, env):
+    """The design's phase 5 (CleanShot's Export Current Frame as Image): the frame shown,
+    drawn as the export draws it (here in a background), becomes a new screenshot at the
+    recording's size, with its card; the editor stays open."""
+    s.cli("close-all"); time.sleep(0.3)
+    clip = s.tmp / "frame.mp4"
+    make_clip(clip, seconds=2, size="640x360")
+    s.json("edit", str(clip))
+    assert wait_for(lambda: video_editor_window(), 6), "the video editor opens"
+    s.debug("ui", "video", "bg", '{"kind":"color","value":"#10a050","padding":40,"inset":0,"radius":0,"shadow":0,"ratio":0,"align":"c"}')
+    s.debug("ui", "video", "seek", "1000")
+    outer = wait_for(lambda: video_state(s)["outer"] if video_state(s)["bg"] else None, 2)
+    n = len(s.traces("video_frame_exported"))
+    s.debug("ui", "video", "frame")
+    assert wait_for(lambda: len(s.traces("video_frame_exported")) > n, 20), "the frame is exported"
+    new = s.traces("video_frame_exported")[-1]["new"]
+    rec = next(x for x in s.json("list", "-n", "5")["result"] if x["id"] == new)
+    assert rec["kind"] == "frame" and (rec["width"], rec["height"]) == (outer["w"], outer["h"]), (rec, outer)
+    corner = subprocess.run(["ffmpeg", "-v", "error", "-i", rec["source"], "-vf", "crop=1:1:5:5", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+                            capture_output=True, check=True).stdout
+    assert all(abs(a - b) <= 4 for a, b in zip(corner, (0x10, 0xa0, 0x50))), ("the background around it", list(corner))
+    assert wait_for(lambda: [e for e in s.traces("qao_motion") if e["id"] == new], 3), "its card"
+    assert video_editor_window(), "the editor stays open"
+    s.cli("debug", "ui", "close-editors")
+    s.cli("close-all")
+
+
 def gray(path, ms, box):
     """The grey levels of `box` (x, y, w, h px) in the frame of the video at `path` at `ms`."""
     x, y, w, h = box

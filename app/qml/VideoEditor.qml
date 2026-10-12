@@ -312,13 +312,24 @@ Window {
         player.pause()
         // Studio Mode (D55): with zooms, or a pointer, clicks or keys to draw, snipd draws every frame with this scene
         if (studio.zooms.length > 0 || info.pointer || (info.studioTake && (rippleLook.show || keysLook.show)))
-            return send(replace, null, { bg: bgLive, outer: outer, inner: inner, studio: studio, log: info.log || "", theme: Engine.theme,
-                                         pointer: info.pointer || null, pointerLook: pointerLook, unit: unit,
-                                         rippleLook: info.studioTake ? rippleLook : null, keysLook: info.studioTake ? keysLook : null, keep: keptRuns })
+            return send(replace, null, scene())
         if (!bgLive) return send(replace, null)
         // the background first, as the export draws it: a grab, then ffmpeg
         coverReplace = replace
         cover.active = true
+    }
+    // what StudioFrame.qml shows, for snipd to draw it as the preview does
+    function scene() {
+        return { bg: bgLive, outer: outer, inner: inner, studio: studio, log: info.log || "", theme: Engine.theme,
+                 pointer: info.pointer || null, pointerLook: pointerLook, unit: unit,
+                 rippleLook: info.studioTake ? rippleLook : null, keysLook: info.studioTake ? keysLook : null, keep: keptRuns }
+    }
+    // Export Current Frame as Image (CleanShot's): the frame shown, drawn as
+    // the export draws it, at the recording's size: a new screenshot, its card
+    function exportFrame() {
+        player.pause()
+        exportOpen = false
+        Engine.videoExportFrame(info.id, JSON.stringify({ ms: frameTime.ms, scene: scene() }))
     }
     function send(replace, background, scene) {
         const cfg = controller && controller.settings.config ? controller.settings.config.recording : null
@@ -1272,6 +1283,18 @@ Window {
                     onPicked: (v) => ve.maxHeight = v
                 }
             }
+            Row {
+                spacing: 12
+                Text { width: 56; anchors.verticalCenter: parent.verticalCenter; text: "Image"; color: Theme.textSecondary; font.family: Theme.fontUi; font.pixelSize: 12 }
+                TextButton {
+                    objectName: "video-export-frame"
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Current Frame as Image"
+                    tip: "The frame shown, with its background, zoom and pointer, as a new screenshot"
+                    enabled: ve.progress < 0
+                    onClicked: ve.exportFrame()
+                }
+            }
             Rectangle { width: parent.width; height: 1; color: Theme.hairline }
             // an export error, whole and wrapped: ffmpeg's are long, and the estimate's
             // line cut them to a few words
@@ -1392,6 +1415,7 @@ Window {
         case "bg": setBg(JSON.parse(a.slice(1).join(" "))); break
         case "keys": Platform.sendKeys(ve, a.slice(1).join(" ")); break
         case "export": exportIt(a[1] === "replace"); break
+        case "frame": exportFrame(); break
         case "error": error = a.slice(1).join(" "); break
         case "studio": studio = JSON.parse(a.slice(1).join(" ")); break
         case "where": Engine.log("video_where", JSON.stringify(Probe.where(ve, a[1])).slice(1, -1)); break
