@@ -38,12 +38,14 @@ impl Inner {
             let log = Store::input_log(&rec);
             // every take's (D54): where its pointer went and its clicks, for auto and follow zooms
             let log_kept = if log.is_file() { json!(log) } else { Value::Null };
-            let header = std::fs::File::open(&log)
+            let head = std::fs::File::open(&log)
                 .ok()
                 .and_then(|f| std::io::BufReader::new(f).lines().next()?.ok())
                 .and_then(|first| snip_core::studio::log::read(&first))
-                .map(|l| l.header)
-                .filter(|h| h.studio);
+                .map(|l| l.header);
+            // a window's take, opened unedited, goes in a background with its corners (CleanShot's)
+            let window = head.as_ref().and_then(|h| h.window).map_or(Value::Null, |r| json!(r));
+            let header = head.filter(|h| h.studio);
             let pointer = header.as_ref().filter(|h| !h.baked).map_or(Value::Null, |h| json!({ "log": log, "theme": h.cursor.theme, "size": h.cursor.size, "scale": h.scale }));
             // a studio take's clicks and keys, drawn after the fact: on, as the panel had them (D60)
             let studio_take = header.as_ref().map_or(Value::Null, |h| json!({ "clicks": h.clicks, "keystrokes": h.keystrokes }));
@@ -53,7 +55,7 @@ impl Inner {
                 Err(e) => return me.toast(format!("Can't open the video: {e}")),
             };
             let j = json!({
-                "id": id, "path": path, "edit": edit, "log": log_kept, "pointer": pointer, "pointerKept": pointer_kept, "studioTake": studio_take, "poster": Store::poster(&rec), "title": rec.title.clone().unwrap_or_else(|| "Recording".into()),
+                "id": id, "path": path, "edit": edit, "log": log_kept, "pointer": pointer, "pointerKept": pointer_kept, "studioTake": studio_take, "window": window, "poster": Store::poster(&rec), "title": rec.title.clone().unwrap_or_else(|| "Recording".into()),
                 "duration": p.duration_ms, "fps": if p.fps > 0.0 { p.fps } else { 30.0 }, "width": p.width, "height": p.height,
                 "tracks": p.audio_tracks, "bytes": path.metadata().map_or(0, |m| m.len()),
                 // pixels per point: a background's sizes are in points

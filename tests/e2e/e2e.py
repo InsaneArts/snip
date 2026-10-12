@@ -2743,6 +2743,36 @@ def studio_take(s, env):
 
 
 @case
+def a_window_take_opens_in_a_background(s, env):
+    """CleanShot's (the design's phase 5): a window's take (Space, then a click on it), opened
+    in the video editor before it's edited, sits in a background with the window's own corners
+    (Hyprland's rounding)."""
+    s.cli("close-all"); time.sleep(0.3)
+    m = env.monitor()
+    p = record_panel(s)
+    s.debug("ui", "record", "keys", "{Space}")
+    assert wait_for(lambda: record_hud(s)["picking"], 2), "Space picks a window"
+    c = next(c for c in hypr_json("clients") if c["class"] == "snip-e2e-target")
+    lx, ly = c["at"][0] - m["x"], c["at"][1] - m["y"]
+    s.move(lx + c["size"][0] / 2 + 1, ly + c["size"][1] / 2); s.move(lx + c["size"][0] / 2, ly + c["size"][1] / 2)
+    time.sleep(0.1); s.click()
+    assert wait_for(lambda: record_hud(s)["area"] == [lx, ly, c["size"][0], c["size"][1]], 2), record_hud(s)["area"]
+    record_click(s, "record-video")
+    assert wait_for(lambda: record_hud(s)["phase"] == "recording", 5), record_hud(s)
+    time.sleep(1.0)
+    s.json("record", "stop")
+    r, code = finish(p, timeout=20)
+    assert code == 0, r
+    s.debug("annotate", r["result"]["id"])
+    assert wait_for(lambda: video_editor_window(), 6), "the video editor opens"
+    rounding = json.loads(sh("hyprctl", "-j", "getoption", "decoration:rounding").stdout)["int"]
+    bg = video_state(s)["bg"]
+    assert bg and bg["kind"] == "gradient" and bg["radius"] == round(rounding * m["scale"]), (bg, rounding)
+    s.cli("debug", "ui", "close-editors")
+    s.cli("close-all")
+
+
+@case
 def video_editor_exports_a_frame(s, env):
     """The design's phase 5 (CleanShot's Export Current Frame as Image): the frame shown,
     drawn as the export draws it (here in a background), becomes a new screenshot at the
