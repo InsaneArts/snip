@@ -36,6 +36,8 @@ impl Inner {
             // in the picture from the start (D57's hardware plane couldn't be
             // had), why: nothing to redraw
             let log = Store::input_log(&rec);
+            // every take's (D54): where its pointer went and its clicks, for auto and follow zooms
+            let log_kept = if log.is_file() { json!(log) } else { Value::Null };
             let header = std::fs::File::open(&log)
                 .ok()
                 .and_then(|f| std::io::BufReader::new(f).lines().next()?.ok())
@@ -49,7 +51,7 @@ impl Inner {
                 Err(e) => return me.toast(format!("Can't open the video: {e}")),
             };
             let j = json!({
-                "id": id, "path": path, "edit": edit, "pointer": pointer, "pointerKept": pointer_kept, "poster": Store::poster(&rec), "title": rec.title.clone().unwrap_or_else(|| "Recording".into()),
+                "id": id, "path": path, "edit": edit, "log": log_kept, "pointer": pointer, "pointerKept": pointer_kept, "poster": Store::poster(&rec), "title": rec.title.clone().unwrap_or_else(|| "Recording".into()),
                 "duration": p.duration_ms, "fps": if p.fps > 0.0 { p.fps } else { 30.0 }, "width": p.width, "height": p.height,
                 "tracks": p.audio_tracks, "bytes": path.metadata().map_or(0, |m| m.len()),
                 // pixels per point: a background's sizes are in points

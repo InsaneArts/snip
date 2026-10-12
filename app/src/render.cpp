@@ -210,6 +210,7 @@ renderVideo(const QString& specPath)
                                                           { QStringLiteral("outer"), scene["outer"].toVariant() },
                                                           { QStringLiteral("inner"), scene["inner"].toVariant() },
                                                           { QStringLiteral("studio"), scene["studio"].toVariant() },
+                                                          { QStringLiteral("log"), scene["log"].toString() },
                                                           { QStringLiteral("pointer"), scene["pointer"].toVariant() },
                                                           { QStringLiteral("pointerLook"), scene["pointerLook"].toVariant() },
                                                           { QStringLiteral("pixelScale"), scale } });

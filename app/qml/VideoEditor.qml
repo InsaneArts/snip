@@ -281,7 +281,7 @@ Window {
         player.pause()
         // Studio Mode (D55): with zooms, or a pointer to redraw, snipd draws every frame with this scene
         if (studio.zooms.length > 0 || info.pointer)
-            return send(replace, null, { bg: bgLive, outer: outer, inner: inner, studio: studio, theme: Engine.theme,
+            return send(replace, null, { bg: bgLive, outer: outer, inner: inner, studio: studio, log: info.log || "", theme: Engine.theme,
                                          pointer: info.pointer || null, pointerLook: pointerLook })
         if (!bgLive) return send(replace, null)
         // the background first, as the export draws it: a grab, then ffmpeg
@@ -698,6 +698,7 @@ Window {
                 outer: ve.outer
                 inner: ve.inner
                 studio: ve.studio
+                log: ve.info.log || ""
                 pointer: ve.info.pointer || null
                 pointerLook: ve.pointerLook
                 ms: frameTime.ms

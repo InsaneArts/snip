@@ -1,6 +1,6 @@
 //! Studio Mode (D55): what a recording's export shows at any moment, from
 //! the zooms placed on it (the design's §6.3). Pure, so the editor's preview
-//! and the export ask the same function and show the same frame.
+//! and the export ask the same thing and show the same frame.
 
 use serde::{Deserialize, Serialize};
 
@@ -10,13 +10,17 @@ pub mod pointer;
 
 /// A zoom on the timeline: from `from` to `to` (the recording's own ms), at
 /// `level` (1–4), framing `focus`, a point of the recording (0–1 across and
-/// down).
+/// down), or following the pointer. `auto`: placed by auto zoom.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Zoom {
     pub from: f64,
     pub to: f64,
     pub level: f64,
     pub focus: [f64; 2],
+    #[serde(default)]
+    pub follow: bool,
+    #[serde(default)]
+    pub auto: bool,
 }
 
 /// How zooms move in and out, one setting for the whole edit (CleanShot's).
@@ -49,31 +53,129 @@ pub struct View {
 /// The whole recording, unzoomed.
 const WHOLE: View = View { scale: 1.0, center: [0.5, 0.5] };
 
-/// What the export shows at `t` (ms of the recording).
-pub fn view(zooms: &[Zoom], motion: Motion, t: f64) -> View {
-    let mut zooms: Vec<&Zoom> = zooms.iter().collect();
-    zooms.sort_by(|a, b| a.from.total_cmp(&b.from));
-    // a zoom that touches the next one doesn't go out: it holds until the next
-    // one comes in from it, so close zooms pan instead of out and in again
-    let touch = |a: &Zoom, b: &Zoom| b.from - a.to < ramp(a, motion) + ramp(b, motion);
-    for (i, z) in zooms.iter().enumerate() {
-        let (prev, next) = (i.checked_sub(1).map(|p| zooms[p]), zooms.get(i + 1).copied());
-        let to_next = next.filter(|n| touch(z, n));
-        if t < z.from || t >= to_next.map_or(z.to, |n| n.from) {
-            continue;
-        }
-        let r = ramp(z, motion);
-        let (in_, out) = ((t - z.from) / r, (z.to - t) / r);
-        if in_ < 1.0 {
-            let from = prev.filter(|p| touch(p, z)).map_or(WHOLE, framed);
-            return between(from, framed(z), eased(in_, motion));
-        }
-        if out < 1.0 && to_next.is_none() {
-            return between(WHOLE, framed(z), eased(out, motion));
-        }
-        return framed(z);
+/// Following the pointer (Cap's, the design's §6.3): the dead zone, the share
+/// of the view (across, down) the pointer moves in before the view follows;
+/// the spring the view follows with (stiffness, mass, damping: settled in
+/// about 0.45 s), in steps of STEP ms; and how near an edge (a share of the
+/// recording) the view goes flush against it.
+const DEAD: [f64; 2] = [0.5, 0.7];
+const FOLLOW: (f64, f64, f64) = (200.0, 2.25, 40.0);
+const STEP: f64 = 1000.0 / 240.0;
+const SNAP: f64 = 0.25;
+
+/// What the export shows all through an edit, worked out once: where follow
+/// zooms look comes from the pointer's path, step by step from each one's
+/// start, so any moment is the same in the preview and the export.
+pub struct Views {
+    zooms: Vec<Zoom>,
+    motion: Motion,
+    /// a follow zoom's centre every STEP from its start; None: it stays on its focus
+    follow: Vec<Option<Vec<[f64; 2]>>>,
+}
+
+impl Views {
+    /// `pointer`: where the take's pointer went (none: follow zooms keep their focus).
+    pub fn new(edit: &Edit, pointer: Option<&pointer::Track>) -> Views {
+        let mut zooms = edit.zooms.clone();
+        zooms.sort_by(|a, b| a.from.total_cmp(&b.from));
+        let follow = (0..zooms.len())
+            .map(|i| {
+                let z = &zooms[i];
+                let until = zooms.get(i + 1).filter(|n| touch(z, n, edit.motion)).map_or(z.to, |n| n.from);
+                pointer.filter(|_| z.follow).map(|p| centres(z, until, p))
+            })
+            .collect();
+        Views { zooms, motion: edit.motion, follow }
     }
-    WHOLE
+
+    /// What the export shows at `t` (ms of the recording).
+    pub fn at(&self, t: f64) -> View {
+        let (zooms, motion) = (&self.zooms, self.motion);
+        for (i, z) in zooms.iter().enumerate() {
+            let to_next = zooms.get(i + 1).filter(|n| touch(z, n, motion));
+            if t < z.from || t >= to_next.map_or(z.to, |n| n.from) {
+                continue;
+            }
+            let r = ramp(z, motion);
+            let (in_, out) = ((t - z.from) / r, (z.to - t) / r);
+            if in_ < 1.0 {
+                let from = i.checked_sub(1).filter(|&p| touch(&zooms[p], z, motion)).map_or(WHOLE, |p| self.framed(p, z.from));
+                return between(from, self.framed(i, t), eased(in_, motion));
+            }
+            if out < 1.0 && to_next.is_none() {
+                // where it looks holds still on the way out
+                return between(WHOLE, self.framed(i, z.to - r), eased(out, motion));
+            }
+            return self.framed(i, t);
+        }
+        WHOLE
+    }
+
+    /// Zoom `i`'s view at `t` once it's in: its level (held to 1–4), centred
+    /// on its focus, or where it follows the pointer to, as far as the
+    /// recording allows (the view never shows past its edges).
+    fn framed(&self, i: usize, t: f64) -> View {
+        let z = &self.zooms[i];
+        let level = z.level.clamp(1.0, 4.0);
+        let half = 0.5 / level;
+        let center = match &self.follow[i] {
+            Some(c) => {
+                let f = ((t - z.from) / STEP).clamp(0.0, (c.len() - 1) as f64);
+                let (a, b, k) = (c[f.floor() as usize], c[(f.floor() as usize + 1).min(c.len() - 1)], f.fract());
+                [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k]
+            }
+            None => z.focus.map(|f| f.clamp(half, 1.0 - half)),
+        };
+        View { scale: level, center }
+    }
+}
+
+/// A zoom that touches the next one doesn't go out: it holds until the next
+/// one comes in from it, so close zooms pan instead of out and in again.
+fn touch(a: &Zoom, b: &Zoom, motion: Motion) -> bool {
+    b.from - a.to < ramp(a, motion) + ramp(b, motion)
+}
+
+/// Where a follow zoom looks, every STEP from its start until `until`. It
+/// starts on the pointer (so it zooms in toward it); after that it heads for
+/// where the pointer is only once it leaves the dead zone, and just far
+/// enough to have it back in; near an edge it heads flush against it.
+fn centres(z: &Zoom, until: f64, pointer: &pointer::Track) -> Vec<[f64; 2]> {
+    let level = z.level.clamp(1.0, 4.0);
+    let half = 0.5 / level;
+    let video = pointer.video();
+    let place = |t: f64| {
+        let at = pointer.at(t).at;
+        [at[0] / video[0].max(1.0), at[1] / video[1].max(1.0)]
+    };
+    let goal = |aim: [f64; 2]| {
+        aim.map(|a| match a.clamp(half, 1.0 - half) {
+            a if a < SNAP => half,
+            a if a > 1.0 - SNAP => 1.0 - half,
+            a => a,
+        })
+    };
+    let (k, m, c) = FOLLOW;
+    let mut aim = place(z.from);
+    let (mut x, mut v, dt) = (goal(aim), [0.0; 2], STEP / 1000.0);
+    let n = ((until - z.from) / STEP).ceil().max(0.0) as usize + 1;
+    (0..n)
+        .map(|i| {
+            if i > 0 {
+                let p = place(z.from + i as f64 * STEP);
+                for d in 0..2 {
+                    let reach = DEAD[d] * half;
+                    aim[d] = aim[d].clamp(p[d] - reach, p[d] + reach);
+                }
+                let g = goal(aim);
+                for d in 0..2 {
+                    v[d] += dt * (k * (g[d] - x[d]) - c * v[d]) / m;
+                    x[d] += dt * v[d];
+                }
+            }
+            x
+        })
+        .collect()
 }
 
 /// How long a zoom takes to move in, and out: CleanShot's 0.75 s (Smooth) or
@@ -137,17 +239,14 @@ pub fn card(view: View, canvas: [f64; 2], at1: [f64; 4]) -> [f64; 4] {
     [x, y, size[0], size[1]]
 }
 
-/// A zoom's view once it's in: its level (held to 1–4), centred on its focus
-/// as far as the recording allows (the view never shows past its edges).
-fn framed(z: &Zoom) -> View {
-    let level = z.level.clamp(1.0, 4.0);
-    let half = 0.5 / level;
-    View { scale: level, center: z.focus.map(|f| f.clamp(half, 1.0 - half)) }
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn view(zooms: &[Zoom], motion: Motion, t: f64) -> View {
+        Views::new(&Edit { zooms: zooms.to_vec(), motion }, None).at(t)
+    }
 
     #[test]
     fn with_no_zoom_the_whole_recording_shows() {
@@ -156,7 +255,7 @@ mod tests {
     }
 
     fn zoom(from: f64, to: f64, level: f64, focus: [f64; 2]) -> Zoom {
-        Zoom { from, to, level, focus }
+        Zoom { from, to, level, focus, follow: false, auto: false }
     }
 
     #[test]
@@ -274,5 +373,90 @@ mod tests {
     fn zooms_far_apart_go_out_between() {
         let z = [zoom(0.0, 3000.0, 2.0, [0.3, 0.3]), zoom(5000.0, 8000.0, 2.0, [0.7, 0.7])];
         assert_eq!(view(&z, Motion::Smooth, 4000.0), WHOLE);
+    }
+
+    // a take where the pointer went to these places (px of a 1000×500 video,
+    // at s seconds of it), unsmoothed: the test pattern recorder's clock
+    fn pointer(to: &[(f64, i32, i32)]) -> pointer::Track {
+        use log::{Event, Header, Log};
+        let header = Header { gsr_ts: Some([10_000_000, 0]), fps: 60.0, encoder: "fake".into(), area: [0, 0, 1000, 500], video: [1000, 500], ..Header::default() };
+        let events = to.iter().map(|&(s, x, y)| Event::Move { t: (10_000_000.0 + 1e6 / 60.0 + s * 1e6).round() as i64, at: [x, y] }).collect();
+        pointer::Track::new(&Log { header, events }, &pointer::Settings { motion: pointer::Motion::Off, ..pointer::Settings::DEFAULT }).unwrap()
+    }
+    fn follow(from: f64, to: f64, level: f64) -> Zoom {
+        Zoom { follow: true, ..zoom(from, to, level, [0.5, 0.5]) }
+    }
+    fn views(zooms: Vec<Zoom>, p: Option<&pointer::Track>) -> Views {
+        Views::new(&Edit { zooms, motion: Motion::Smooth }, p)
+    }
+    fn close(a: [f64; 2], b: [f64; 2]) -> bool {
+        (a[0] - b[0]).abs() < 1e-3 && (a[1] - b[1]).abs() < 1e-3
+    }
+
+    #[test]
+    fn a_follow_zoom_zooms_in_on_the_pointer_from_its_start() {
+        // the pointer rests at (700, 200): a fixed zoom on that spot, all the way in
+        let p = pointer(&[(0.0, 700, 200)]);
+        let there = [700.5 / 1000.0, 200.5 / 500.0];
+        let (f, fixed) = (views(vec![follow(1000.0, 5000.0, 2.0)], Some(&p)), views(vec![zoom(1000.0, 5000.0, 2.0, there)], None));
+        for t in [1100.0, 1375.0, 3000.0, 4600.0] {
+            let (a, b) = (f.at(t), fixed.at(t));
+            assert!((a.scale - b.scale).abs() < 1e-9 && close(a.center, b.center), "at {t} ms: {a:?}, not {b:?}");
+        }
+    }
+
+    #[test]
+    fn a_follow_zoom_stays_still_while_the_pointer_moves_inside_its_dead_zone() {
+        // at 2x the view is 500×250 px: the dead zone 250×175 around its middle
+        let p = pointer(&[(0.0, 500, 250), (2.0, 600, 320)]);
+        let v = views(vec![follow(1000.0, 5000.0, 2.0)], Some(&p));
+        assert!(close(v.at(1800.0).center, [0.5005, 0.501]));
+        assert!(close(v.at(3500.0).center, [0.5005, 0.501]), "{:?}", v.at(3500.0));
+    }
+
+    #[test]
+    fn a_follow_zoom_follows_the_pointer_out_of_its_dead_zone_just_far_enough() {
+        // at 2 s it moves to (800, 250): the view follows until the pointer is
+        // back on the dead zone's edge, 125 px right of the middle
+        let p = pointer(&[(0.0, 500, 250), (2.0, 800, 250)]);
+        let v = views(vec![follow(1000.0, 6000.0, 2.0)], Some(&p));
+        let middle = (800.5 - 125.0) / 1000.0;
+        let way = |t: f64| (v.at(t).center[0] - 0.5005) / (middle - 0.5005);
+        assert!(way(2200.0) > 0.0 && way(2200.0) < 0.9, "on its way: {}", way(2200.0));
+        assert!(way(2450.0) > 0.9, "most of the way in 0.45 s: {}", way(2450.0));
+        assert!(close(v.at(3000.0).center, [middle, 0.501]), "{:?}", v.at(3000.0));
+        assert!(close(v.at(5000.0).center, [middle, 0.501]), "{:?}", v.at(5000.0));
+    }
+
+    #[test]
+    fn a_follow_zoom_holds_still_on_its_way_out() {
+        // the pointer moves off after the zoom began to go out (4.25 s): the view doesn't follow
+        let p = pointer(&[(0.0, 500, 250), (4.3, 900, 250)]);
+        let (f, fixed) = (views(vec![follow(1000.0, 5000.0, 2.0)], Some(&p)), views(vec![zoom(1000.0, 5000.0, 2.0, [0.5005, 0.501])], None));
+        for t in [4400.0, 4600.0, 4900.0] {
+            let (a, b) = (f.at(t), fixed.at(t));
+            assert!((a.scale - b.scale).abs() < 1e-9 && close(a.center, b.center), "at {t} ms: {a:?}, not {b:?}");
+        }
+    }
+
+    #[test]
+    fn a_follow_zoom_near_an_edge_sits_flush_against_it() {
+        // at 4x the view is 250 px wide: the pointer 200 px from the left edge puts it flush left
+        let p = pointer(&[(0.0, 200, 250)]);
+        let v = views(vec![follow(1000.0, 5000.0, 4.0)], Some(&p));
+        assert!(close(v.at(3000.0).center, [0.125, 0.501]), "{:?}", v.at(3000.0));
+    }
+
+    #[test]
+    fn a_follow_zoom_with_no_pointer_to_follow_keeps_its_focus() {
+        // a recording from before logs were kept
+        let v = views(vec![Zoom { focus: [0.3, 0.6], ..follow(1000.0, 5000.0, 2.0) }], None);
+        assert_eq!(v.at(3000.0), View { scale: 2.0, center: [0.3, 0.6] });
+    }
+
+    #[test]
+    fn a_zoom_reads_follow_and_auto_from_its_json() {
+        let e: Edit = serde_json::from_str(r#"{"zooms":[{"from":0,"to":3000,"level":1.5,"focus":[0.5,0.5],"follow":true,"auto":true}]}"#).unwrap();
+        assert_eq!(e.zooms[0], Zoom { auto: true, ..follow(0.0, 3000.0, 1.5) });
     }
 }

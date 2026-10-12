@@ -134,6 +134,7 @@ fn presses(log: &Log, clock: &Clock, path: &[(f64, [f64; 2])]) -> Vec<Press> {
 pub struct Track {
     from: f64,
     shown: Vec<Shown>,
+    video: [f64; 2],
 }
 
 impl Track {
@@ -210,7 +211,12 @@ impl Track {
                 Shown { at, opacity: if drawn { typing.min(idle) } else { 0.0 }, press }
             })
             .collect();
-        Some(Track { from, shown })
+        Some(Track { from, shown, video: log.header.video.map(f64::from) })
+    }
+
+    /// The size (px) of the video its places are in.
+    pub fn video(&self) -> [f64; 2] {
+        self.video
     }
 
     /// The pointer at `ms` of the video.
