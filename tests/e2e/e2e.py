@@ -2743,6 +2743,66 @@ def studio_take(s, env):
 
 
 @case
+def auto_zoom(s, env):
+    """D54, the design's §6.4: a take keeps where its clicks were, so its editor opens with
+    zooms on them (follow zooms, marked auto) until it's edited. Re-run Auto Zoom (the zoom
+    lane's right-click menu) places them again around the zooms the user changed; Remove
+    All Zooms is kept, so the editor opens again with none."""
+    s.cli("close-all"); time.sleep(0.3)
+    p = record_panel(s)
+    s.drag(300, 200, 1100, 650)
+    assert wait_for(lambda: record_hud(s)["area"] == [300, 200, 800, 450], 3), record_hud(s)
+    record_click(s, "record-video")
+    assert wait_for(lambda: record_hud(s)["phase"] == "recording", 5), record_hud(s)
+    # a burst of three clicks, then (4 s later, elsewhere) two: the video opens wide 2 s first
+    s.move(500, 300); time.sleep(3.6)
+    for _ in range(3):
+        s.click(); time.sleep(0.4)
+    time.sleep(4.0)
+    s.move(1000, 560); time.sleep(0.2)
+    for _ in range(2):
+        s.click(); time.sleep(0.4)
+    time.sleep(3.0)
+    s.json("record", "stop")
+    r, code = finish(p, timeout=20)
+    assert code == 0, r
+    rid = r["result"]["id"]
+    s.debug("annotate", rid)
+    assert wait_for(lambda: video_editor_window(), 6), "the editor opens"
+    st = video_state(s)
+    zs = st["studio"]["zooms"]
+    assert len(zs) == 2 and all(z["auto"] and z["follow"] for z in zs), zs
+    assert [z["level"] for z in zs] == [2, 1.5], ("three clicks: 2x, two: 1.5x", zs)
+    assert abs(zs[0]["focus"][0] - 0.25) < 0.02 and abs(zs[0]["focus"][1] - 0.222) < 0.02, ("where the clicks were", zs)
+    # the first one moved by hand is the user's
+    mine = dict(zs[0], **{"from": zs[0]["from"] + 400, "to": zs[0]["to"] + 400, "auto": False})
+    s.debug("ui", "video", "studio", json.dumps({"zooms": [mine] + zs[1:], "zoom_style": "smooth"}))
+    w, mon, lane = video_editor_window(), env.monitor(), where(s, "video", "studio-lane")
+    ox, oy, dur = w["at"][0] - mon["x"], w["at"][1] - mon["y"], st["duration"]
+    # the lane spans the window less its 16 px margins: its last 0.3 s is free
+    lane_end = (ox + lane["x"] - (w["size"][0] - 32) / 2 + (dur - 300) * (w["size"][0] - 32) / dur, oy + lane["y"])
+
+    def menu(row):
+        s.move(*lane_end); time.sleep(0.1); s.click(right=True); time.sleep(0.4)
+        s.move(*video_point(s, env, "studio-zoom-menu:" + row)); time.sleep(0.1); s.click()
+
+    menu("auto")
+    assert wait_for(lambda: len(s.traces("studio_auto_zoom")) >= 2, 3)
+    zs = video_state(s)["studio"]["zooms"]
+    assert zs[0] == mine, ("the user's zoom where they put it", zs)
+    assert len(zs) == 2 and zs[1]["auto"] and zs[1]["from"] >= mine["to"], ("an auto zoom placed beside it", zs)
+    menu("clear")
+    assert wait_for(lambda: video_state(s)["studio"]["zooms"] == [], 2), video_state(s)["studio"]
+    s.debug("ui", "video", "keys", "{Escape}")
+    assert wait_for(lambda: not video_editor_window(), 3)
+    s.debug("annotate", rid)
+    assert wait_for(lambda: video_editor_window(), 6)
+    assert video_state(s)["studio"]["zooms"] == [], "no zooms: the edit was kept"
+    s.cli("debug", "ui", "close-editors")
+    s.cli("close-all")
+
+
+@case
 def recording_safety(s, env):
     """REC-14: takes left behind when Snip stopped mid-recording are recovered at its next
     start (a finished one as it is, one cut short from its fragments), each with its card;

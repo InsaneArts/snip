@@ -2,23 +2,26 @@ import QtQuick
 import QtQuick.Effects
 import Snip.Core
 
-// A zoom's right-click menu (D55; CleanShot's): its level to every zoom,
-// split it at the playhead (the halves touch, so the view pans from one to
-// the other once one is aimed elsewhere), or no zooms at all.
+// The zoom lane's right-click menu (D55; CleanShot's): a zoom's level to
+// every zoom, split it at the playhead (the halves touch, so the view pans
+// from one to the other once one is aimed elsewhere), auto zoom run again
+// (D54: the zooms the user placed stay), or no zooms at all.
 Rectangle {
     id: menu
     property var ed: null                   // the video editor
-    property int index: -1                  // the zoom it's for; -1: closed
+    property bool open: false
+    property int index: -1                  // the zoom it's for; -1: none
     readonly property var zoom: ed && index >= 0 ? ed.studio.zooms[index] || null : null
     readonly property bool canSplit: !!zoom && ed.headMs >= zoom.from + ed.zoomLeast && ed.headMs <= zoom.to - ed.zoomLeast
     function openAt(i, px, py, room) {
         index = i
+        open = true
         x = Math.max(8, Math.min(room.width - width - 8, px))
         y = Math.max(8, py - height - 4)
     }
-    function close() { index = -1 }
+    function close() { open = false; index = -1 }
 
-    visible: zoom !== null
+    visible: open
     width: 230
     height: rows.implicitHeight + 12
     radius: Math.min(Theme.radius, 12)
@@ -34,9 +37,10 @@ Rectangle {
         width: parent.width - 12
         Repeater {
             model: [
-                { label: "Apply Level to All", action: "level", icon: "layers", on: !!menu.ed && menu.ed.studio.zooms.length > 1 },
+                { label: "Apply Level to All", action: "level", icon: "layers", on: !!menu.zoom && menu.ed.studio.zooms.length > 1 },
                 { label: "Split Zoom at Playhead", action: "split", icon: "scissors", on: menu.canSplit },
-                { label: "Remove All Zooms", action: "clear", icon: "trash", on: true, danger: true }
+                { label: "Re-run Auto Zoom", action: "auto", icon: "sparkles", on: !!menu.ed && !!menu.ed.info.log },
+                { label: "Remove All Zooms", action: "clear", icon: "trash", on: !!menu.ed && menu.ed.studio.zooms.length > 0, danger: true }
             ]
             delegate: Rectangle {
                 id: row
@@ -77,6 +81,7 @@ Rectangle {
                         menu.close()
                         if (action === "level") ed.levelToAll(i)
                         else if (action === "split") ed.splitZoom(i, ed.headMs)
+                        else if (action === "auto") ed.rerunAutoZoom()
                         else ed.removeAllZooms()
                     }
                 }
