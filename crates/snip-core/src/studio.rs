@@ -4,6 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
+pub mod auto;
 pub mod cursor;
 pub mod log;
 pub mod pointer;
@@ -181,11 +182,17 @@ fn centres(z: &Zoom, until: f64, pointer: &pointer::Track) -> Vec<[f64; 2]> {
 /// How long a zoom takes to move in, and out: CleanShot's 0.75 s (Smooth) or
 /// 0.4 s (Dynamic), or half the zoom when it's shorter than both.
 fn ramp(z: &Zoom, motion: Motion) -> f64 {
-    let most = match motion {
-        Motion::Smooth => 750.0,
-        Motion::Dynamic => 400.0,
-    };
-    ((z.to - z.from) / 2.0).min(most)
+    ((z.to - z.from) / 2.0).min(motion.ramp())
+}
+
+impl Motion {
+    /// A zoom's move in, and out, unless the zoom is shorter than both (ms).
+    fn ramp(self) -> f64 {
+        match self {
+            Motion::Smooth => 750.0,
+            Motion::Dynamic => 400.0,
+        }
+    }
 }
 
 /// How far along a move is at `u` (0–1) of its time, from rest: smootherstep

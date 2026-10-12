@@ -90,6 +90,9 @@ Window {
             bg = e.background || null
             studio = { zooms: e.zooms || [], zoom_style: e.zoom_style || "smooth", pointer: e.pointer || null }
             if (e.export) { maxHeight = e.export.height || 0; quality = e.export.quality || 23; gif = !!e.export.gif }
+        } else if (info.log) {
+            // not edited yet: zooms where its clicks were (D54), kept once anything changes
+            studio = Object.assign({}, studio, { zooms: autoZooms([]) })
         }
         editReady = true
     }
@@ -209,9 +212,10 @@ Window {
         selectZoom(studio.zooms.indexOf(z))
         return zoomSelected
     }
+    // a zoom changed is the user's: auto zoom run again leaves it where it is
     function changeZoom(i, patch) {
         const zs = studio.zooms.slice()
-        zs[i] = Object.assign({}, zs[i], patch)
+        zs[i] = Object.assign({}, zs[i], patch, { auto: false })
         setZooms(zs)
     }
     function removeZoom(i) {
@@ -222,18 +226,27 @@ Window {
     // the zoom menu's
     function levelToAll(i) {
         const level = studio.zooms[i].level
-        setZooms(studio.zooms.map(z => Object.assign({}, z, { level: level })))
+        setZooms(studio.zooms.map(z => Object.assign({}, z, { level: level, auto: false })))
     }
     function splitZoom(i, ms) {
         const z = studio.zooms[i]
         if (!z || ms < z.from + zoomLeast || ms > z.to - zoomLeast) return
         const zs = studio.zooms.slice()
-        zs.splice(i, 1, Object.assign({}, z, { to: Math.round(ms) }), Object.assign({}, z, { from: Math.round(ms) }))
+        zs.splice(i, 1, Object.assign({}, z, { to: Math.round(ms), auto: false }), Object.assign({}, z, { from: Math.round(ms), auto: false }))
         setZooms(zs)
         selectZoom(i + 1)
     }
     function removeAllZooms() {
         setZooms([])
+        zoomSelected = -1
+    }
+    // auto zoom (D54, the design's §6.4): `zs` with zooms placed from the
+    // take's clicks and typing around the user's (the auto ones placed again)
+    function autoZooms(zs) {
+        return JSON.parse(Engine.studioAutoZoom(JSON.stringify({ zooms: zs, zoom_style: studio.zoom_style }), info.log || "", duration, inner.w, inner.h))
+    }
+    function rerunAutoZoom() {
+        setZooms(autoZooms(studio.zooms))
         zoomSelected = -1
     }
     function selectZoom(i) {
@@ -425,7 +438,7 @@ Window {
             else if (ctrl && (e.key === Qt.Key_Y || (shift && e.key === Qt.Key_Z))) ve.redo()
             else if (ctrl && e.key === Qt.Key_Z) ve.undo()
             else if (e.key === Qt.Key_Escape && ve.exportOpen) ve.exportOpen = false
-            else if (e.key === Qt.Key_Escape && zoomMenu.index >= 0) zoomMenu.close()
+            else if (e.key === Qt.Key_Escape && zoomMenu.open) zoomMenu.close()
             else if (e.key === Qt.Key_Escape && ve.zoomSelected >= 0) ve.selectZoom(-1)
             else if (e.key === Qt.Key_Escape || (ctrl && e.key === Qt.Key_W)) ve.close()
             else return
@@ -1036,7 +1049,7 @@ Window {
     ZoomPopover {
         id: zoomPopover
         objectName: "studio-zoom-popover"
-        visible: zoom !== null && zoomMenu.index < 0      // not under its menu
+        visible: zoom !== null && !zoomMenu.open          // not under its menu
         ed: ve
         source: studioFrame.video
         readonly property real at: zoom ? tlView.x + timeline.x - tlView.contentX + (zoom.from + zoom.to) / 2 * timeline.k : 0

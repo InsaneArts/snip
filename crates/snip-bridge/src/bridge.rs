@@ -141,6 +141,13 @@ pub mod qobject {
         #[qinvokable]
         fn studio_pointer(self: &Engine, log: QString, settings: QString, ms: f64, video_w: f64, video_h: f64) -> QString;
 
+        /// Auto zoom (D54): the zooms of `edit` ({zooms, zoom_style}) with auto
+        /// zoom run again on the take's input log at `log`, for its video
+        /// (`duration_ms` long, `video_w` × `video_h`): the user's kept, auto
+        /// zooms placed around them. Answers the zooms, a JSON array.
+        #[qinvokable]
+        fn studio_auto_zoom(self: &Engine, edit: QString, log: QString, duration_ms: f64, video_w: f64, video_h: f64) -> QString;
+
         /// The pointer's look (D59): `theme`'s arrow as a PNG in Snip's cache.
         /// Answers {"path", "w", "h", "hot": [x, y], "nominal"}, or null.
         #[qinvokable]
@@ -773,6 +780,17 @@ impl qobject::Engine {
         })
     }
 
+    fn studio_auto_zoom(&self, edit: QString, log: QString, duration_ms: f64, video_w: f64, video_h: f64) -> QString {
+        use snip_core::studio;
+        let e: studio::Edit = serde_json::from_str(&edit.to_string()).unwrap_or_default();
+        let zooms = match take_log(&log.to_string(), video_w, video_h) {
+            Some(l) => studio::auto::place(&l, duration_ms, e.motion, &e.zooms),
+            None => e.zooms,
+        };
+        trace::trace("studio_auto_zoom", &format!("\"zooms\":{},\"auto\":{}", zooms.len(), zooms.iter().filter(|z| z.auto).count()));
+        QString::from(serde_json::to_string(&zooms).unwrap_or_else(|_| "[]".into()).as_str())
+    }
+
     fn studio_cursor(&self, theme: QString) -> QString {
         use snip_core::studio::cursor;
         let theme = theme.to_string();
@@ -1336,10 +1354,15 @@ fn already_running() -> bool {
     snip_ipc::call(&snip_ipc::Request::Ping, std::time::Duration::from_millis(300)).map(|r| r.ok).unwrap_or(false)
 }
 
-/// A take's pointer from its input log at `log`, in px of its video as it is
-/// (`w` × `h`: gsr may have scaled it to a largest size).
-fn take_track(log: &str, settings: &snip_core::studio::pointer::Settings, w: f64, h: f64) -> Option<snip_core::studio::pointer::Track> {
+/// A take's input log at `log`, for its video as it is (`w` × `h`: gsr may
+/// have scaled it to a largest size).
+fn take_log(log: &str, w: f64, h: f64) -> Option<snip_core::studio::log::Log> {
     let mut l = std::fs::read_to_string(log).ok().and_then(|text| snip_core::studio::log::read(&text))?;
     l.header.video = [w as u32, h as u32];
-    snip_core::studio::pointer::Track::new(&l, settings)
+    Some(l)
+}
+
+/// A take's pointer from its input log at `log`, in px of its `w` × `h` video.
+fn take_track(log: &str, settings: &snip_core::studio::pointer::Settings, w: f64, h: f64) -> Option<snip_core::studio::pointer::Track> {
+    snip_core::studio::pointer::Track::new(&take_log(log, w, h)?, settings)
 }

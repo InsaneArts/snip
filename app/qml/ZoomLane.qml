@@ -13,7 +13,7 @@ Item {
     property real k: 1                      // px per ms
     readonly property var zooms: ed ? ed.studio.zooms : []
     readonly property real least: ed ? ed.zoomLeast : 0
-    signal menu(int index, real x, real y)   // a right-click on zoom `index`, at x, y here
+    signal menu(int index, real x, real y)   // a right-click on zoom `index` (-1: between them), at x, y here
 
     // the free time around `ms`, between the zooms other than zoom `skip`:
     // [from, to], or null inside one
@@ -112,7 +112,8 @@ Item {
             const h = lane.hit(m.x), t = m.x / lane.k, r = lane.room(t, -1)
             if (m.button === Qt.RightButton) {
                 grab = null
-                if (h) { lane.ed.selectZoom(h.index); lane.menu(h.index, m.x, m.y) }
+                if (h) lane.ed.selectZoom(h.index)
+                lane.menu(h ? h.index : -1, m.x, m.y)
                 return
             }
             if (h) {
