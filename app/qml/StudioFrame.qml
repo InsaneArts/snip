@@ -37,7 +37,9 @@ Item {
     }
     readonly property alias video: video
     readonly property var cursorImage: pointer ? JSON.parse(Engine.studioCursor(pointer.theme)) : null
-    readonly property var pointerNow: pointer && cursorImage ? JSON.parse(Engine.studioPointer(pointer.log, JSON.stringify(pointerLook), ms, inner.w, inner.h)) : null
+    // the pointer's motion blur (the design's §6.6): the edit's, Medium unless it says
+    readonly property real motionBlur: ({ off: 0, low: 0.5, medium: 1, high: 2 })[studio.motion_blur || "medium"] || 0
+    readonly property var pointerNow: pointer && cursorImage ? JSON.parse(Engine.studioPointer(pointer.log, JSON.stringify(pointerLook), ms, motionBlur, inner.w, inner.h)) : null
     readonly property var inputNow: log && ((rippleLook && rippleLook.show) || (keysLook && keysLook.show)) ? JSON.parse(Engine.studioInput(log, ms, partFrom, inner.w, inner.h)) : null
 
     // where the card is now, in the recording's px
@@ -113,7 +115,24 @@ Item {
             height: frame.card.height
             clip: true
             visible: frame.pointerNow !== null && frame.pointerNow.opacity > 0 && frame.pointerLook.show !== false
+            // its motion blur: where it was a moment ago, fainter further back
+            Repeater {
+                model: frame.pointerNow ? frame.pointerNow.trail : []
+                Image {
+                    required property var modelData
+                    required property int index
+                    source: drawnPointer.source
+                    width: drawnPointer.width
+                    height: drawnPointer.height
+                    x: modelData[0] * frame.zoom - drawnPointer.img.hot[0] * drawnPointer.k
+                    y: modelData[1] * frame.zoom - drawnPointer.img.hot[1] * drawnPointer.k
+                    opacity: drawnPointer.opacity * 0.5 * (1 - (index + 1) / 9)
+                    smooth: true
+                    mipmap: true
+                }
+            }
             Image {
+                id: drawnPointer
                 readonly property var img: frame.cursorImage || ({ w: 0, h: 0, hot: [0, 0], nominal: 1 })
                 readonly property var now: frame.pointerNow || ({ x: 0, y: 0, opacity: 0, press: 0 })
                 // the theme's size, in the recording's px, times the edit's size and the zoom; smaller while pressed

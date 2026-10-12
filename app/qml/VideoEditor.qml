@@ -96,7 +96,8 @@ Window {
                 mono = !!e.audio.mono
             }
             bg = e.background || null
-            studio = { zooms: e.zooms || [], zoom_style: e.zoom_style || "smooth", pointer: e.pointer || null, keys: e.keys || null }
+            studio = { zooms: e.zooms || [], zoom_style: e.zoom_style || "smooth", pointer: e.pointer || null, keys: e.keys || null,
+                       motion_blur: e.motion_blur || "medium" }
             if (e.export) { maxHeight = e.export.height || 0; quality = e.export.quality || 23; gif = !!e.export.gif }
         } else if (info.log) {
             // not edited yet: zooms where its clicks were (D54), kept once anything changes
@@ -110,6 +111,7 @@ Window {
             trim: [inMs, outMs], cuts: parts.filter(p => p.cut).map(p => [p.a, p.b]), splits: cuts.slice(1, -1),
             audio: { tracks: volumes, mono: mono }, background: bg,
             zooms: studio.zooms, zoom_style: studio.zoom_style, pointer: studio.pointer || null, keys: studio.keys || null,
+            motion_blur: studio.motion_blur || "medium",
             export: { height: maxHeight > 0 ? maxHeight : null, quality: quality, gif: gif }
         })
     }
@@ -762,6 +764,27 @@ Window {
                     width: parent.width
                     wrapMode: Text.WordWrap
                     text: ve.studio.zoom_style === "dynamic" ? "Quick: in and out in 0.4 s, settling like a spring." : "Gentle: in and out over 0.75 s, easing at both ends."
+                    color: Theme.textSecondary
+                    font.family: Theme.fontUi
+                    font.pixelSize: 11
+                }
+            }
+            // the redrawn pointer's motion blur (the design's §6.6; CleanShot's levels, Medium first)
+            Column {
+                visible: !!ve.info.pointer
+                width: parent.width
+                spacing: 8
+                Text { text: "Motion blur"; color: Theme.textSecondary; font.family: Theme.fontUi; font.pixelSize: 12 }
+                Segmented {
+                    objectName: "studio-motion-blur"
+                    options: [["off", "Off"], ["low", "Low"], ["medium", "Medium"], ["high", "High"]]
+                    current: ve.studio.motion_blur || "medium"
+                    onPicked: (v) => ve.studio = Object.assign({}, ve.studio, { motion_blur: v })
+                }
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    text: "Blurs the pointer along its path as it moves, as a camera would."
                     color: Theme.textSecondary
                     font.family: Theme.fontUi
                     font.pixelSize: 11
