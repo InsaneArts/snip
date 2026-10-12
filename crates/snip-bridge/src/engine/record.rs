@@ -332,8 +332,9 @@ impl Inner {
             keystrokes: cfg.show_keystrokes,
             ..Header::default()
         };
-        // the pointer twice a frame, as Hyprland has it
-        let log = TakeLog::start(file.with_extension("input.jsonl"), header, take.clone(), (2.0 * spec.fps as f64).min(240.0));
+        // the pointer twice a frame, as Hyprland has it, at most 120 times a
+        // second (spike S4: that costs Hyprland 0.4 % of a core; 240, 0.7 %)
+        let log = TakeLog::start(file.with_extension("input.jsonl"), header, take.clone(), (2.0 * spec.fps as f64).min(120.0));
         // CAP-12: with Hide desktop clutter on, the bars show the wallpaper and
         // pins step aside while it records (unless they're hidden already)
         let covered = self.cfg().capture.hide_desktop && !self.desktop_is_hidden();
