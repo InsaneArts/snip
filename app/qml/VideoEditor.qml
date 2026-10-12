@@ -55,6 +55,14 @@ Window {
     // a studio take's pointer, as the edit draws it (D60: CleanShot's defaults)
     readonly property var pointerLook: Object.assign({ show: true, size: 2, motion: "natural", press: true, hide_typing: true, hide_idle: false }, studio.pointer || {})
     function setPointer(patch) { studio = Object.assign({}, studio, { pointer: Object.assign({}, studio.pointer || {}, patch) }) }
+    // a studio take's clicks and keys, drawn after the fact: on as the panel had
+    // Clicks and Keys when it recorded (D60); ripples as the live HUD's, keys at the bottom
+    readonly property var rippleLook: Object.assign({ show: !!(info.studioTake && info.studioTake.clicks), color: "accent", filled: false },
+                                                    (studio.pointer || {}).ripple || {})
+    function setRipple(patch) { setPointer({ ripple: Object.assign({}, (studio.pointer || {}).ripple || {}, patch) }) }
+    readonly property var keysLook: Object.assign({ show: !!(info.studioTake && info.studioTake.keystrokes), size: 1, look: "dark", position: "bottom-center" },
+                                                  studio.keys || {})
+    function setKeys(patch) { studio = Object.assign({}, studio, { keys: Object.assign({}, studio.keys || {}, patch) }) }
     property string section: "audio"          // the sidebar's (D50)
     property bool exportOpen: false           // the Export popover
     property real zoom: 1                     // the timeline's: 1 (all of it) to 8
@@ -88,7 +96,7 @@ Window {
                 mono = !!e.audio.mono
             }
             bg = e.background || null
-            studio = { zooms: e.zooms || [], zoom_style: e.zoom_style || "smooth", pointer: e.pointer || null }
+            studio = { zooms: e.zooms || [], zoom_style: e.zoom_style || "smooth", pointer: e.pointer || null, keys: e.keys || null }
             if (e.export) { maxHeight = e.export.height || 0; quality = e.export.quality || 23; gif = !!e.export.gif }
         } else if (info.log) {
             // not edited yet: zooms where its clicks were (D54), kept once anything changes
@@ -101,7 +109,7 @@ Window {
             format: "snip-video-edit", version: 1,
             trim: [inMs, outMs], cuts: parts.filter(p => p.cut).map(p => [p.a, p.b]), splits: cuts.slice(1, -1),
             audio: { tracks: volumes, mono: mono }, background: bg,
-            zooms: studio.zooms, zoom_style: studio.zoom_style, pointer: studio.pointer || null,
+            zooms: studio.zooms, zoom_style: studio.zoom_style, pointer: studio.pointer || null, keys: studio.keys || null,
             export: { height: maxHeight > 0 ? maxHeight : null, quality: quality, gif: gif }
         })
     }
@@ -160,6 +168,16 @@ Window {
         return out
     }
     readonly property real keptMs: kept.reduce((s, k) => s + (k[1] - k[0]) * 1000, 0)
+    // what's kept in ms, joined where parts meet: where the video is cut
+    readonly property var keptRuns: {
+        const out = []
+        for (const k of kept) {
+            const a = k[0] * 1000, b = k[1] * 1000
+            if (out.length > 0 && Math.abs(out[out.length - 1][1] - a) < 1) out[out.length - 1][1] = b
+            else out.push([a, b])
+        }
+        return out
+    }
 
     function split(ms) {
         ms = Math.round(ms)
@@ -292,10 +310,11 @@ Window {
         error = ""
         progress = 0
         player.pause()
-        // Studio Mode (D55): with zooms, or a pointer to redraw, snipd draws every frame with this scene
-        if (studio.zooms.length > 0 || info.pointer)
+        // Studio Mode (D55): with zooms, or a pointer, clicks or keys to draw, snipd draws every frame with this scene
+        if (studio.zooms.length > 0 || info.pointer || (info.studioTake && (rippleLook.show || keysLook.show)))
             return send(replace, null, { bg: bgLive, outer: outer, inner: inner, studio: studio, log: info.log || "", theme: Engine.theme,
-                                         pointer: info.pointer || null, pointerLook: pointerLook })
+                                         pointer: info.pointer || null, pointerLook: pointerLook, unit: unit,
+                                         rippleLook: info.studioTake ? rippleLook : null, keysLook: info.studioTake ? keysLook : null, keep: keptRuns })
         if (!bgLive) return send(replace, null)
         // the background first, as the export draws it: a grab, then ffmpeg
         coverReplace = replace
@@ -486,7 +505,7 @@ Window {
             spacing: 6
             Repeater {
                 // [section, icon, name]
-                model: [["audio", "volume", "Audio"], ["background", "image", "Background"], ["pointer", "pointer", "Pointer"], ["animations", "sparkles", "Animations"]]
+                model: [["audio", "volume", "Audio"], ["background", "image", "Background"], ["pointer", "pointer", "Pointer"], ["keys", "command", "Keystrokes"], ["animations", "sparkles", "Animations"]]
                 SideButton {
                     required property var modelData
                     objectName: "video-section=" + modelData[0]
@@ -584,6 +603,132 @@ Window {
                 Check { objectName: "studio-pointer-press"; text: "Smaller while clicking"; on: ve.pointerLook.press; onToggled: ve.setPointer({ press: !ve.pointerLook.press }) }
                 Check { objectName: "studio-pointer-typing"; text: "Hide while typing"; on: ve.pointerLook.hide_typing; onToggled: ve.setPointer({ hide_typing: !ve.pointerLook.hide_typing }) }
                 Check { objectName: "studio-pointer-idle"; text: "Hide when still"; on: ve.pointerLook.hide_idle; onToggled: ve.setPointer({ hide_idle: !ve.pointerLook.hide_idle }) }
+            }
+            // a studio take's click ripples (the live HUD's rings, drawn after the fact)
+            Column {
+                visible: !!ve.info.studioTake
+                width: parent.width
+                spacing: 14
+                Rectangle { width: parent.width; height: 1; color: Theme.hairline }
+                Check { objectName: "studio-ripple-show"; text: "Ripple on clicks"; on: ve.rippleLook.show; onToggled: ve.setRipple({ show: !ve.rippleLook.show }) }
+                Segmented {
+                    objectName: "studio-ripple-filled"
+                    visible: ve.rippleLook.show
+                    options: [[false, "Outline"], [true, "Filled"]]
+                    current: ve.rippleLook.filled
+                    onPicked: (v) => ve.setRipple({ filled: v })
+                }
+                // the accent (the right button: the warning colour), or one colour for both
+                Flow {
+                    visible: ve.rippleLook.show
+                    width: parent.width
+                    spacing: 6
+                    Repeater {
+                        model: ["accent", "#ffffff", "#1c1c1e", "#ff3b30", "#ff9500", "#ffcc00", "#34c759", "#007aff"]
+                        Rectangle {
+                            required property string modelData
+                            objectName: "studio-ripple-color=" + modelData
+                            width: 22
+                            height: 22
+                            radius: 11
+                            color: modelData === "accent" ? Theme.accent : modelData
+                            border.width: ve.rippleLook.color === modelData ? 2 : 1
+                            border.color: ve.rippleLook.color === modelData ? Theme.text : Theme.hairline
+                            Rectangle {
+                                // half of it: the right button's
+                                visible: parent.modelData === "accent"
+                                anchors { right: parent.right; top: parent.top; bottom: parent.bottom; margins: 2 }
+                                width: (parent.width - 4) / 2
+                                radius: height / 2
+                                color: Theme.warning
+                            }
+                            HoverHandler { cursorShape: Qt.PointingHandCursor }
+                            TapHandler { onTapped: ve.setRipple({ color: parent.modelData }) }
+                        }
+                    }
+                }
+            }
+        }
+        // Keystrokes (the design's §6.5): a studio take's command keys, drawn after the fact
+        Column {
+            visible: ve.section === "keys"
+            anchors { fill: parent; margins: 16 }
+            spacing: 14
+            Text { text: "Keystrokes"; color: Theme.text; font.family: Theme.fontUi; font.pixelSize: 13; font.weight: Font.DemiBold }
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                text: "Shows the shortcuts pressed (Ctrl + C, Esc…) on the video, never the text typed."
+                color: Theme.text
+                font.family: Theme.fontUi
+                font.pixelSize: 12
+            }
+            Text {
+                objectName: "studio-keys-why"
+                visible: !ve.info.studioTake
+                width: parent.width
+                wrapMode: Text.WordWrap
+                text: "Not for this recording: it has no keystrokes kept. Turn on Studio (the clapperboard on the recording panel) before you record, and they can be placed here."
+                color: Theme.textSecondary
+                font.family: Theme.fontUi
+                font.pixelSize: 12
+            }
+            Column {
+                visible: !!ve.info.studioTake
+                width: parent.width
+                spacing: 14
+                Check { objectName: "studio-keys-show"; text: "Show keystrokes"; on: ve.keysLook.show; onToggled: ve.setKeys({ show: !ve.keysLook.show }) }
+                Slider {
+                    objectName: "studio-keys-size"
+                    width: parent.width
+                    label: "Size"
+                    from: 50
+                    to: 200
+                    unit: "%"
+                    value: ve.keysLook.size * 100
+                    onMoved: (v) => ve.setKeys({ size: Math.round(v) / 100 })
+                    onReleased: (v) => ve.setKeys({ size: Math.round(v) / 100 })
+                    onCancelled: ve.focusKeys()
+                }
+                Segmented {
+                    objectName: "studio-keys-look"
+                    options: [["dark", "Dark"], ["light", "Light"]]
+                    current: ve.keysLook.look
+                    onPicked: (v) => ve.setKeys({ look: v })
+                }
+                Column {
+                    width: parent.width
+                    spacing: 8
+                    Text { text: "Position"; color: Theme.textSecondary; font.family: Theme.fontUi; font.pixelSize: 12 }
+                    // where on the video: nine places
+                    Grid {
+                        columns: 3
+                        spacing: 4
+                        Repeater {
+                            model: ["top-left", "top-center", "top-right", "middle-left", "middle-center", "middle-right", "bottom-left", "bottom-center", "bottom-right"]
+                            Rectangle {
+                                required property string modelData
+                                readonly property bool on: ve.keysLook.position === modelData
+                                objectName: "studio-keys-position=" + modelData
+                                width: 30
+                                height: 20
+                                radius: 4
+                                color: on ? Theme.accent : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, posHover.hovered ? 0.12 : 0.06)
+                                Rectangle {
+                                    // the pill, where it would be
+                                    width: 10
+                                    height: 4
+                                    radius: 2
+                                    x: parent.modelData.endsWith("left") ? 4 : parent.modelData.endsWith("right") ? parent.width - width - 4 : (parent.width - width) / 2
+                                    y: parent.modelData.startsWith("top") ? 4 : parent.modelData.startsWith("bottom") ? parent.height - height - 4 : (parent.height - height) / 2
+                                    color: parent.on ? Theme.onAccent : Theme.textSecondary
+                                }
+                                HoverHandler { id: posHover; cursorShape: Qt.PointingHandCursor }
+                                TapHandler { onTapped: ve.setKeys({ position: parent.modelData }) }
+                            }
+                        }
+                    }
+                }
             }
         }
         // Animations (D55): how zooms move in and out, for all of them
@@ -714,6 +859,10 @@ Window {
                 log: ve.info.log || ""
                 pointer: ve.info.pointer || null
                 pointerLook: ve.pointerLook
+                rippleLook: ve.info.studioTake ? ve.rippleLook : null
+                keysLook: ve.info.studioTake ? ve.keysLook : null
+                unit: ve.unit
+                keep: ve.keptRuns
                 ms: frameTime.ms
                 pixelScale: result.k * Screen.devicePixelRatio
             }
@@ -1252,7 +1401,7 @@ Window {
                                                      playing: player.playbackState === MediaPlayer.PlayingState, position: headMs,
                                                      progress: progress, error: error, estimate: Math.round(estimate), thumbs: thumbs.length,
                                                      tracks: info.tracks || 0, gif: gif, exportOpen: exportOpen, zoom: zoom,
-                                                     section: section, bg: bgLive, outer: outer, studio: studio, zoomSelected: zoomSelected,
+                                                     section: section, bg: bgLive, outer: outer, studio: studio, zoomSelected: zoomSelected, ripple: rippleLook, keys: keysLook,
                                                      result: (p => [p.x, p.y, result.width, result.height])(result.mapToItem(contentItem, 0, 0))
                                                    }).slice(1, -1))
             break

@@ -328,6 +328,8 @@ impl Inner {
             // redrawn over it (the test pattern never has it)
             baked: studio && !fake && hw != Some(0) && cursor.is_none(),
             baked_why: if hw == Some(1) { "software".into() } else { others.join(", ") },
+            clicks: cfg.highlight_clicks,
+            keystrokes: cfg.show_keystrokes,
             ..Header::default()
         };
         // the pointer twice a frame, as Hyprland has it

@@ -2742,6 +2742,88 @@ def studio_take(s, env):
         s.cli("close-all")
 
 
+def gray(path, ms, box):
+    """The grey levels of `box` (x, y, w, h px) in the frame of the video at `path` at `ms`."""
+    x, y, w, h = box
+    return subprocess.run(["ffmpeg", "-v", "error", "-ss", str(ms / 1000), "-i", str(path), "-frames:v", "1",
+                           "-vf", f"crop={w}:{h}:{x}:{y},format=gray", "-f", "rawvideo", "-"],
+                          capture_output=True, check=True).stdout
+
+
+@case
+def studio_clicks_and_keys(s, env):
+    """The design's §6.2 and §6.5, D60: a studio take with the panel's Clicks and Keys on
+    draws neither as it records; its editor draws them after the fact (on, as the panel had
+    them), in the preview and in the export: a ring where the click was, and the command
+    keys in a pill at the bottom. The export with keystrokes and the one without differ
+    there, and only there."""
+    s.cli("close-all"); time.sleep(0.3)
+    p = record_panel(s)
+    s.drag(300, 200, 1100, 650)
+    assert wait_for(lambda: record_hud(s)["area"] == [300, 200, 800, 450], 3), record_hud(s)
+    for cell in ("record-clicks", "record-keys", "record-studio"):
+        record_click(s, cell)
+    n = len(s.traces("record_hooks"))
+    record_click(s, "record-video")
+    assert wait_for(lambda: record_hud(s)["phase"] == "recording", 5), record_hud(s)
+    assert wait_for(lambda: len(s.traces("record_hooks")) > n, 3), "the hooks are in"
+    sid = s.traces("record_hooks")[-1]["sid"]
+    rings = record_hud(s)["rings"]
+    s.move(600, 400); time.sleep(1.2); s.click(); time.sleep(0.4)
+    for code, st in ((37, 1), (54, 1), (54, 0), (37, 0)):
+        hypr_eval(f'hl.dispatch(hl.dsp.event("snip:{sid}:k:{code}:{st}"))')
+    time.sleep(0.3)
+    hud = record_hud(s)
+    assert hud["rings"] == rings and hud["keystrokes"] == "", ("nothing drawn on it as it records", hud)
+    time.sleep(2.0)
+    s.json("record", "stop")
+    try:
+        r, code = finish(p, timeout=20)
+        assert code == 0, r
+        rid = r["result"]["id"]
+        assert wait_for(lambda: video_editor_window(), 6), "the editor opens on it (D58)"
+        st = video_state(s)
+        assert st["ripple"]["show"] and st["keys"]["show"], ("on, as the panel had them", st["ripple"], st["keys"])
+        src = next(x for x in s.json("list", "-n", "5")["result"] if x["id"] == rid)["source"]
+        lines = (Path(src).parent / "input.jsonl").read_text().splitlines()
+        head, events = json.loads(lines[0]), [json.loads(l) for l in lines[1:]]
+        ms = lambda t: (t - head["gsr_ts"][0] - 1e6 / head["fps"]) / 1000    # the test pattern's clock
+        press = next(ms(e["t"]) for e in events if "b" in e and e["d"] == 1)
+        keyed = next(ms(e["t"]) for e in events if e.get("k") == 54 and e["d"] == 1)
+        s.debug("ui", "video", "seek", str(int(keyed + 400)))
+        assert wait_for(lambda: where(s, "video", "studio-keystrokes")["x"] >= 0, 3), "Ctrl + C shows"
+        s.debug("ui", "video", "seek", "100")
+        assert wait_for(lambda: where(s, "video", "studio-keystrokes")["x"] < 0, 3), "and not before it"
+
+        def export():
+            n = len(s.traces("video_exported_ui"))
+            s.debug("ui", "video", "export", "new")
+            assert wait_for(lambda: len(s.traces("video_exported_ui")) > n, 60)
+            done = s.traces("video_exported_ui")[-1]
+            assert done["ok"], done
+            return next(x for x in s.json("list", "-n", "5")["result"] if x["id"] == done["id"])["source"]
+
+        drawn = export()
+        # an export closes the editor: open it again, clicks and keys off
+        s.debug("annotate", rid)
+        assert wait_for(lambda: video_editor_window() and video_state(s)["id"] == rid, 6)
+        off = dict(st["studio"], keys={"show": False}, pointer=dict(st["studio"].get("pointer") or {}, ripple={"show": False}))
+        s.debug("ui", "video", "studio", json.dumps(off))
+        plain = export()
+        diff = lambda box, at: statistics.mean(abs(a - b) for a, b in zip(gray(drawn, at, box), gray(plain, at, box)))
+        # the area is 1000×562 px (the nested output's scale is 1.25): the pill sits 45 px
+        # above the bottom, 46 px high; the click was at (375, 250)
+        assert diff((440, 480, 120, 30), keyed + 400) > 20, "the keystrokes, at the bottom"
+        assert diff((355, 230, 40, 40), press + 60) > 4, "the ring, where the click was"
+        assert diff((355, 230, 40, 40), press + 700) < 3, "gone 0.6 s after it"
+        assert diff((0, 0, 200, 120), keyed + 400) < 3, "nothing else"
+    finally:
+        s.write_config("")
+        time.sleep(0.8)
+        s.cli("debug", "ui", "close-editors")
+        s.cli("close-all")
+
+
 @case
 def auto_zoom(s, env):
     """D54, the design's §6.4: a take keeps where its clicks were, so its editor opens with

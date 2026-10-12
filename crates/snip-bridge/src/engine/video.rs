@@ -45,13 +45,15 @@ impl Inner {
                 .map(|l| l.header)
                 .filter(|h| h.studio);
             let pointer = header.as_ref().filter(|h| !h.baked).map_or(Value::Null, |h| json!({ "log": log, "theme": h.cursor.theme, "size": h.cursor.size, "scale": h.scale }));
+            // a studio take's clicks and keys, drawn after the fact: on, as the panel had them (D60)
+            let studio_take = header.as_ref().map_or(Value::Null, |h| json!({ "clicks": h.clicks, "keystrokes": h.keystrokes }));
             let pointer_kept = header.filter(|h| h.baked).map_or(Value::Null, |h| json!(h.baked_why));
             let p = match media::probe(&path) {
                 Ok(p) => p,
                 Err(e) => return me.toast(format!("Can't open the video: {e}")),
             };
             let j = json!({
-                "id": id, "path": path, "edit": edit, "log": log_kept, "pointer": pointer, "pointerKept": pointer_kept, "poster": Store::poster(&rec), "title": rec.title.clone().unwrap_or_else(|| "Recording".into()),
+                "id": id, "path": path, "edit": edit, "log": log_kept, "pointer": pointer, "pointerKept": pointer_kept, "studioTake": studio_take, "poster": Store::poster(&rec), "title": rec.title.clone().unwrap_or_else(|| "Recording".into()),
                 "duration": p.duration_ms, "fps": if p.fps > 0.0 { p.fps } else { 30.0 }, "width": p.width, "height": p.height,
                 "tracks": p.audio_tracks, "bytes": path.metadata().map_or(0, |m| m.len()),
                 // pixels per point: a background's sizes are in points
@@ -130,7 +132,8 @@ impl Inner {
             };
             // Studio Mode (D55): with zooms, or a studio take's pointer to redraw,
             // snipd draws every frame itself
-            let scene = spec.get("scene").filter(|s| s["studio"]["zooms"].as_array().is_some_and(|z| !z.is_empty()) || s["pointer"].is_object());
+            let shown = |s: &Value, look: &str| s[look]["show"].as_bool().unwrap_or(false);
+            let scene = spec.get("scene").filter(|s| s["studio"]["zooms"].as_array().is_some_and(|z| !z.is_empty()) || s["pointer"].is_object() || shown(s, "rippleLook") || shown(s, "keysLook"));
             let run = |edit: &Edit, report: &mut dyn FnMut(f64)| match scene {
                 Some(scene) => render_studio(&input, &out, edit, scene, report),
                 None => media::export(&input, &out, edit, report),

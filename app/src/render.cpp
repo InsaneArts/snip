@@ -213,6 +213,10 @@ renderVideo(const QString& specPath)
                                                           { QStringLiteral("log"), scene["log"].toString() },
                                                           { QStringLiteral("pointer"), scene["pointer"].toVariant() },
                                                           { QStringLiteral("pointerLook"), scene["pointerLook"].toVariant() },
+                                                          { QStringLiteral("rippleLook"), scene["rippleLook"].toVariant() },
+                                                          { QStringLiteral("keysLook"), scene["keysLook"].toVariant() },
+                                                          { QStringLiteral("unit"), scene["unit"].toDouble(1.0) },
+                                                          { QStringLiteral("keep"), scene["keep"].toVariant() },
                                                           { QStringLiteral("pixelScale"), scale } });
   std::unique_ptr<QQuickItem> root(qobject_cast<QQuickItem*>(made));
   if (!root) {
