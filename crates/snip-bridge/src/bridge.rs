@@ -128,10 +128,11 @@ pub mod qobject {
 
         /// Studio Mode (D55): where a recording's card is drawn at `t` (its
         /// own ms) for the zooms in `edit` ({zooms, zoom_style}), in a canvas
-        /// `canvas_w` × `canvas_h` where it sits at `x, y, w, h` unzoomed.
-        /// Answers "[x, y, w, h]".
+        /// `canvas_w` × `canvas_h` where it sits at `x, y, w, h` unzoomed (its
+        /// video's size: `w` × `h`). Follow zooms follow the pointer in the
+        /// take's input log at `log` ("": none). Answers "[x, y, w, h]".
         #[qinvokable]
-        fn studio_card(self: &Engine, edit: QString, t: f64, canvas_w: f64, canvas_h: f64, x: f64, y: f64, w: f64, h: f64) -> QString;
+        fn studio_card(self: &Engine, edit: QString, log: QString, t: f64, canvas_w: f64, canvas_h: f64, x: f64, y: f64, w: f64, h: f64) -> QString;
 
         /// A studio take's redrawn pointer at `ms` of its video (D55): from
         /// its input log at `log`, as the edit's pointer `settings` have it,
@@ -751,7 +752,7 @@ impl qobject::Engine {
     }
 
     fn studio_pointer(&self, log: QString, settings: QString, ms: f64, video_w: f64, video_h: f64) -> QString {
-        use snip_core::studio::{log as input, pointer};
+        use snip_core::studio::pointer;
         use std::cell::RefCell;
         // built once for a log, its settings and its video (60 times a second otherwise)
         thread_local! { static TRACK: RefCell<Option<(String, Option<pointer::Track>)>> = const { RefCell::new(None) } }
@@ -759,13 +760,8 @@ impl qobject::Engine {
         TRACK.with(|cell| {
             let mut cell = cell.borrow_mut();
             if cell.as_ref().is_none_or(|(k, _)| *k != key) {
-                let track = std::fs::read_to_string(log.to_string()).ok().and_then(|text| input::read(&text)).and_then(|mut l| {
-                    // the video as it is (gsr may have scaled it to a largest size)
-                    l.header.video = [video_w as u32, video_h as u32];
-                    let s: pointer::Settings = serde_json::from_str(&settings.to_string()).unwrap_or_default();
-                    pointer::Track::new(&l, &s)
-                });
-                *cell = Some((key, track));
+                let s: pointer::Settings = serde_json::from_str(&settings.to_string()).unwrap_or_default();
+                *cell = Some((key, take_track(&log.to_string(), &s, video_w, video_h)));
             }
             match cell.as_ref().and_then(|(_, t)| t.as_ref()) {
                 Some(t) => {
@@ -793,10 +789,35 @@ impl qobject::Engine {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn studio_card(&self, edit: QString, t: f64, canvas_w: f64, canvas_h: f64, x: f64, y: f64, w: f64, h: f64) -> QString {
-        use snip_core::studio;
-        let e: studio::Edit = serde_json::from_str(&edit.to_string()).unwrap_or_default();
-        let r = studio::card(studio::view(&e.zooms, e.motion, t), [canvas_w, canvas_h], [x, y, w, h]);
+    fn studio_card(&self, edit: QString, log: QString, t: f64, canvas_w: f64, canvas_h: f64, x: f64, y: f64, w: f64, h: f64) -> QString {
+        use snip_core::studio::{self, pointer};
+        use std::cell::RefCell;
+        // worked out once for an edit, and the pointer's path once for a take
+        // (60 times a second otherwise); follow zooms follow its default smoothing
+        thread_local! {
+            static PATH: RefCell<Option<(String, Option<pointer::Track>)>> = const { RefCell::new(None) };
+            static VIEWS: RefCell<Option<(String, studio::Views)>> = const { RefCell::new(None) };
+        }
+        let (edit, log) = (edit.to_string(), log.to_string());
+        let r = VIEWS.with(|views| {
+            let mut views = views.borrow_mut();
+            let key = format!("{edit}|{log}|{w}x{h}");
+            if views.as_ref().is_none_or(|(k, _)| *k != key) {
+                let e: studio::Edit = serde_json::from_str(&edit).unwrap_or_default();
+                let made = PATH.with(|path| {
+                    let mut path = path.borrow_mut();
+                    let (at, follows) = (format!("{log}|{w}x{h}"), e.zooms.iter().any(|z| z.follow));
+                    if follows && path.as_ref().is_none_or(|(k, _)| *k != at) {
+                        *path = Some((at.clone(), take_track(&log, &pointer::Settings::DEFAULT, w, h)));
+                    }
+                    let track = path.as_ref().filter(|(k, _)| follows && *k == at).and_then(|(_, t)| t.as_ref());
+                    studio::Views::new(&e, track)
+                });
+                *views = Some((key, made));
+            }
+            let v = views.as_ref().map(|(_, v)| v.at(t)).unwrap_or(studio::View { scale: 1.0, center: [0.5, 0.5] });
+            studio::card(v, [canvas_w, canvas_h], [x, y, w, h])
+        });
         QString::from(format!("[{},{},{},{}]", r[0], r[1], r[2], r[3]).as_str())
     }
 
@@ -1313,4 +1334,12 @@ fn mem_snapshot() -> String {
 
 fn already_running() -> bool {
     snip_ipc::call(&snip_ipc::Request::Ping, std::time::Duration::from_millis(300)).map(|r| r.ok).unwrap_or(false)
+}
+
+/// A take's pointer from its input log at `log`, in px of its video as it is
+/// (`w` × `h`: gsr may have scaled it to a largest size).
+fn take_track(log: &str, settings: &snip_core::studio::pointer::Settings, w: f64, h: f64) -> Option<snip_core::studio::pointer::Track> {
+    let mut l = std::fs::read_to_string(log).ok().and_then(|text| snip_core::studio::log::read(&text))?;
+    l.header.video = [w as u32, h as u32];
+    snip_core::studio::pointer::Track::new(&l, settings)
 }

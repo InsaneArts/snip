@@ -15,6 +15,7 @@ Item {
     property var outer: ({ x: 0, y: 0, w: 1, h: 1 })     // the canvas, in the recording's px
     property var inner: ({ x: 0, y: 0, w: 1, h: 1 })     // the recording, unzoomed
     property var studio: ({})                              // the edit's zooms and their zoom_style
+    property string log: ""                                // the take's input log: what follow zooms follow
     property real ms: 0                                    // the time of the frame shown
     property real pixelScale: 1                            // device px per px here, for the corners' mask
     // a studio take's pointer, redrawn (D55): {log, theme, size, scale}, or null;
@@ -27,7 +28,7 @@ Item {
 
     // where the card is now, in the recording's px
     readonly property rect card: {
-        const r = JSON.parse(Engine.studioCard(JSON.stringify(studio), ms, outer.w, outer.h, inner.x - outer.x, inner.y - outer.y, inner.w, inner.h))
+        const r = JSON.parse(Engine.studioCard(JSON.stringify(studio), log, ms, outer.w, outer.h, inner.x - outer.x, inner.y - outer.y, inner.w, inner.h))
         return Qt.rect(outer.x + r[0], outer.y + r[1], r[2], r[3])
     }
     readonly property real zoom: card.width / Math.max(1, inner.w)

@@ -2,7 +2,8 @@ import QtQuick
 import Snip.Core
 
 // The zoom selected (D55), over the timeline above it: its level (100–400 %),
-// and where it looks: drag the spotlight on the frame, which snaps to the
+// and where it looks: at the pointer (a take keeps where it went: D54), or,
+// Manual, where the spotlight is dragged on the frame, snapping to the
 // centre lines. The spotlight is what the export shows at the zoom's peak
 // (snip_core::studio places it), and the preview follows as it moves.
 Rectangle {
@@ -14,11 +15,13 @@ Rectangle {
     readonly property var shown: {
         if (!zoom) return [0, 0, 1, 1]
         const o = ed.outer, i = ed.inner
-        const r = JSON.parse(Engine.studioCard(JSON.stringify({ zooms: [zoom] }), (zoom.from + zoom.to) / 2, o.w, o.h, i.x - o.x, i.y - o.y, i.w, i.h))
+        const r = JSON.parse(Engine.studioCard(JSON.stringify({ zooms: [zoom] }), "", (zoom.from + zoom.to) / 2, o.w, o.h, i.x - o.x, i.y - o.y, i.w, i.h))
         const at = (v, a, n) => Math.max(0, Math.min(1, (v - a) / n))
         return [at(0, r[0], r[2]), at(0, r[1], r[3]), at(o.w, r[0], r[2]), at(o.h, r[1], r[3])]
     }
     function setFocus(fx, fy) { ed.changeZoom(ed.zoomSelected, { focus: [fx, fy] }) }
+    readonly property bool canFollow: !!ed && !!ed.info.log
+    readonly property bool follows: canFollow && !!zoom && !!zoom.follow
 
     visible: zoom !== null
     width: 276
@@ -71,10 +74,39 @@ Rectangle {
             onReleased: (v) => { pop.ed.zoomLevel = Math.round(v) / 100; pop.ed.changeZoom(pop.ed.zoomSelected, { level: pop.ed.zoomLevel }) }
             onCancelled: pop.ed.focusKeys()
         }
+        // where it looks: the pointer, or the spotlight
+        Row {
+            visible: pop.canFollow
+            spacing: 2
+            Repeater {
+                model: [[true, "Follow Pointer"], [false, "Manual"]]
+                Rectangle {
+                    required property var modelData
+                    readonly property bool on: pop.follows === modelData[0]
+                    objectName: "studio-zoom-follow=" + modelData[0]
+                    width: modeLabel.implicitWidth + 20
+                    height: 28
+                    radius: Theme.radiusControl
+                    color: on ? Theme.accent : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, modeHover.hovered ? 0.12 : 0.06)
+                    Text {
+                        id: modeLabel
+                        anchors.centerIn: parent
+                        text: parent.modelData[1]
+                        color: parent.on ? Theme.onAccent : Theme.text
+                        font.family: Theme.fontUi
+                        font.pixelSize: 12
+                        font.weight: parent.on ? Font.DemiBold : Font.Normal
+                    }
+                    HoverHandler { id: modeHover; cursorShape: Qt.PointingHandCursor }
+                    TapHandler { onTapped: { pop.ed.focusKeys(); pop.ed.changeZoom(pop.ed.zoomSelected, { follow: parent.modelData[0] }) } }
+                }
+            }
+        }
         // the frame, and the spotlight on what the zoom shows
         Item {
             id: frame
             objectName: "studio-zoom-frame"
+            visible: !pop.follows
             width: parent.width
             height: Math.round(width * pop.ed.inner.h / Math.max(1, pop.ed.inner.w))
             clip: true
@@ -133,7 +165,8 @@ Rectangle {
         Text {
             width: parent.width
             wrapMode: Text.WordWrap
-            text: "Drag the spotlight to what the zoom should show."
+            text: pop.follows ? "The zoom keeps the pointer in view, moving only when it nears an edge of what's shown."
+                              : "Drag the spotlight to what the zoom should show."
             color: Theme.textSecondary
             font.family: Theme.fontUi
             font.pixelSize: 11
