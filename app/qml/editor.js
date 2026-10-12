@@ -516,8 +516,10 @@ var gradients = [
     ["#4facfe", "#00f2fe"], ["#0ba360", "#3cba92"], ["#13547a", "#80d0c7"], ["#232526", "#414345"],
     ["#ee9ca7", "#ffdde1"], ["#c471f5", "#fa71cd"]
 ]
-var bgRatios = [{ label: "Auto", r: 0 }, { label: "1:1", r: 1 }, { label: "4:3", r: 4 / 3 }, { label: "3:2", r: 3 / 2 },
-                { label: "16:9", r: 16 / 9 }, { label: "5:4", r: 5 / 4 }, { label: "9:16", r: 9 / 16 }, { label: "3:4", r: 3 / 4 }]
+// CleanShot's list: landscape, then portrait
+var bgRatios = [{ label: "Auto", r: 0 }, { label: "1:1", r: 1 }, { label: "5:4", r: 5 / 4 }, { label: "4:3", r: 4 / 3 },
+                { label: "3:2", r: 3 / 2 }, { label: "16:9", r: 16 / 9 }, { label: "4:5", r: 4 / 5 }, { label: "3:4", r: 3 / 4 },
+                { label: "9:16", r: 9 / 16 }]
 
 function defaultBackground(unit) {
     return { kind: "gradient", value: 0, padding: Math.round(64 * unit), inset: 0, insetColor: "#59ffffff",
