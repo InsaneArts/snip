@@ -280,7 +280,7 @@ Rectangle {
                 }
             }
 
-            Slider { id: paddingSlider; width: parent.width; label: "Padding"; from: 0; to: 240; unit: " px"
+            Slider { id: paddingSlider; objectName: "bg-padding"; width: parent.width; label: "Padding"; from: 0; to: 240; unit: " px"
                      value: panel.bg ? panel.bg.padding / panel.ed.unit : 0
                      onMoved: (v) => panel.ed.previewBg({ padding: Math.round(v * panel.ed.unit) })
                      onReleased: (v) => panel.release({ padding: Math.round(v * panel.ed.unit) }); onCancelled: panel.ed.focusKeys() }

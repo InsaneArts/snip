@@ -215,6 +215,8 @@ Window {
     property var bg: null
     property var bgPreview: null                  // while a slider is dragged
     readonly property var bgLive: bg ? Object.assign({}, bg, bgPreview || {}) : null
+    // a slider showing a value not kept yet (Esc in its typed value shows the kept one)
+    readonly property bool bgSliding: bgPreview !== null && JSON.stringify(bgLive) !== JSON.stringify(bg)
     readonly property real unit: info.scale || 1   // pixels per point
     function setBg(patch) {
         bgPreview = null
@@ -893,7 +895,8 @@ Window {
                 bg: ve.bgLive
                 outer: ve.outer
                 inner: ve.inner
-                studio: ve.studio
+                // a background slider dragged: the whole frame, out of any zoom, to see it (CleanShot's)
+                studio: ve.bgSliding ? Object.assign({}, ve.studio, { zooms: [] }) : ve.studio
                 log: ve.info.log || ""
                 pointer: ve.info.pointer || null
                 pointerLook: ve.pointerLook
