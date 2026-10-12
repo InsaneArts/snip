@@ -253,7 +253,7 @@ CleanShot 5's Studio Mode on Hyprland: zooms placed by hand and automatic, a smo
 | 1. Zooms you place, on every recording | The zoom lane and its popover in the video editor; level 1–4, Smooth or Dynamic; touching zooms pan; the edit kept (`edit.json`), Replace keeps the original (D56) | ✅ |
 | 2. Studio takes, the redrawn pointer | The Studio switch on the panel (D54); the Pointer section: size, smoothing, hide when typing or idle | ✅ |
 | 3. Auto zoom and follow | Zooms placed from every take's clicks (D54); Follow Pointer; Re-run Auto Zoom | built; the owner's rating on real takes to come |
-| 4. Clicks and keys after the fact | Ripples; the Keystrokes section | ⏳ |
+| 4. Clicks and keys after the fact | Ripples; the Keystrokes section | built |
 | 5. Polish | Motion blur, Snip's own pointer set, ratios, Export Current Frame | ⏳ |
 | 6. The camera as its own stream | The camera recorded apart, laid out after the fact | ⏳ |
 
@@ -264,6 +264,8 @@ Phase 1 is built (2026-10-12): the zoom lane, its popover (level, the spotlight 
 Phase 2 is built (2026-10-12): every take keeps its input log (D54); the Studio switch on the panel, a studio take recorded without the pointer (D57: the hardware plane forced for it, with DRM outputs alone) and opened in the editor at its end (D58); the pointer redrawn from the log in the preview and the export, the theme's arrow (D59), with the Pointer section (D60). The owner liked how the pointer moves (S5, 2026-10-12: "it looks nice"), its "done when". Still to come: S3, the timing measured per encoder.
 
 Phase 3 is built (2026-10-12): a zoom can follow the pointer (the popover's Follow Pointer or Manual), and a take the editor opens unedited gets auto zooms where its clicks and typing were (the design's §6.4), on ordinary recordings too (D54); Re-run Auto Zoom in the zoom lane's menu places them again around the zooms the user changed. Tests: `cargo test` for the follow rules and every auto zoom rule (fixtures of clicks, typing, drags, pauses, the user's zooms), and one e2e case (`auto_zoom`). Not built: the design's wheel rule (scrolling ends a zoom early), which needs the wheel in the take's log. Its "done when", the owner's rating of the zooms on five real takes, is to come.
+
+Phase 4 is built (2026-10-12): a studio take's clicks get ripples and its command keys a keystroke pill, drawn after the fact in the preview and the export, on as the panel's Clicks and Keys were (D60); ripples in the Pointer section (outline or filled, the accent or one of seven colours), and a Keystrokes section (size, Dark or Light, nine positions). A click or key in a part that's cut out doesn't show after the cut. Tests: `cargo test` for the ripple and keystroke rules, and one e2e case (`studio_clicks_and_keys`: the exports with and without them differ where the ring and the pill are, and nowhere else). Not built: "All keys" (Q5's (b), the owner's to decide): command keys only, as today.
 
 ## M5: 1.0 hardening (M)
 
