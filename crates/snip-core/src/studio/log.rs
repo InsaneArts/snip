@@ -43,6 +43,9 @@ pub struct Header {
     /// these its defaults (D60)
     pub clicks: bool,
     pub keystrokes: bool,
+    /// a window's take (its area was a window's, as the panel's Space picks
+    /// it): the window's corner radius, logical px
+    pub window: Option<u32>,
 }
 
 impl Default for Header {
@@ -65,6 +68,7 @@ impl Default for Header {
             baked_why: String::new(),
             clicks: false,
             keystrokes: false,
+            window: None,
         }
     }
 }

@@ -99,9 +99,13 @@ Window {
             studio = { zooms: e.zooms || [], zoom_style: e.zoom_style || "smooth", pointer: e.pointer || null, keys: e.keys || null,
                        motion_blur: e.motion_blur || "medium" }
             if (e.export) { maxHeight = e.export.height || 0; quality = e.export.quality || 23; gif = !!e.export.gif }
-        } else if (info.log) {
-            // not edited yet: zooms where its clicks were (D54), kept once anything changes
-            studio = Object.assign({}, studio, { zooms: autoZooms([]) })
+        } else {
+            // not edited yet (kept once anything changes): zooms where its clicks
+            // were (D54); a window's take in a background, with the window's
+            // corners (CleanShot's, the design's phase 5)
+            if (info.log) studio = Object.assign({}, studio, { zooms: autoZooms([]) })
+            if (info.window !== null && info.window !== undefined)
+                bg = Object.assign({}, Ed.defaultBackground(unit), { radius: Math.round(info.window * unit) })
         }
         editReady = true
     }

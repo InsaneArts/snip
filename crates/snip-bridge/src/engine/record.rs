@@ -330,6 +330,10 @@ impl Inner {
             baked_why: if hw == Some(1) { "software".into() } else { others.join(", ") },
             clicks: cfg.highlight_clicks,
             keystrokes: cfg.show_keystrokes,
+            window: snip_hypr::visible_windows()
+                .iter()
+                .any(|c| !c.fullscreen && (c.x, c.y, c.w, c.h) == (rec.logical.x, rec.logical.y, rec.logical.w, rec.logical.h))
+                .then(|| snip_hypr::option_int("decoration:rounding").unwrap_or(0).max(0) as u32),
             ..Header::default()
         };
         // the pointer twice a frame, as Hyprland has it, at most 120 times a
