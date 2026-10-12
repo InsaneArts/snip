@@ -22,9 +22,23 @@ Item {
     // and how the edit draws it (its "pointer": D60's defaults where unset)
     property var pointer: null
     property var pointerLook: ({})
+    // a studio take's clicks and keys, drawn after the fact: how ({show, color,
+    // filled}; {show, size, look, position}), or null; and the recording's px per point
+    property var rippleLook: null
+    property var keysLook: null
+    property real unit: 1
+    // the parts of the recording kept (ms, joined where they meet): clicks and
+    // keys from before the part shown, and cut out, end where it begins
+    property var keep: []
+    readonly property real partFrom: {
+        let at = -1e12
+        for (const p of keep) if (p[0] <= ms) at = p[0]
+        return at
+    }
     readonly property alias video: video
     readonly property var cursorImage: pointer ? JSON.parse(Engine.studioCursor(pointer.theme)) : null
     readonly property var pointerNow: pointer && cursorImage ? JSON.parse(Engine.studioPointer(pointer.log, JSON.stringify(pointerLook), ms, inner.w, inner.h)) : null
+    readonly property var inputNow: log && ((rippleLook && rippleLook.show) || (keysLook && keysLook.show)) ? JSON.parse(Engine.studioInput(log, ms, partFrom, inner.w, inner.h)) : null
 
     // where the card is now, in the recording's px
     readonly property rect card: {
@@ -65,6 +79,32 @@ Item {
             layer.textureSize: video.shown
             Rectangle { anchors.fill: parent; radius: frame.cardBg ? frame.cardBg.radius : 0; color: "white" }
         }
+        // the click ripples, in the card under the pointer (they grow with a zoom)
+        Item {
+            x: frame.card.x
+            y: frame.card.y
+            width: frame.card.width
+            height: frame.card.height
+            clip: true
+            visible: !!frame.rippleLook && frame.rippleLook.show && frame.inputNow !== null
+            Repeater {
+                model: frame.inputNow && frame.rippleLook && frame.rippleLook.show ? frame.inputNow.rings : []
+                Rectangle {
+                    required property var modelData
+                    readonly property real across: modelData.size * frame.zoom
+                    readonly property color tint: frame.rippleLook.color === "accent" ? (modelData.right ? Theme.warning : Theme.accent) : frame.rippleLook.color
+                    x: modelData.x * frame.zoom - across / 2
+                    y: modelData.y * frame.zoom - across / 2
+                    width: across
+                    height: across
+                    radius: across / 2
+                    opacity: modelData.alpha
+                    color: frame.rippleLook.filled ? Qt.rgba(tint.r, tint.g, tint.b, 0.3) : "transparent"
+                    border.width: frame.rippleLook.filled ? 0 : 3 * frame.unit * frame.zoom
+                    border.color: tint
+                }
+            }
+        }
         // the pointer, in the card (it grows with a zoom; never drawn outside it)
         Item {
             x: frame.card.x
@@ -88,6 +128,35 @@ Item {
                 smooth: true
                 mipmap: true
             }
+        }
+    }
+    // the keystrokes, on the canvas: they don't zoom (the live HUD's pill, sized
+    // as it is for the recording, times the edit's size)
+    Rectangle {
+        id: keyPill
+        objectName: "studio-keystrokes"
+        readonly property var now: frame.inputNow ? frame.inputNow.keys : null
+        readonly property var look: frame.keysLook || ({})
+        readonly property real k: (look.size || 1) * frame.unit
+        readonly property real margin: Math.min(48 * frame.unit, frame.outer.h * 0.08)
+        readonly property string at: look.position || "bottom-center"
+        readonly property bool dark: look.look !== "light"
+        visible: !!look.show && now !== null
+        opacity: now ? now.opacity : 0
+        x: at.endsWith("left") ? margin : at.endsWith("right") ? frame.outer.w - width - margin : (frame.outer.w - width) / 2
+        y: at.startsWith("top") ? margin : at.startsWith("bottom") ? frame.outer.h - height - margin : (frame.outer.h - height) / 2
+        width: keyText.implicitWidth + 32 * k
+        height: keyText.implicitHeight + 16 * k
+        radius: 12 * k
+        color: dark ? Qt.rgba(0, 0, 0, 0.72) : Qt.rgba(1, 1, 1, 0.88)
+        Text {
+            id: keyText
+            anchors.centerIn: parent
+            text: keyPill.now ? keyPill.now.text : ""
+            color: keyPill.dark ? "white" : "black"
+            font.family: Theme.fontUi
+            font.pixelSize: Math.round(Math.max(14, Math.min(36, frame.inner.h / Math.max(0.1, frame.unit) * 0.04)) * keyPill.k)
+            font.weight: Font.DemiBold
         }
     }
 }

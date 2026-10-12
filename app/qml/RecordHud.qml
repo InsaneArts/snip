@@ -800,9 +800,9 @@ Window {
                         offIcon: modelData[2]
                         tip: modelData[3]
                         on: modelData[4]
-                        // a GIF has no sound, nor Studio; a studio take shows no rings or keys as it records
-                        opacity: hud.gif && (modelData[0] === "record-mic" || modelData[0] === "record-system" || modelData[0] === "record-studio")
-                                 || hud.studio && !hud.gif && (modelData[0] === "record-clicks" || modelData[0] === "record-keys") ? 0.4 : 1
+                        // a GIF has no sound, nor Studio (a studio take's clicks and keys
+                        // are drawn by the editor, after the fact: these cells say whether)
+                        opacity: hud.gif && (modelData[0] === "record-mic" || modelData[0] === "record-system" || modelData[0] === "record-studio") ? 0.4 : 1
                         warn: modelData[0] === "record-mic" && hud.micMuted && !hud.gif ? Qt.rgba(Theme.warning.r, Theme.warning.g, Theme.warning.b, 0.3) : "transparent"
                         level: modelData[0] === "record-mic" && modelData[4] ? hud.micLevel : -1
                         onTapped: {

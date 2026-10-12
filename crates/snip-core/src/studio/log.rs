@@ -38,6 +38,11 @@ pub struct Header {
     /// that kept Snip from moving it to the hardware plane ("HEADLESS-1"), or
     /// "software" (the user's own Hyprland setting)
     pub baked_why: String,
+    /// the panel's Clicks and Keys as the take began: an ordinary take has
+    /// them in its picture; a studio take's editor draws them after the fact,
+    /// these its defaults (D60)
+    pub clicks: bool,
+    pub keystrokes: bool,
 }
 
 impl Default for Header {
@@ -58,6 +63,8 @@ impl Default for Header {
             baked: false,
             studio: false,
             baked_why: String::new(),
+            clicks: false,
+            keystrokes: false,
         }
     }
 }

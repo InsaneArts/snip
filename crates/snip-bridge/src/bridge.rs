@@ -141,6 +141,14 @@ pub mod qobject {
         #[qinvokable]
         fn studio_pointer(self: &Engine, log: QString, settings: QString, ms: f64, video_w: f64, video_h: f64) -> QString;
 
+        /// A studio take's clicks and keys at `ms` of its video, from its input
+        /// log at `log` (px of its `video_w` × `video_h` video), those since
+        /// `since` (where the part shown begins: a cut ends them): {"rings":
+        /// [{"x", "y", "size", "alpha", "right"}], "keys": {"text", "opacity"}
+        /// or null}.
+        #[qinvokable]
+        fn studio_input(self: &Engine, log: QString, ms: f64, since: f64, video_w: f64, video_h: f64) -> QString;
+
         /// Auto zoom (D54): the zooms of `edit` ({zooms, zoom_style}) with auto
         /// zoom run again on the take's input log at `log`, for its video
         /// (`duration_ms` long, `video_w` × `video_h`): the user's kept, auto
@@ -777,6 +785,27 @@ impl qobject::Engine {
                 }
                 None => QString::from("null"),
             }
+        })
+    }
+
+    fn studio_input(&self, log: QString, ms: f64, since: f64, video_w: f64, video_h: f64) -> QString {
+        use serde_json::{json, Value};
+        use snip_core::studio::{keys::Keys, ripple::Ripples};
+        use std::cell::RefCell;
+        // built once for a log and its video (60 times a second otherwise)
+        type Tracks = Option<(Ripples, Keys)>;
+        thread_local! { static TRACKS: RefCell<Option<(String, Tracks)>> = const { RefCell::new(None) } }
+        let key = format!("{log}|{video_w}x{video_h}");
+        TRACKS.with(|cell| {
+            let mut cell = cell.borrow_mut();
+            if cell.as_ref().is_none_or(|(k, _)| *k != key) {
+                let tracks = take_log(&log.to_string(), video_w, video_h).map(|l| (Ripples::new(&l), Keys::new(&l, snip_hypr::keys::key_label)));
+                *cell = Some((key, tracks));
+            }
+            let Some((ripples, keys)) = cell.as_ref().and_then(|(_, t)| t.as_ref()) else { return QString::from("null") };
+            let rings: Vec<Value> = ripples.at(ms, since).iter().map(|r| json!({ "x": r.at[0], "y": r.at[1], "size": r.size, "alpha": r.alpha, "right": r.right })).collect();
+            let keys = keys.at(ms, since).map_or(Value::Null, |k| json!({ "text": k.text, "opacity": k.opacity }));
+            QString::from(json!({ "rings": rings, "keys": keys }).to_string().as_str())
         })
     }
 

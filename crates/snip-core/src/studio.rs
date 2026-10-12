@@ -6,8 +6,10 @@ use serde::{Deserialize, Serialize};
 
 pub mod auto;
 pub mod cursor;
+pub mod keys;
 pub mod log;
 pub mod pointer;
+pub mod ripple;
 
 /// A zoom on the timeline: from `from` to `to` (the recording's own ms), at
 /// `level` (1–4), framing `focus`, a point of the recording (0–1 across and
