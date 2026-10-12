@@ -205,13 +205,15 @@ pub struct Log {
 }
 
 /// Frames from a take's start to gsr's first frame reaching its muxer
-/// (`-write-first-frame-ts`): 3 with NVENC, measured; spike S3 measures it
-/// for each encoder. The test pattern recorder ("fake") has none.
+/// (`-write-first-frame-ts`): measured (spike S3, 2026-10-12: a pointer
+/// moved at a known moment into a recorded area, gsr 6.1 on an RTX 4080),
+/// 3 with NVENC and 7 with x264 (`-encoder cpu`, its lookahead). The test
+/// pattern recorder ("fake") has none.
 fn first_frame_lag(encoder: &str) -> f64 {
-    if encoder == "fake" {
-        0.0
-    } else {
-        3.0
+    match encoder {
+        "fake" => 0.0,
+        "x264" => 7.0,
+        _ => 3.0,
     }
 }
 
@@ -360,6 +362,16 @@ mod tests {
         // the test pattern recorder (SNIP_RECORDER=fake) has no encoder lag: its first frame is its start
         let c = Clock::of(&Log { header: Header { encoder: "fake".into(), ..header() }, events: vec![] }).unwrap();
         assert!(close(c.video_ms(10_000_000 + (FRAME as i64)), 0.0), "{:?}", c.video_ms(10_000_000 + FRAME as i64));
+    }
+
+    #[test]
+    fn a_cpu_takes_first_frame_comes_later_than_an_nvenc_ones() {
+        // spike S3 (2026-10-12): gsr's first frame reaches its muxer 3 frames after
+        // the take's start with NVENC, 7 with x264: the same moment, the same frame
+        let (nvenc, x264) = (Header { encoder: "nvenc".into(), ..header() }, Header { encoder: "x264".into(), ..header() });
+        let c = Clock::of(&Log { header: nvenc, events: vec![] }).unwrap();
+        let cpu = Clock::of(&Log { header: Header { gsr_ts: Some([(START + 7.0 * FRAME) as i64, 0]), ..x264 }, events: vec![] }).unwrap();
+        assert!(close(cpu.video_ms(at(1.0)), 1000.0) && close(c.video_ms(at(1.0)), 1000.0), "{:?}", cpu.video_ms(at(1.0)));
     }
 
     #[test]
