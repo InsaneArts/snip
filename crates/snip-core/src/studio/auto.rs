@@ -40,7 +40,8 @@ pub fn place(log: &Log, duration: f64, motion: Motion, zooms: &[Zoom]) -> Vec<Zo
     let mut out: Vec<Zoom> = zooms.iter().filter(|z| !z.auto).cloned().collect();
     let Some(clock) = Clock::of(log) else { return out };
     let video = log.header.video.map(|v| f64::from(v.max(1)));
-    let presses: Vec<(f64, [f64; 2], bool)> = pressed(log, &clock).into_iter().filter(|&(t, _, _)| t <= duration - LAST_MS).collect();
+    // in the video: not the click on Record before its first frame, nor the one that stopped it
+    let presses: Vec<(f64, [f64; 2], bool)> = pressed(log, &clock).into_iter().filter(|&(t, _, _)| (0.0..=duration - LAST_MS).contains(&t)).collect();
     let typed: Vec<f64> = log.events.iter().filter_map(|e| if let Event::Typing { t } = *e { clock.video_ms(t) } else { None }).collect();
     // each group that earns a zoom, in fully AHEAD_MS before its first press
     // and until HOLD_MS after its last
@@ -264,6 +265,12 @@ mod tests {
     fn the_click_that_stops_the_take_doesnt_count() {
         // a whole-screen take stops at a click on the bar (D52): the video never shows what it did
         assert_eq!(auto(clicks(&[(17.0, 300.0, 200.0), (19.3, 310.0, 200.0)]), 20.0), vec![]);
+    }
+
+    #[test]
+    fn the_click_that_starts_the_take_doesnt_count() {
+        // the click on Record lands before the first frame (seen on real takes: 0.2–0.3 s before)
+        assert_eq!(auto(clicks(&[(-0.3, 300.0, 200.0), (2.5, 310.0, 200.0)]), 20.0), vec![]);
     }
 
     #[test]
