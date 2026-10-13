@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QHash>
 #include <QJSValue>
 #include <QObject>
 #include <QQuickItem>
@@ -126,4 +127,7 @@ Q_SIGNALS:
 private:
   // the engine's handle for a grab's pixels
   int m_grabs = 0;
+  // afterFrames' callbacks, by request: only the GUI thread touches them
+  QHash<int, QJSValue> m_waiting;
+  int m_waits = 0;
 };

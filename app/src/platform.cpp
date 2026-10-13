@@ -174,15 +174,14 @@ Platform::trimMemory()
 void
 Platform::afterFrames(const QVariantList& windows, const QJSValue& done)
 {
-  // answered once: by the last window's frame, or by the timeout
+  // answered once: by the last window's frame, or by the timeout. `done`
+  // stays here: a frame's lambdas are copied and freed on the render thread,
+  // and a QJSValue copied or freed there corrupts the JS engine's own store
+  // of them (snipd crashed in a later binding's PersistentValue)
+  const int id = ++m_waits;
+  m_waiting.insert(id, done);
   auto left = std::make_shared<int>(0);
-  auto answered = std::make_shared<bool>(false);
-  auto finish = [done, answered]() {
-    if (*answered)
-      return;
-    *answered = true;
-    answer(done, {});
-  };
+  auto finish = [this, id]() { answer(m_waiting.take(id), {}); };
   for (const QVariant& v : windows) {
     auto* w = qobject_cast<QQuickWindow*>(v.value<QObject*>());
     if (!w || !w->isVisible())

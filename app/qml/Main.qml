@@ -221,6 +221,7 @@ QtObject {
             return
         }
         if (a[0] === "close-pins") { closePins(); return }
+        if (a[0] === "frames-load") { framesLoad.until = Date.now() + Number(a[1]) * 1000; framesLoad.start(); return }
         if (a[0] === "history") { history.debug(a.slice(1)); return }
         if (a[0] === "settings") { if (settingsWindow) settingsWindow.debug(a.slice(1)); return }
         if (a[0] === "welcome") { if (welcomeWindow) welcomeWindow.debug(a.slice(1)); return }
@@ -358,6 +359,19 @@ QtObject {
     // the captures with an editor (of either kind) open: their cards wait, not
     // closing on their own (QAO-07), so they're still there to save from
     property var editing: []
+    // Test hook (snip debug ui frames-load SECONDS): the card window's frames
+    // waited for hundreds of times a tick while the JS engine is busy, as a
+    // capture with cards up does once
+    property Timer framesLoad: Timer {
+        property real until: 0
+        interval: 1; repeat: true
+        onTriggered: {
+            if (Date.now() > until) return stop()
+            const wins = quickAccess.visible ? [quickAccess] : []
+            for (let i = 0; i < 50; i++) Platform.afterFrames(wins, () => {})
+            for (let i = 0; i < 200; i++) Platform.afterFrames([], () => {})
+        }
+    }
     // a big window just went (its pixels, its render thread's memory): give
     // the memory back once it's destroyed
     property Timer trim: Timer {
