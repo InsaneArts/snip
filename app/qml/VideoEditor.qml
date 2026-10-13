@@ -1026,6 +1026,7 @@ Window {
                 keep: ve.keptRuns
                 camera: ve.info.camera || null
                 cameraLook: ve.cameraLook
+                fps: ve.info.fps || 30
                 ms: frameTime.ms
                 pixelScale: result.k * Screen.devicePixelRatio
             }
