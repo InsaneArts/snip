@@ -93,16 +93,21 @@ impl Store {
         })
     }
 
-    fn warm_put(&self, id: &str, bytes: Arc<Vec<u8>>) {
+    fn warm_put(&self, id: &str, mut bytes: Vec<u8>) -> Arc<Vec<u8>> {
+        // the budget counts what's kept: an encoder sizes its buffer for the
+        // pixels, ~40× a plain capture's PNG
+        bytes.shrink_to_fit();
+        let bytes = Arc::new(bytes);
         let mut w = self.warm.lock().unwrap();
         w.retain(|(i, _)| i != id);
-        w.push_front((id.to_owned(), bytes));
+        w.push_front((id.to_owned(), bytes.clone()));
         let mut total: usize = w.iter().map(|(_, b)| b.len()).sum();
         while total > self.warm_budget && w.len() > 1 {
             if let Some((_, b)) = w.pop_back() {
                 total -= b.len();
             }
         }
+        bytes
     }
 
     /// Persist a new capture in history. Returns its record.
@@ -129,7 +134,7 @@ impl Store {
         };
         h.insert(&rec)?;
         drop(h);
-        self.warm_put(&id, Arc::new(png));
+        self.warm_put(&id, png);
         Ok(rec)
     }
 
@@ -228,9 +233,7 @@ impl Store {
             return Ok(b);
         }
         let rec = self.get(id)?;
-        let b = Arc::new(std::fs::read(&rec.source)?);
-        self.warm_put(id, b.clone());
-        Ok(b)
+        Ok(self.warm_put(id, std::fs::read(&rec.source)?))
     }
 
     fn next_counter(&self) -> u64 {
@@ -376,7 +379,7 @@ impl Store {
             atomic_write(saved, &out)?;
         }
         self.history.lock().unwrap().set_size(id, width, height)?;
-        self.warm_put(id, Arc::new(png));
+        self.warm_put(id, png);
         self.get(id)
     }
 
@@ -629,6 +632,23 @@ mod tests {
         let a = store.ingest(vec![1; 8], 1, 1, CaptureMeta::default(), 1).unwrap();
         let _b = store.ingest(vec![2; 8], 1, 1, CaptureMeta::default(), 2).unwrap();
         assert_eq!(&**store.bytes(&a.id).unwrap(), &[1u8; 8]);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn the_warm_tier_holds_no_more_memory_than_its_budget() {
+        // an encoder sizes its buffer for the pixels, not the PNG: a plain
+        // capture's 4 KB PNG comes in a 156 KB buffer
+        let root = tmp();
+        let mut store = Store::open(&root.join("history"), root.join("counter")).unwrap();
+        store.warm_budget = 64 * 1024;
+        for i in 0..100 {
+            let mut png = Vec::with_capacity(156 * 1024);
+            png.extend_from_slice(&[i as u8; 4096]);
+            store.ingest(png, 400, 300, CaptureMeta::default(), i).unwrap();
+        }
+        let held: usize = store.warm.lock().unwrap().iter().map(|(_, b)| b.capacity()).sum();
+        assert!(held <= 64 * 1024, "the warm tier holds {held} bytes");
         std::fs::remove_dir_all(root).unwrap();
     }
 }
