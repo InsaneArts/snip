@@ -467,4 +467,15 @@ bind\n\tmodmask: 0\n\tsubmap: snip-record\n\tkey: Escape\n\tkeycode: 0\n\tcatcha
         assert!(lua.contains(r#"hl.bind("SUPER + SHIFT + code:12", hl.dsp.global("snip:area"), { description = "Snip: Capture area" })"#), "{lua}");
         assert!(!set_lua("snip", &[("history".into(), vec!["F1".into()], String::new())]).contains("hl.bind("), "a cleared key binds nothing");
     }
+
+    #[test]
+    fn broken_binds_and_specs_are_read_without_panicking() {
+        // hyprctl's output, and a shortcut as Snip's settings keep it
+        snip_core::fuzz::run(&[BINDS.as_bytes(), b"SUPER + SHIFT + 4", b"CTRL+code:13"], 20_000, |b| {
+            let text = String::from_utf8_lossy(b);
+            let binds = parse_binds(&text);
+            let (mask, key) = parse_spec(&text);
+            let _ = (label(mask, &key), conflict(&binds, "area", &text));
+        });
+    }
 }

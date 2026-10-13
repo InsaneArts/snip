@@ -7,3 +7,6 @@ license.workspace = true
 
 [dependencies]
 serde_json.workspace = true
+
+[dev-dependencies]
+snip-core = { path = "../snip-core", features = ["fuzz"] }
