@@ -40,12 +40,27 @@ pub fn to_bytes(p: &Project, thumb: &[u8]) -> std::io::Result<Vec<u8>> {
 
 /// A project file's parts (the thumbnail is left out).
 pub fn read(path: &Path) -> std::io::Result<Project> {
-    let mut z = zip::ZipArchive::new(std::fs::File::open(path)?).map_err(std::io::Error::other)?;
+    read_from(std::fs::File::open(path)?, LARGEST)
+}
+
+/// No file in a project is bigger (a shared one may be a zip bomb).
+const LARGEST: u64 = 512 << 20;
+
+/// `read`, from any zip, refusing a file in it bigger than `largest` bytes
+/// (whatever the zip says its size is) and more than 1000 assets.
+fn read_from(r: impl Read + std::io::Seek, largest: u64) -> std::io::Result<Project> {
+    let mut z = zip::ZipArchive::new(r).map_err(std::io::Error::other)?;
     let names: Vec<String> = z.file_names().filter_map(|n| n.strip_prefix("assets/")).filter(|n| !n.is_empty() && !n.contains('/')).map(String::from).collect();
+    if names.len() > 1000 {
+        return Err(std::io::Error::other("not a Snip project: too many files"));
+    }
     let mut get = |name: &str| -> std::io::Result<Vec<u8>> {
-        let mut f = z.by_name(name).map_err(|_| std::io::Error::other(format!("not a Snip project: no {name}")))?;
+        let f = z.by_name(name).map_err(|_| std::io::Error::other(format!("not a Snip project: no {name}")))?;
         let mut v = Vec::new();
-        f.read_to_end(&mut v)?;
+        f.take(largest + 1).read_to_end(&mut v)?;
+        if v.len() as u64 > largest {
+            return Err(std::io::Error::other(format!("not a Snip project: {name} is too big")));
+        }
         Ok(v)
     };
     let manifest: serde_json::Value = serde_json::from_slice(&get("manifest.json")?).map_err(std::io::Error::other)?;
@@ -114,5 +129,17 @@ mod tests {
         assert!(read(&path).unwrap_err().to_string().contains("newer"));
         assert!(document_files(r#"{"items":[{"kind":"image","src":"../etc/passwd"}]}"#).is_empty(), "no paths out of the folder");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_project_too_big_to_be_one_is_refused_not_read() {
+        // a file in it bigger than any project's (a zip bomb, shared): refused before it fills memory
+        let p = Project { source: vec![7; 4096], document: "{}".into(), preview: b"p".to_vec(), assets: vec![] };
+        let bytes = to_bytes(&p, b"t").unwrap();
+        assert!(read_from(Cursor::new(bytes.clone()), 1 << 20).is_ok());
+        assert!(read_from(Cursor::new(bytes.clone()), 1024).unwrap_err().to_string().contains("too big"));
+        crate::fuzz::run(&[&bytes], 3000, |b| {
+            let _ = read_from(Cursor::new(b), 1 << 20);
+        });
     }
 }
