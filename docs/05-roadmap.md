@@ -255,7 +255,7 @@ CleanShot 5's Studio Mode on Hyprland: zooms placed by hand and automatic, a smo
 | 3. Auto zoom and follow | Zooms placed from every take's clicks (D54); Follow Pointer; Re-run Auto Zoom | built; the owner's rating on real takes to come |
 | 4. Clicks and keys after the fact | Ripples; the Keystrokes section | built |
 | 5. Polish | Motion blur, Snip's own pointer set, ratios, Export Current Frame | built in part |
-| 6. The camera as its own stream | The camera recorded apart, laid out after the fact | ⏳ |
+| 6. The camera as its own stream | The camera recorded apart, laid out after the fact | built; a real camera to try (none here) |
 
 Phase 1's tests are the studio evaluator's, in `cargo test` (the owner's choice). Phase 2's (the owner's choice, 2026-10-12): `cargo test` for the input log, its timing and the pointer's path; one e2e case for a studio take with the fake recorder (it stops, the editor opens, the log is there); the UI checked by hand.
 
@@ -268,6 +268,8 @@ Phase 3 is built (2026-10-12): a zoom can follow the pointer (the popover's Foll
 Phase 4 is built (2026-10-12): a studio take's clicks get ripples and its command keys a keystroke pill, drawn after the fact in the preview and the export, on as the panel's Clicks and Keys were (D60); ripples in the Pointer section (outline or filled, the accent or one of seven colours), and a Keystrokes section (size, Dark or Light, nine positions). A click or key in a part that's cut out doesn't show after the cut. Tests: `cargo test` for the ripple and keystroke rules, and one e2e case (`studio_clicks_and_keys`: the exports with and without them differ where the ring and the pill are, and nowhere else). Not built: "All keys" (Q5's (b), the owner's to decide): command keys only, as today.
 
 Phase 5 is built in part (2026-10-12): the redrawn pointer's motion blur (Off, Low, Medium, High; Medium first, as CleanShot's), CleanShot's aspect-ratio list (4:5 added), Export Current Frame as Image (the frame shown, drawn as the export draws it, as a new screenshot), and a window's take opening in a background with the window's corners. Not built: the view's blur while a zoom moves, Snip's own pointer set, and the shape guess (S6).
+
+Phase 6 is built (2026-10-13, D61): with a camera chosen, a studio take's bubble shows while the take is set up and is gone once it records; the camera records apart (ffmpeg, V4L2, its frames on the kernel's clock) into `camera.mp4` beside the take, its first frame in the take's log. The video editor places it, first as the panel showed it, with a Camera section (show, size, Circle, Square, Wide or Tall, nine positions, mirrored, smaller while zoomed in), in the preview and the export; its time follows the video through the take's pauses and the edit's cuts. Tests: `cargo test` for finding, finishing and timing the camera, and two e2e cases with the tests' camera (`studio_take_records_the_camera_apart`, `studio_camera_in_the_editor`). Not tried with a real camera: none is connected here, so the V4L2 recording (MJPEG 1280×720 at 30 fps, else what the camera gives) needs a take by hand.
 
 Spikes S3 and S4 (2026-10-12, on the owner's idle session): gsr's first frame reaches its muxer 3 frames after a take's start with NVENC, as Snip had it, and 7 with x264, which Snip now counts; polling the pointer 120 times a second costs Hyprland 0.37 % of a core (the design's budget is 0.4 %), so a take polls at most that often.
 
