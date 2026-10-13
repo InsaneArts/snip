@@ -480,7 +480,9 @@ impl Inner {
         let o = self.outputs.lock().unwrap().iter().find(|o| o.name == output).map(|o| o.logical).ok_or("no such output")?;
         let scale = self.output_scale(&output);
         let [x, y, w, h] = rect.unwrap_or([0, 0, o.w, o.h]);
-        if w < 2 || h < 2 || x < 0 || y < 0 || x + w > o.w || y + h > o.h {
+        // in i64: an area past what i32 holds would wrap round and pass
+        let past = |at: i32, len: i32, room: i32| at as i64 + len as i64 > room as i64;
+        if w < 2 || h < 2 || x < 0 || y < 0 || past(x, w, o.w) || past(y, h, o.h) {
             return Err(format!("the area must lie inside {output} ({}x{} logical)", o.w, o.h));
         }
         self.record_open(output, geometry::logical_to_physical(Rect::new(x, y, w, h), scale), scale, Some(waiter), gif, true);
