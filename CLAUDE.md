@@ -100,6 +100,7 @@ What cost us hours before:
 - **QML value types** (`rect`, `point`) are live references: copy the fields before changing state that resets them.
 - **Windows** created by a `Loader` never map: create them with `Component.createObject`.
 - **QObjects returned to QML** need `CppOwnership`, or the GC deletes Qt's real `QScreen`. Pass the real `QScreen*` to LayerShellQt (`Platform.screen(name)`).
+- **A `QJSValue` copied off the GUI thread** corrupts the JS engine: its copy allocates in the engine's store, unguarded (Qt guards only a free). Never let one ride in a lambda that runs on the render thread (`frameSwapped`, `beforeRendering`…): keep it on the GUI thread and pass an id (`Platform.afterFrames`). snipd crashed about once in 220 captures.
 - **Hyprland fades unmapped layers** out for ~150 ms, even with `no_anim`. Clear content first, then unmap. Snip's UI goes transparent and waits for `Platform.notifyNextFrame` before any capture.
 - **A `visible` binding that is false for even one instant** unmaps the layer, and Hyprland then fades out a snapshot of it. Change state so the window stays mapped throughout; never reset everything and then re-enable it in the same handler.
 - **Physical pixel mapping** belongs in reactive QML (`toPhys` in `Overlay.qml`). A cached C++ call keeps a stale scale from before the first configure.
