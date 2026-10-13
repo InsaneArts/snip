@@ -244,9 +244,13 @@ impl History {
     }
 
     pub fn delete(&self, id: &str) -> rusqlite::Result<()> {
-        self.db.execute("DELETE FROM captures WHERE id = ?1", [id])?;
+        let n = self.db.execute("DELETE FROM captures WHERE id = ?1", [id])?;
         self.db.execute("DELETE FROM captures_fts WHERE id = ?1", [id])?;
-        let _ = std::fs::remove_dir_all(self.dir_for(id));
+        // only a capture's own folder: an id history never had ("", "..", a
+        // path) would name history itself, or anything
+        if n > 0 {
+            let _ = std::fs::remove_dir_all(self.dir_for(id));
+        }
         Ok(())
     }
 
@@ -329,6 +333,24 @@ mod tests {
         assert_eq!(h.get("a").unwrap().unwrap().saved, Some(PathBuf::from("/x/y.png")));
         assert_eq!(h.get("a").unwrap().unwrap().scale, 1.25);
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn deleting_what_isnt_in_history_removes_nothing() {
+        // an id that's no capture's names no folder: not history's own (""),
+        // not its parent's (".."), not anyone else's (an absolute path)
+        let root = tmp();
+        let outside = tmp();
+        let h = History::open(&root).unwrap();
+        h.insert(&rec("a", 100, &root)).unwrap();
+        for id in ["", "..", &outside.to_string_lossy()] {
+            h.delete(id).unwrap();
+        }
+        assert!(outside.exists() && root.join("history.db").exists() && root.join("a").exists());
+        h.delete("a").unwrap();
+        assert!(!root.join("a").exists(), "a capture's own folder goes with it");
+        std::fs::remove_dir_all(root).unwrap();
+        std::fs::remove_dir_all(outside).unwrap();
     }
 
     #[test]
