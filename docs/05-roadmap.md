@@ -245,7 +245,7 @@ Recording came first after all (D43). Then:
 
 ## M4.5: Studio Mode (XL; D55)
 
-CleanShot 5's Studio Mode on Hyprland: zooms placed by hand and automatic, a smooth redrawn pointer, clicks and keystrokes after the fact, motion blur. The plan, measurements and constants: [research/studio-2026-10/design.md](research/studio-2026-10/design.md). Decided so far: a Studio switch on the recording panel, and clicks kept for every take (D54); a zoom grows the whole card, and Replace keeps the original (D56); a hardware pointer for studio takes (D57); the editor opens when a take stops (D58); the user's cursor theme and CleanShot's pointer defaults (D59, D60).
+CleanShot 5's Studio Mode on Hyprland: zooms placed by hand and automatic, a smooth redrawn pointer, clicks and keystrokes after the fact, motion blur. The plan, measurements and constants: [research/studio-2026-10/design.md](research/studio-2026-10/design.md). Decided so far: a Studio switch on the recording panel, and clicks kept for every take (D54); a zoom grows the whole card, and Replace keeps the original (D56); a hardware pointer for studio takes (D57); the editor opens when a take stops (D58); the user's cursor theme and CleanShot's pointer defaults (D59, D60); the camera recorded apart in studio takes (D61); shortcuts only, no "All keys" (D62).
 
 | Phase | What you get | Status |
 |---|---|---|

@@ -1014,6 +1014,8 @@ Each question has options and a recommendation. Recorded answers become D-number
 
 *Recommend (a) now and (b) in Phase 4.* Passwords typed into ordinary windows would end up in history with "All keys".
 
+**Decided (D62, 2026-10-13): (a),** shortcuts only; no "All keys".
+
 **Q6. What does a zoom enlarge?**
 - (a) **The recording's card (video, corners, shadow, pointer) grows over a still background. The padding leaves the canvas as it zooms in, as in Cap.** CleanShot probably does the same: it drops out of the zoom while a padding slider is dragged, so the padding can be seen.
 - (b) Only the video inside its card, so the padding and corners stay.
@@ -1075,6 +1077,8 @@ Each question has options and a recommendation. Recorded answers become D-number
 - (b) Record it to its own file from Phase 2 on.
 
 *Recommend (a).*
+
+**Decided (D61, 2026-10-13): Phase 6 now, its own file.** The bubble shows while the take is set up, to frame yourself, and goes once recording starts (it would be in the video too); the editor places the camera.
 
 ---
 
