@@ -2513,6 +2513,19 @@ def record_controls_stay_outside_the_area(s, env):
 
 
 @case
+def record_area_outside_the_screen_is_refused(s, env):
+    """snip record area takes only an area inside the output: one reaching past it, even by
+    more than numbers hold (x + w overflowed and passed the check: the request hung), is
+    refused at once, and nothing records."""
+    big = str(2**31 - 1)
+    for x, y, w, h in (("1", "1", big, big), ("-10", "0", "100", "100"), ("10", "10", "1", "100"), ("1500", "0", "100", "100")):
+        t0 = time.time()
+        r = s.json("record", "area", "--x", x, "--y", y, "--w", w, "--h", h, "--monitor", OUT)
+        assert not r["ok"] and "must lie inside" in r["error"] and time.time() - t0 < 3, (x, y, w, h, r)
+        assert (record_state(s) or {}).get("state") in (None, "idle"), record_state(s)
+
+
+@case
 def record_controls_tips_stay_outside_the_area(s, env):
     """REC-05: the controls' tips point away from the area, so they're never recorded: with the
     controls above the area, a tip under them reached ~8 px into it."""
