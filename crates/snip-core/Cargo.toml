@@ -24,3 +24,7 @@ zip.workspace = true
 [dev-dependencies]
 rxing = { workspace = true, features = ["encoders"] }
 qrcode.workspace = true
+
+[features]
+# the parsers' fuzzer (snip_core::fuzz), for other crates' tests
+fuzz = []

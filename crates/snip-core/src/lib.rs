@@ -7,6 +7,8 @@ pub mod config;
 pub mod desktop;
 pub mod editor_files;
 pub mod encode;
+#[cfg(any(test, feature = "fuzz"))]
+pub mod fuzz;
 pub mod frame;
 pub mod geometry;
 pub mod history;
