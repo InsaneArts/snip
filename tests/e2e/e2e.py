@@ -2925,6 +2925,60 @@ def studio_take_records_the_camera_apart(s, env):
 
 
 @case
+def studio_camera_in_the_editor(s, env):
+    """D61: a studio take's camera, recorded apart, is placed in the video editor as the panel
+    showed it (a circle at the bottom right, mirrored) and drawn into the export there; hidden,
+    the export there is the take's own picture, and nothing else changes."""
+    s.cli("close-all"); time.sleep(0.3)
+    p = record_panel(s)
+    s.drag(300, 200, 1100, 650)
+    assert wait_for(lambda: record_hud(s)["area"] == [300, 200, 800, 450], 3), record_hud(s)
+    record_click(s, "record-camera-button")
+    assert wait_for(lambda: record_hud(s)["camerasOpen"], 2)
+    time.sleep(0.3)
+    record_click(s, "record-camera:1")
+    record_click(s, "record-studio")
+    record_click(s, "record-video")
+    try:
+        assert wait_for(lambda: record_hud(s)["phase"] == "recording", 5), record_hud(s)
+        time.sleep(2.0)
+        s.json("record", "stop")
+        r, code = finish(p, timeout=20)
+        assert code == 0, r
+        rid = r["result"]["id"]
+        assert wait_for(lambda: video_editor_window(), 6), "the editor opens on it (D58)"
+        st = video_state(s)
+        assert st["camera"] == {"show": True, "size": 1, "shape": "circle", "position": "bottom-right", "mirror": True, "shrink": True}, st["camera"]
+        s.debug("ui", "video", "seek", "1000")
+        assert wait_for(lambda: where(s, "video", "studio-camera")["x"] >= 0, 3), "in the preview"
+
+        def export():
+            n = len(s.traces("video_exported_ui"))
+            s.debug("ui", "video", "export", "new")
+            assert wait_for(lambda: len(s.traces("video_exported_ui")) > n, 60)
+            done = s.traces("video_exported_ui")[-1]
+            assert done["ok"], done
+            return next(x for x in s.json("list", "-n", "5")["result"] if x["id"] == done["id"])["source"]
+
+        shown = export()
+        # an export closes the editor: open it again, the camera hidden
+        s.debug("annotate", rid)
+        assert wait_for(lambda: video_editor_window() and video_state(s)["id"] == rid, 6)
+        s.debug("ui", "video", "studio", json.dumps(dict(video_state(s)["studio"], camera={"show": False})))
+        hidden = export()
+        diff = lambda box: statistics.mean(abs(a - b) for a, b in zip(gray(shown, 1000, box), gray(hidden, 1000, box)))
+        # the take is 1000×562 px: Medium is a quarter of its height across (140 px), 50 px in
+        # from the bottom right (40 px at the nested output's scale, 1.25)
+        assert diff((830, 392, 100, 100)) > 20, "the camera, at the bottom right"
+        assert diff((0, 0, 400, 300)) < 3, "nothing else"
+    finally:
+        s.write_config("")
+        time.sleep(0.8)
+        s.cli("debug", "ui", "close-editors")
+        s.cli("close-all")
+
+
+@case
 def auto_zoom(s, env):
     """D54, the design's §6.4: a take keeps where its clicks were, so its editor opens with
     zooms on them (follow zooms, marked auto) until it's edited. Re-run Auto Zoom (the zoom

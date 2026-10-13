@@ -30,6 +30,13 @@ Item {
     // the parts of the recording kept (ms, joined where they meet): clicks and
     // keys from before the part shown, and cut out, end where it begins
     property var keep: []
+    // a studio take's camera, recorded apart (D61): {path, width, height,
+    // duration, look}, or null; and how the edit places it ({show, size,
+    // shape, position, mirror, shrink})
+    property var camera: null
+    property var cameraLook: ({})
+    readonly property real cameraMs: camera && log ? Engine.studioCameraMs(log, ms) : NaN
+    readonly property alias cameraVideo: cameraOut
     readonly property real partFrom: {
         let at = -1e12
         for (const p of keep) if (p[0] <= ms) at = p[0]
@@ -147,6 +154,44 @@ Item {
                 smooth: true
                 mipmap: true
             }
+        }
+    }
+    // the camera, on the canvas (it doesn't zoom), smaller while zoomed in:
+    // the panel's sizes (Medium a quarter of the recording's height) and shapes
+    Item {
+        id: cameraBox
+        objectName: "studio-camera"
+        readonly property var look: frame.cameraLook || ({})
+        readonly property string shape: look.shape || "circle"
+        readonly property real d: frame.inner.h * 0.25 * (look.size || 1) * (look.shrink !== false ? 1 - 0.3 * Math.min(1, Math.max(0, frame.zoom - 1)) : 1)
+        readonly property real margin: 40 * frame.unit
+        readonly property string at: look.position || "bottom-right"
+        visible: !!frame.camera && look.show !== false && frame.cameraMs >= 0 && frame.cameraMs <= frame.camera.duration + 100
+        width: shape === "rectangle" ? d * 16 / 9 : shape === "vertical" ? d * 1.4 * 9 / 16 : d
+        height: shape === "vertical" ? d * 1.4 : d
+        x: at.endsWith("left") ? margin : at.endsWith("right") ? frame.outer.w - width - margin : (frame.outer.w - width) / 2
+        y: at.startsWith("top") ? margin : at.startsWith("bottom") ? frame.outer.h - height - margin : (frame.outer.h - height) / 2
+        layer.enabled: true
+        layer.textureSize: Qt.size(Math.ceil(width * frame.pixelScale), Math.ceil(height * frame.pixelScale))
+        layer.effect: MultiEffect { maskEnabled: true; maskSource: cameraMask; maskThresholdMin: 0.5; maskSpreadAtMin: 1.0 }
+        VideoOutput {
+            id: cameraOut
+            anchors.fill: parent
+            fillMode: VideoOutput.PreserveAspectCrop
+            mirrored: cameraBox.look.mirror !== false
+        }
+    }
+    Item {
+        id: cameraMask
+        visible: false
+        width: cameraBox.width
+        height: cameraBox.height
+        layer.enabled: true
+        layer.textureSize: cameraBox.layer.textureSize
+        Rectangle {
+            anchors.fill: parent
+            radius: cameraBox.shape === "circle" ? Math.min(width, height) / 2 : Math.min(width, height) * 0.12
+            color: "white"
         }
     }
     // the keystrokes, on the canvas: they don't zoom (the live HUD's pill, sized
