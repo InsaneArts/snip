@@ -276,7 +276,8 @@ pub fn recover(take: &Path) -> Result<PathBuf, String> {
 
 /// Everything a left-behind take wrote.
 pub fn forget(take: &Path) {
-    for f in [take.to_path_buf(), take.with_extension("recovered.mp4"), take.with_extension("log"), take.with_extension("input.jsonl"), PathBuf::from(format!("{}.ts", take.display())), sock_for(take)] {
+    for f in [take.to_path_buf(), take.with_extension("recovered.mp4"), take.with_extension("log"), take.with_extension("input.jsonl"),
+              take.with_extension("camera.mkv"), take.with_extension("camera.mp4"), take.with_extension("camera.log"), PathBuf::from(format!("{}.ts", take.display())), sock_for(take)] {
         let _ = std::fs::remove_file(f);
     }
 }
@@ -289,7 +290,7 @@ fn gsr_path() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("/usr/bin/gpu-screen-recorder"))
 }
 
-fn interrupt(child: &Child) {
+pub(crate) fn interrupt(child: &Child) {
     let _ = Command::new("kill").args(["-INT", &child.id().to_string()]).status();
 }
 
@@ -324,7 +325,7 @@ fn gsr_failure(code: Option<i32>, log: &str) -> String {
 }
 
 /// Wait for a child to exit, then kill it if it takes longer than `limit`.
-fn reap(child: &mut Child, limit: Duration) {
+pub(crate) fn reap(child: &mut Child, limit: Duration) {
     let t0 = Instant::now();
     while t0.elapsed() < limit {
         if let Ok(Some(_)) = child.try_wait() {

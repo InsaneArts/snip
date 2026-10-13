@@ -18,6 +18,8 @@ const ORIGINAL: &str = "original.png";
 const EDIT: &str = "edit.json";
 /// Beside a recording: its take's input log (the design's §4.7).
 const INPUT: &str = "input.jsonl";
+/// A studio take's camera, recorded apart (D61).
+const CAMERA: &str = "camera.mp4";
 /// Next to a recording's video (or GIF): its first frame, for cards and history.
 const POSTER: &str = "poster.png";
 
@@ -200,6 +202,11 @@ impl Store {
     /// Where a recording's input log is (it may have none).
     pub fn input_log(rec: &Record) -> PathBuf {
         rec.source.with_file_name(INPUT)
+    }
+
+    /// Where a studio take's camera is kept (it may not be).
+    pub fn camera(rec: &Record) -> PathBuf {
+        rec.source.with_file_name(CAMERA)
     }
 
     /// A recording's poster (its first frame); None for images.
@@ -408,7 +415,17 @@ impl Store {
     /// A take's input log, kept beside its recording: moved in, or copied
     /// from another filesystem.
     pub fn keep_input_log(&self, id: &str, file: &Path) -> Result<(), StoreError> {
-        let to = self.get(id)?.source.with_file_name(INPUT);
+        self.keep_beside(id, file, INPUT)
+    }
+
+    /// A studio take's camera, recorded apart (D61): beside it, as `camera.mp4`.
+    pub fn keep_camera(&self, id: &str, file: &Path) -> Result<(), StoreError> {
+        self.keep_beside(id, file, CAMERA)
+    }
+
+    /// `file` moved beside recording `id`, as `name`.
+    fn keep_beside(&self, id: &str, file: &Path, name: &str) -> Result<(), StoreError> {
+        let to = self.get(id)?.source.with_file_name(name);
         if std::fs::rename(file, &to).is_err() {
             std::fs::copy(file, &to)?;
             let _ = std::fs::remove_file(file);
