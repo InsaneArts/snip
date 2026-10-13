@@ -1061,11 +1061,15 @@ Each question has options and a recommendation. Recorded answers become D-number
 
 *Recommend (a).* Recording sound the user switched off would surprise them.
 
+**Decided (D63, 2026-10-14): (a),** what the panel says.
+
 **Q12. Upstream work in the owner's name.**
 - (a) **Propose a Hyprland change: a cursor-shape event or request, and a fix for the cursor session's blank image. Snip could then redraw every shape.**
 - (b) Not now.
 
 *Recommend (a), once Phase 2 ships.*
+
+**Decided (D64, 2026-10-14): (b), not now.** Spike S6's hotspots tell the arrow, the hand and the I-beam apart; the other shapes can wait for people to ask.
 
 **Q13. An input log for standard takes too** (clicks and positions, no keys)? That would allow auto zoom and follow on any recording, with the real pointer still in the picture.
 - (a) **No: only studio takes, as CleanShot does.**
