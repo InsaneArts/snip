@@ -669,6 +669,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_hand_edited_config_is_read_or_refused_without_panicking() {
+        let seed = "[general]\nfile_name = \"Snip %y-%m-%d at %H.%M.%S\"\n\n[recording]\nfps = 60\nstudio = true\ncamera = \"Test camera\"\n\n[shortcuts]\narea = \"SUPER + SHIFT + 4\"\n";
+        let at = chrono::DateTime::from_timestamp(1_791_400_000, 0).unwrap().with_timezone(&chrono::Local);
+        crate::fuzz::run(&[seed.as_bytes(), b"[after_capture]\nscreenshot = [\"copy\", \"save\"]\n"], 3000, |b| {
+            let text = String::from_utf8_lossy(b);
+            let (c, _) = Config::parse(&text);
+            let _ = (c.file_stem(at, 1.25, &crate::naming::NameContext::default()), c.recording.max_box());
+            let _ = set_json(&text, "recording.fps", &serde_json::json!(30));
+        });
+    }
+
+        #[test]
     fn file_stem_in_utc_and_with_the_scale() {
         let at = chrono::DateTime::from_timestamp(1_791_400_000, 0).unwrap().with_timezone(&chrono::Local);
         let ctx = crate::naming::NameContext::default();
