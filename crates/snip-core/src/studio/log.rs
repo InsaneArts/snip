@@ -155,7 +155,7 @@ impl Event {
     }
 
     /// Its line in the log.
-    fn line(&self) -> String {
+    pub(crate) fn line(&self) -> String {
         let n = |b: bool| b as u8;
         match self {
             Event::Move { t, at } => format!(r#"{{"t":{t},"m":[{},{}]}}"#, at[0], at[1]),
