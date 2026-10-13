@@ -604,8 +604,11 @@ impl State {
         let _ = self.conn.flush();
         drop(wr); // the compositor has its own copy; EOF comes when the source closes it
         std::thread::spawn(move || {
+            // the app holding the clipboard may write forever: no image Snip
+            // reads from it is bigger than this
+            const LARGEST: u64 = 512 << 20;
             let mut buf = Vec::new();
-            let ok = std::fs::File::from(rd).read_to_end(&mut buf).is_ok();
+            let ok = std::fs::File::from(rd).take(LARGEST + 1).read_to_end(&mut buf).is_ok() && buf.len() as u64 <= LARGEST;
             let _ = reply.send(ok.then_some((mime, buf)));
         });
     }
