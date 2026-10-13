@@ -10,3 +10,6 @@ serde.workspace = true
 serde_json.workspace = true
 rustix.workspace = true
 snip-core = { path = "../snip-core" }
+
+[dev-dependencies]
+snip-core = { path = "../snip-core", features = ["fuzz"] }

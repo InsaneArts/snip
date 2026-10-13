@@ -1280,6 +1280,7 @@ name = "snip-hypr"
 version = "0.1.0"
 dependencies = [
  "serde_json",
+ "snip-core",
 ]
 
 [[package]]

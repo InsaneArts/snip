@@ -208,4 +208,20 @@ mod tests {
         assert_eq!(parsed, Request::List { n: 10 });
         assert_eq!(serde_json::to_string(&Response::err("x")).unwrap(), r#"{"ok":false,"error":"x"}"#);
     }
+
+    #[test]
+    fn a_broken_request_is_refused_not_a_panic() {
+        // what anyone who can reach ctl.sock may send
+        let seeds: [&[u8]; 4] = [
+            br#"{"cmd":"capture","mode":"area","monitor":"DP-2","delay":3,"rect":[10,20,300,200]}"#,
+            br#"{"cmd":"list","n":10}"#,
+            br#"{"cmd":"copy","id":"01m4pk8fm96vpja81bc8yan020"}"#,
+            br#"{"cmd":"record","action":"stop"}"#,
+        ];
+        snip_core::fuzz::run(&seeds, 20_000, |b| {
+            if let Ok(r) = serde_json::from_slice::<Request>(b) {
+                let _ = serde_json::to_string(&r);
+            }
+        });
+    }
 }
