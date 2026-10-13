@@ -1115,6 +1115,24 @@ def menu_closes_on_any_click(s, env):
 
 
 @case
+def waiting_for_the_cards_frames_never_crashes(s, env):
+    """Before a capture with cards up, Snip waits for their window to draw itself out
+    (Platform.afterFrames), and its render thread swaps that frame while the JS engine is busy.
+    The wait's JS callback was copied there, corrupting the engine's store of values: snipd
+    crashed about once in a few hundred captures. Hundreds of waits a tick for 4 s
+    (snip debug ui frames-load), and snipd is still there."""
+    s.cli("close-all"); time.sleep(0.3)
+    assert s.json("area", "--x", "100", "--y", "100", "--w", "400", "--h", "300", "--monitor", OUT)["ok"]
+    assert wait_for(lambda: len(s.status()["cards"]) == 1, 3), "a card is up"
+    s.cli("debug", "ui", "frames-load", "4")
+    time.sleep(4.5)
+    died = s.proc.poll()
+    if died is not None:
+        s.start()                               # for the cases after this one
+    assert died is None, f"snipd died ({died})"
+
+
+@case
 def cards_fit_the_screen(s, env):
     """QAO-06: the stack shows as many cards as the screen has room for, newest at the
     bottom; the rest wait under "+k more". Five cards ran off the top of an 864 px tall
