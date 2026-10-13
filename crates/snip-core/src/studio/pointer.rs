@@ -59,6 +59,11 @@ const POLL: f64 = 1000.0 / 120.0;
 const STILL: f64 = 67.0;
 /// How long the table runs on after the last place (ms): the spring settles.
 const SETTLE: f64 = 1000.0;
+/// A track starts no earlier than BEFORE_MS before the video and covers no
+/// more than TRACK_MS (ms): a log's times are its own word, and one broken
+/// (or written to break Snip) mustn't ask for terabytes.
+const BEFORE_MS: f64 = 60_000.0;
+pub(crate) const TRACK_MS: f64 = 4.0 * 3600.0 * 1000.0;
 
 /// A damped spring chasing the path: stiffness, mass, damping (the design's
 /// presets, Cap's "Fast" and "Mellow").
@@ -150,7 +155,8 @@ impl Track {
         let path: Vec<(f64, [f64; 2])> = log.events.iter().filter_map(|e| Some((clock.video_ms(e.t())?, log.header.video_px(e.place()?)))).collect();
         let first = path.first()?.0;
         let last = log.events.iter().filter_map(|e| clock.video_ms(e.t())).fold(first, f64::max);
-        let from = first.min(0.0);
+        let from = first.clamp(-BEFORE_MS, 0.0);
+        let last = last.min(from + TRACK_MS);
         let n = ((last + SETTLE - from) / STEP).ceil() as usize + 1;
         let spring = match s.motion {
             Motion::Natural => Some(NATURAL),
@@ -495,5 +501,36 @@ mod tests {
         assert_eq!(p.at(2500.0).hot, Some([7, 5]));
         let none = Track::new(&take(vec![moved(0.0, 100, 100)]), &Settings::DEFAULT).unwrap();
         assert_eq!(none.at(500.0).hot, None, "a log without them: the arrow");
+    }
+
+    #[test]
+    fn a_log_with_an_absurd_time_makes_a_track_of_sane_length() {
+        // one event a year later (a log broken, or written to break Snip):
+        // without a bound, its table would want terabytes
+        let p = Track::new(&take(vec![moved(0.0, 100, 100), moved(1.0, 200, 100), moved(3.2e7, 300, 100)]), &OFF).unwrap();
+        assert!(near(p.at(1000.0).at, [200.5, 100.5], 0.5));
+        assert!(p.shown.len() <= ((TRACK_MS + SETTLE) / STEP) as usize + 2, "{} samples", p.shown.len());
+        let p = Track::new(&take(vec![moved(-3.2e7, 100, 100), moved(1.0, 200, 100)]), &OFF).unwrap();
+        assert!(near(p.at(1000.0).at, [200.5, 100.5], 0.5), "nor a year before: {:?}", p.at(1000.0));
+    }
+
+    #[test]
+    fn a_broken_log_makes_a_track_or_none_without_panicking() {
+        let text = format!(
+            "{}\n{}\n{}\n{}\n{}\n{}\n",
+            serde_json::to_string(&take(vec![]).header).unwrap(),
+            Event::Move { t: at(0.1), at: [10, 20] }.line(),
+            Event::Button { t: at(0.5), button: 272, down: true, at: [11.0, 21.0] }.line(),
+            Event::Button { t: at(0.6), button: 272, down: false, at: [11.0, 21.0] }.line(),
+            Event::Typing { t: at(0.8) }.line(),
+            Event::Shape { t: at(0.9), hot: [11, 12] }.line(),
+        );
+        crate::fuzz::run(&[text.as_bytes()], 3000, |b| {
+            if let Some(log) = crate::studio::log::read(&String::from_utf8_lossy(b)) {
+                if let Some(p) = Track::new(&log, &Settings::DEFAULT) {
+                    let _ = (p.at(0.0), p.at(1e9), p.trail(500.0, 2.0));
+                }
+            }
+        });
     }
 }

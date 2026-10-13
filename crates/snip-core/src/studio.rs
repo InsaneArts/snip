@@ -161,7 +161,8 @@ fn centres(z: &Zoom, until: f64, pointer: &pointer::Track) -> Vec<[f64; 2]> {
     let (k, m, c) = FOLLOW;
     let mut aim = place(z.from);
     let (mut x, mut v, dt) = (goal(aim), [0.0; 2], STEP / 1000.0);
-    let n = ((until - z.from) / STEP).ceil().max(0.0) as usize + 1;
+    // no more than a track's worth (a broken edit.json's span is its own word)
+    let n = ((until - z.from).min(pointer::TRACK_MS) / STEP).ceil().max(0.0) as usize + 1;
     (0..n)
         .map(|i| {
             if i > 0 {
@@ -467,5 +468,19 @@ mod tests {
     fn a_zoom_reads_follow_and_auto_from_its_json() {
         let e: Edit = serde_json::from_str(r#"{"zooms":[{"from":0,"to":3000,"level":1.5,"focus":[0.5,0.5],"follow":true,"auto":true}]}"#).unwrap();
         assert_eq!(e.zooms[0], Zoom { auto: true, ..follow(0.0, 3000.0, 1.5) });
+    }
+
+    #[test]
+    fn a_broken_edit_shows_some_view_without_panicking() {
+        let p = pointer(&[(0.0, 700, 200), (1.0, 300, 300)]);
+        let edit = r#"{"zooms":[{"from":1000,"to":5000,"level":2,"focus":[0.3,0.6],"follow":true},{"from":6000,"to":9000,"level":3,"focus":[0.5,0.5]}],"zoom_style":"dynamic"}"#;
+        crate::fuzz::run(&[edit.as_bytes(), br#"{"zooms":[{"from":0,"to":1e15,"level":4,"focus":[0,0],"follow":true}]}"#], 3000, |b| {
+            if let Ok(e) = serde_json::from_slice::<Edit>(b) {
+                let v = Views::new(&e, Some(&p));
+                for t in [-1e9, 0.0, 1500.0, 3000.0, 4900.0, 7000.0, 1e12] {
+                    let _ = card(v.at(t), [1920.0, 1080.0], [0.0, 0.0, 1920.0, 1080.0]);
+                }
+            }
+        });
     }
 }
