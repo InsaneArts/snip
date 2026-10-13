@@ -110,8 +110,8 @@ fn largest(b: &[u8]) -> Option<Image> {
     let u32_at = |at: usize| Some(u32::from_le_bytes(b.get(at..at + 4)?.try_into().ok()?));
     let (nominal, at) = images(b)?.into_iter().max_by_key(|&(size, _)| size)?;
     let (width, height, hx, hy) = (u32_at(at + 16)?, u32_at(at + 20)?, u32_at(at + 24)?, u32_at(at + 28)?);
-    // the file's word for its size: no cursor is over 1024 px a side
-    if width > 1024 || height > 1024 {
+    // the file's word for its size: a cursor has pixels, none over 1024 a side
+    if !(1..=1024).contains(&width) || !(1..=1024).contains(&height) {
         return None;
     }
     let pixels = b.get(at + 36..at + 36 + (width * height * 4) as usize)?;
@@ -167,8 +167,13 @@ mod tests {
     #[test]
     fn a_broken_cursor_file_is_no_cursor() {
         let file = xcursor(&[(24, [3, 1]), (48, [6, 2])]);
+        assert!(largest(&xcursor(&[(0, [0, 0])])).is_none(), "an image of no pixels");
         crate::fuzz::run(&[&file], 20_000, |b| {
-            let _ = (largest(b), hot_at(b, 24));
+            // what's drawn is made a PNG
+            if let Some(img) = largest(b) {
+                crate::encode::encode_png(&img.rgba, img.width, img.height, true);
+            }
+            let _ = hot_at(b, 24);
         });
     }
 }
