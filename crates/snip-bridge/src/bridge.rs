@@ -150,6 +150,12 @@ pub mod qobject {
         #[qinvokable]
         fn studio_input(self: &Engine, log: QString, ms: f64, since: f64, video_w: f64, video_h: f64) -> QString;
 
+        /// A studio take's camera, recorded apart (D61): where its file is at
+        /// `ms` of the video (ms; negative before its first frame), from the
+        /// take's input log at `log`; NaN without one.
+        #[qinvokable]
+        fn studio_camera_ms(self: &Engine, log: QString, ms: f64) -> f64;
+
         /// Auto zoom (D54): the zooms of `edit` ({zooms, zoom_style}) with auto
         /// zoom run again on the take's input log at `log`, for its video
         /// (`duration_ms` long, `video_w` × `video_h`): the user's kept, auto
@@ -812,6 +818,22 @@ impl qobject::Engine {
             let rings: Vec<Value> = ripples.at(ms, since).iter().map(|r| json!({ "x": r.at[0], "y": r.at[1], "size": r.size, "alpha": r.alpha, "right": r.right })).collect();
             let keys = keys.at(ms, since).map_or(Value::Null, |k| json!({ "text": k.text, "opacity": k.opacity }));
             QString::from(json!({ "rings": rings, "keys": keys }).to_string().as_str())
+        })
+    }
+
+    fn studio_camera_ms(&self, log: QString, ms: f64) -> f64 {
+        use snip_core::studio::log::{self as input, CameraClock};
+        use std::cell::RefCell;
+        // once for a take (60 times a second otherwise)
+        thread_local! { static CLOCK: RefCell<Option<(String, Option<CameraClock>)>> = const { RefCell::new(None) } }
+        let log = log.to_string();
+        CLOCK.with(|cell| {
+            let mut cell = cell.borrow_mut();
+            if cell.as_ref().is_none_or(|(k, _)| *k != log) {
+                let clock = std::fs::read_to_string(&log).ok().and_then(|text| input::read(&text)).and_then(|l| CameraClock::of(&l));
+                *cell = Some((log, clock));
+            }
+            cell.as_ref().and_then(|(_, c)| c.as_ref()).map_or(f64::NAN, |c| c.ms(ms))
         })
     }
 

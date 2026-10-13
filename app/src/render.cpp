@@ -221,6 +221,8 @@ renderVideo(const QString& specPath)
                                                           { QStringLiteral("keysLook"), scene["keysLook"].toVariant() },
                                                           { QStringLiteral("unit"), scene["unit"].toDouble(1.0) },
                                                           { QStringLiteral("keep"), scene["keep"].toVariant() },
+                                                          { QStringLiteral("camera"), scene["camera"].toVariant() },
+                                                          { QStringLiteral("cameraLook"), scene["cameraLook"].toVariant() },
                                                           { QStringLiteral("pixelScale"), scale } });
   std::unique_ptr<QQuickItem> root(qobject_cast<QQuickItem*>(made));
   if (!root) {
@@ -299,6 +301,24 @@ renderVideo(const QString& specPath)
   format.setColorRange(QVideoFrameFormat::ColorRange_Video);
   format.setStreamFrameRate(fps);
   Reader reader(strings(spec["decode"]), format);
+  // a studio take's camera, recorded apart (D61): its own frames, 60 a
+  // second from its first; each frame drawn shows the one at the camera's
+  // time there (the scene's cameraMs: through the take's pauses and cuts)
+  const QJsonObject camera = scene["camera"].toObject();
+  const int cw = camera["width"].toInt() & ~1, ch = camera["height"].toInt() & ~1;
+  QVideoSink* cameraSink = nullptr;
+  if (auto* out = root->property("cameraVideo").value<QObject*>())
+    cameraSink = out->property("videoSink").value<QVideoSink*>();
+  std::unique_ptr<Reader> cam;
+  if (cameraSink && cw >= 2 && ch >= 2) {
+    QVideoFrameFormat cf(QSize(cw, ch), QVideoFrameFormat::Format_YUV420P);
+    cf.setColorSpace(QVideoFrameFormat::ColorSpace_BT601);
+    cf.setColorRange(QVideoFrameFormat::ColorRange_Video);
+    const QString frames = QStringLiteral("fps=60,scale=%1:%2:out_color_matrix=bt601:out_range=tv,format=yuv420p").arg(cw).arg(ch);
+    cam = std::make_unique<Reader>(QStringList{ "-v", "error", "-nostdin", "-i", camera["path"].toString(), "-vf", frames, "-f", "rawvideo", "-pix_fmt", "yuv420p", "pipe:1" }, cf);
+  }
+  qint64 cameraAt = -1;
+  QVideoFrame cameraFrame;
 
   qint64 n = 0;
   bool sent = true;
@@ -307,6 +327,17 @@ renderVideo(const QString& specPath)
     frame.setStartTime(qint64(ms * 1000));
     sink->setVideoFrame(frame);
     root->setProperty("ms", ms);
+    if (cam) {
+      const double at = root->property("cameraMs").toDouble();
+      for (const qint64 k = at >= 0 ? qint64(at * 60.0 / 1000.0 + 0.5) : -1; cameraAt < k; cameraAt++) {
+        QVideoFrame f = cam->next();
+        if (!f.isValid())
+          break;
+        cameraFrame = f;
+      }
+      if (at >= 0 && cameraFrame.isValid())
+        cameraSink->setVideoFrame(cameraFrame);
+    }
 
     control.polishItems();
     control.beginFrame();
