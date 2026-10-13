@@ -43,10 +43,16 @@ Item {
         return at
     }
     readonly property alias video: video
-    readonly property var cursorImage: pointer ? JSON.parse(Engine.studioCursor(pointer.theme)) : null
+    // the theme's shapes, the arrow first; drawn: the one whose hotspot the take
+    // logged there (spike S6: the hand, the I-beam), else the arrow
+    readonly property var cursorShapes: pointer ? JSON.parse(Engine.studioCursor(pointer.theme, pointer.size || 24)) : []
+    readonly property var cursorImage: {
+        const hot = pointerNow ? pointerNow.hot : null
+        return (hot && cursorShapes.find(c => c.match[0] === hot[0] && c.match[1] === hot[1])) || cursorShapes[0] || null
+    }
     // the pointer's motion blur (the design's §6.6): the edit's, Medium unless it says
     readonly property real motionBlur: ({ off: 0, low: 0.5, medium: 1, high: 2 })[studio.motion_blur || "medium"] || 0
-    readonly property var pointerNow: pointer && cursorImage ? JSON.parse(Engine.studioPointer(pointer.log, JSON.stringify(pointerLook), ms, motionBlur, inner.w, inner.h)) : null
+    readonly property var pointerNow: pointer && cursorShapes.length > 0 ? JSON.parse(Engine.studioPointer(pointer.log, JSON.stringify(pointerLook), ms, motionBlur, inner.w, inner.h)) : null
     readonly property var inputNow: log && ((rippleLook && rippleLook.show) || (keysLook && keysLook.show)) ? JSON.parse(Engine.studioInput(log, ms, partFrom, inner.w, inner.h)) : null
 
     // where the card is now, in the recording's px

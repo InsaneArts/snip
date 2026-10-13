@@ -42,12 +42,14 @@ impl Default for Settings {
 }
 
 /// The pointer at one moment: where (video px), how much it shows (0–1),
-/// and how far a press has it down (0–1).
+/// how far a press has it down (0–1), and its hotspot as the take logged
+/// it (its shape: spike S6; None, the arrow).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Shown {
     pub at: [f64; 2],
     pub opacity: f64,
     pub press: f64,
+    pub hot: Option<[i32; 2]>,
 }
 
 /// The table's step, and the poller's (ms).
@@ -137,6 +139,8 @@ pub struct Track {
     from: f64,
     shown: Vec<Shown>,
     video: [f64; 2],
+    /// when the pointer's hotspot changed (ms of the video), and to what
+    hots: Vec<(f64, [i32; 2])>,
 }
 
 impl Track {
@@ -210,10 +214,11 @@ impl Track {
                 let typing = if s.hide_typing { typing_shown(&typed, t) } else { 1.0 };
                 let idle = if s.hide_idle { idle_shown(&moves, t) } else { 1.0 };
                 let drawn = s.show && !baked.iter().any(|&(a, b)| t >= a && t < b);
-                Shown { at, opacity: if drawn { typing.min(idle) } else { 0.0 }, press }
+                Shown { at, opacity: if drawn { typing.min(idle) } else { 0.0 }, press, hot: None }
             })
             .collect();
-        Some(Track { from, shown, video: log.header.video.map(f64::from) })
+        let hots = log.events.iter().filter_map(|e| if let Event::Shape { t, hot } = *e { Some((clock.video_ms(t)?, hot)) } else { None }).collect();
+        Some(Track { from, shown, video: log.header.video.map(f64::from), hots })
     }
 
     /// The size (px) of the video its places are in.
@@ -245,7 +250,9 @@ impl Track {
         let (i, k) = (f.floor() as usize, f.fract());
         let (a, b) = (self.shown[i], self.shown[(i + 1).min(last)]);
         let mix = |x: f64, y: f64| x + (y - x) * k;
-        Shown { at: [mix(a.at[0], b.at[0]), mix(a.at[1], b.at[1])], opacity: mix(a.opacity, b.opacity), press: mix(a.press, b.press) }
+        // the hotspot last logged by then (the first one holds before it)
+        let hot = self.hots.partition_point(|&(t, _)| t <= ms).checked_sub(1).or((!self.hots.is_empty()).then_some(0)).map(|i| self.hots[i].1);
+        Shown { at: [mix(a.at[0], b.at[0]), mix(a.at[1], b.at[1])], opacity: mix(a.opacity, b.opacity), press: mix(a.press, b.press), hot }
     }
 }
 
@@ -475,5 +482,18 @@ mod tests {
         let trail = p.trail(200.0, 8.0);
         let back = p.at(200.0).at[0] - trail[7][0];
         assert!(back <= 480.0 + 1e-9 && back > 470.0, "{back}");
+    }
+
+    #[test]
+    fn the_pointer_has_the_shape_its_hotspot_says() {
+        // the cursor session's hotspot (spike S6): an arrow, an I-beam from 1 s, a hand from 2 s
+        let shape = |s: f64, x: i32, y: i32| Event::Shape { t: at(s), hot: [x, y] };
+        let events = vec![shape(-0.2, 3, 1), moved(0.0, 100, 100), shape(1.0, 11, 12), shape(2.0, 7, 5)];
+        let p = Track::new(&take(events), &Settings::DEFAULT).unwrap();
+        assert_eq!(p.at(500.0).hot, Some([3, 1]), "from before the take");
+        assert_eq!(p.at(1500.0).hot, Some([11, 12]));
+        assert_eq!(p.at(2500.0).hot, Some([7, 5]));
+        let none = Track::new(&take(vec![moved(0.0, 100, 100)]), &Settings::DEFAULT).unwrap();
+        assert_eq!(none.at(500.0).hot, None, "a log without them: the arrow");
     }
 }

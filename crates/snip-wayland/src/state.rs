@@ -10,7 +10,7 @@ use calloop::{EventLoop, LoopHandle, RegistrationToken};
 use calloop_wayland_source::WaylandSource;
 use wayland_client::globals::{registry_queue_init, GlobalListContents};
 use wayland_client::protocol::{
-    wl_buffer::WlBuffer, wl_compositor::WlCompositor, wl_output, wl_output::WlOutput, wl_pointer, wl_registry, wl_registry::WlRegistry,
+    wl_buffer::WlBuffer, wl_compositor::WlCompositor, wl_output, wl_output::WlOutput, wl_pointer, wl_pointer::WlPointer, wl_registry, wl_registry::WlRegistry,
     wl_seat::WlSeat, wl_shm, wl_shm::WlShm, wl_shm_pool::WlShmPool, wl_surface::WlSurface,
 };
 use wayland_client::{event_created_child, Connection, Dispatch, Proxy, QueueHandle, WEnum};
@@ -30,6 +30,7 @@ use wayland_protocols::ext::image_capture_source::v1::client::{
     ext_output_image_capture_source_manager_v1::ExtOutputImageCaptureSourceManagerV1,
 };
 use wayland_protocols::ext::image_copy_capture::v1::client::{
+    ext_image_copy_capture_cursor_session_v1::{self, ExtImageCopyCaptureCursorSessionV1},
     ext_image_copy_capture_frame_v1::{self, ExtImageCopyCaptureFrameV1},
     ext_image_copy_capture_manager_v1::{ExtImageCopyCaptureManagerV1, Options},
     ext_image_copy_capture_session_v1::{self, ExtImageCopyCaptureSessionV1},
@@ -155,6 +156,8 @@ pub(crate) struct State {
     idle_notifier: Option<ExtIdleNotifierV1>,
     /// tests: whether the session would go idle
     idle_watch: Option<ExtIdleNotificationV1>,
+    /// a studio take's pointer shapes: a cursor session, its pointer and source
+    cursor_watch: Option<(WlPointer, ExtImageCaptureSourceV1, ExtImageCopyCaptureCursorSessionV1)>,
 }
 
 // The sink pointer is only used on the Wayland thread for the lifetime of run().
@@ -240,6 +243,7 @@ pub(crate) fn run(app_id: String, rx: Channel<Request>, sink: &Sink) -> Result<(
         awake: None,
         idle_notifier,
         idle_watch: None,
+        cursor_watch: None,
     };
     for g in globals.contents().clone_list() {
         if g.interface == WlOutput::interface().name {
@@ -331,6 +335,21 @@ impl State {
                 }
             }
             Request::KeepAwake(on) => self.keep_awake(on),
+            Request::CursorShapes(output) => {
+                if let Some((pointer, source, session)) = self.cursor_watch.take() {
+                    session.destroy();
+                    source.destroy();
+                    pointer.release();
+                }
+                let out = output.and_then(|name| self.outputs.iter().find(|o| o.name == name).map(|o| o.wl.clone()));
+                if let (Some(out), Some(seat)) = (out, &self.seat) {
+                    let pointer = seat.get_pointer(&self.qh, ());
+                    let source = self.out_src.create_source(&out, &self.qh, ());
+                    let session = self.icc.create_pointer_cursor_session(&source, &pointer, &self.qh, ());
+                    self.cursor_watch = Some((pointer, source, session));
+                }
+                trace::trace("cursor_shapes", &format!("\"on\":{}", self.cursor_watch.is_some()));
+            }
             Request::IdleWatch(ms) => {
                 if let Some(w) = self.idle_watch.take() {
                     w.destroy();
@@ -667,6 +686,14 @@ macro_rules! ignore_events {
         }
     )*};
 }
+impl Dispatch<ExtImageCopyCaptureCursorSessionV1, ()> for State {
+    fn event(st: &mut Self, _: &ExtImageCopyCaptureCursorSessionV1, ev: ext_image_copy_capture_cursor_session_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        if let ext_image_copy_capture_cursor_session_v1::Event::Hotspot { x, y } = ev {
+            st.emit(Event::CursorHotspot { x, y, t_ns: now_ns() });
+        }
+    }
+}
+
 impl Dispatch<ExtIdleNotificationV1, ()> for State {
     fn event(st: &mut Self, _: &ExtIdleNotificationV1, ev: ext_idle_notification_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
         match ev {
@@ -697,6 +724,7 @@ ignore_events!(
     HyprlandToplevelMappingManagerV1,
     ZwlrVirtualPointerManagerV1,
     ZwlrVirtualPointerV1,
+    WlPointer,
 );
 
 type Key = (u64, String);

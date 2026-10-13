@@ -123,6 +123,9 @@ pub enum Event {
     Baked { t: i64, baked: bool },
     /// the camera's first frame, recorded apart (D61)
     Camera { t: i64 },
+    /// the pointer's hotspot changed: its shape did (spike S6: the cursor
+    /// session tells no shape, but each shape's hotspot differs)
+    Shape { t: i64, hot: [i32; 2] },
 }
 
 impl Event {
@@ -136,7 +139,8 @@ impl Event {
             | Event::Typing { t }
             | Event::Pause { t, .. }
             | Event::Baked { t, .. }
-            | Event::Camera { t } => t,
+            | Event::Camera { t }
+            | Event::Shape { t, .. } => t,
         }
     }
 
@@ -162,6 +166,7 @@ impl Event {
             Event::Pause { t, paused } => format!(r#"{{"t":{t},"pause":{}}}"#, n(*paused)),
             Event::Baked { t, baked } => format!(r#"{{"t":{t},"baked":{}}}"#, n(*baked)),
             Event::Camera { t } => format!(r#"{{"t":{t},"cam":1}}"#),
+            Event::Shape { t, hot } => format!(r#"{{"t":{t},"hs":[{},{}]}}"#, hot[0], hot[1]),
         }
     }
 
@@ -185,6 +190,8 @@ impl Event {
             Event::Pause { t, paused }
         } else if v.get("cam").is_some() {
             Event::Camera { t }
+        } else if let Some(hot) = pair("hs") {
+            Event::Shape { t, hot: [hot[0] as i32, hot[1] as i32] }
         } else {
             Event::Baked { t, baked: on("baked")? }
         })
@@ -364,6 +371,7 @@ mod tests {
             Event::Pause { t: 10_000_800, paused: false },
             Event::Baked { t: 10_000_900, baked: true },
             Event::Camera { t: 10_001_000 },
+            Event::Shape { t: 10_001_100, hot: [11, 12] },
         ];
         let mut w = Writer::new(Vec::new(), &header()).unwrap();
         for e in &events {
