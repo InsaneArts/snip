@@ -282,6 +282,14 @@ Spikes S3 and S4 (2026-10-12, on the owner's idle session): gsr's first frame re
 - AUR `snip-screenshot`, onboarding, docs, THIRD_PARTY.md.
 - **Snip 1.0 = CleanShot parity, Studio Mode included (D55), without Cloud.**
 
+Built in part (2026-10-14):
+
+- **Fuzzing is clean.** `snip_core::fuzz` feeds every parser thousands of broken inputs in `cargo test`: XCursor files, take logs and edits, MP4 boxes, `.snip` projects, tesseract's output, PNGs, theme colours, the control socket's requests, Hyprland's binds and the config. What it found is fixed (overflows, endless loops, allocations that abort).
+- **The soak test passes.** `tests/e2e/soak.py` runs 30 rounds of captures with cards, a take and both editors. It found a leak (the warm tier kept each PNG in its encoder's buffer, ~1.6 MB a round) and a crash (a JS callback copied on the render thread while waiting for the cards' frames, about once in 220 captures). Both are fixed: snipd now grows 13 MB in 30 rounds, with open files and threads steady.
+- **THIRD_PARTY.md** is written and installed.
+
+Not yet: the multi-monitor matrix (the nested Hyprland can't make headless outputs on NVIDIA), the Intel and AMD laptop passes, the AUR package, onboarding and docs.
+
 ## M6: After 1.0
 
 - Redaction suggestions (ANN-06b), URL scheme (API-02).
