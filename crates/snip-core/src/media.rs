@@ -371,7 +371,12 @@ pub fn gif(src: &Path, dst: &Path, fps: u32, width: u32) -> Result<(), String> {
 /// Whether an MP4 was never finished: its recorder died while writing
 /// fragments (a stopped gsr turns them into a plain MP4).
 pub fn fragmented(path: &Path) -> bool {
-    let Ok(mut f) = std::fs::File::open(path) else { return false };
+    std::fs::File::open(path).is_ok_and(fragmented_in)
+}
+
+/// `fragmented`, for any file: its top-level boxes walked, each no smaller
+/// than its header (a broken one ends the walk: it never loops).
+fn fragmented_in(mut f: impl Read + Seek) -> bool {
     let (mut at, mut head) = (0u64, [0u8; 16]);
     // the top-level boxes: a `moof` is a fragment
     while f.seek(SeekFrom::Start(at)).is_ok() && f.read_exact(&mut head[..8]).is_ok() {
@@ -379,12 +384,13 @@ pub fn fragmented(path: &Path) -> bool {
             return true;
         }
         let size = match u32::from_be_bytes([head[0], head[1], head[2], head[3]]) {
-            1 if f.read_exact(&mut head[8..]).is_ok() => u64::from_be_bytes(head[8..].try_into().unwrap()),
+            1 if f.read_exact(&mut head[8..]).is_ok() => u64::from_be_bytes(head[8..].try_into().unwrap()).max(16),
             n if n >= 8 => n as u64,
             // to the end of the file, or broken
             _ => return false,
         };
-        at += size;
+        let Some(next) = at.checked_add(size) else { return false };
+        at = next;
     }
     false
 }
@@ -618,5 +624,18 @@ mod tests {
         assert_eq!((p.width, p.height, p.audio_tracks), (400, 300, 1), "even sizes, as an encoder needs");
         assert!((1400..=1600).contains(&p.duration_ms), "{p:?}");
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_broken_recording_is_walked_to_its_end_not_forever() {
+        let ftyp = [&[0, 0, 0, 16][..], b"ftyp", b"isom", &[0, 0, 0, 0]].concat();
+        // a 64-bit size of 0, as a broken file has it: it once read that box again and again
+        let zero = [&[0, 0, 0, 1][..], b"mdat", &[0; 8]].concat();
+        assert!(!fragmented_in(std::io::Cursor::new([&ftyp[..], &zero].concat())));
+        let moof = [&[0, 0, 0, 8][..], b"moof"].concat();
+        assert!(fragmented_in(std::io::Cursor::new([&ftyp[..], &moof].concat())));
+        crate::fuzz::run(&[&[ftyp.clone(), moof].concat(), &[ftyp, zero].concat()], 20_000, |b| {
+            let _ = fragmented_in(std::io::Cursor::new(b));
+        });
     }
 }
