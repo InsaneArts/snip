@@ -1853,7 +1853,8 @@ impl Inner {
             .map_err(|_| "the clipboard did not answer".to_string())?
             .ok_or("no image on the clipboard")?;
         let rec = if mime == "image/png" {
-            let (w, h) = png_size(&bytes).ok_or("the clipboard image is not a valid PNG")?;
+            // the whole image read, not its header's word: a broken one would be a capture nothing shows
+            let (_, w, h, _) = encode::decode_png(&bytes).map_err(|_| "the clipboard image is not a valid PNG")?;
             let out = self.cursor_output().unwrap_or_default();
             let meta = CaptureMeta { kind: "clipboard".into(), scale: 1.0, output: out, app: None, title: Some("Clipboard".into()) };
             let rec = self.store.ingest(bytes, w, h, meta, now_secs()).map_err(|e| e.to_string())?;
@@ -1915,7 +1916,9 @@ impl Inner {
             return Ok(rec);
         }
         let bytes = std::fs::read(path).map_err(|e| format!("{path}: {e}"))?;
-        let (w, h) = png_size(&bytes).ok_or("only PNG files, videos and GIFs can be opened for now")?;
+        png_size(&bytes).ok_or("only PNG files, videos and GIFs can be opened for now")?;
+        // the whole image read, not its header's word: a broken one would be a capture nothing shows
+        let (_, w, h, _) = encode::decode_png(&bytes).map_err(|e| format!("{path}: {e}"))?;
         let out = self.cursor_output().unwrap_or_default();
         let rec = self
             .store

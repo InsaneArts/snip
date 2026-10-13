@@ -5921,6 +5921,28 @@ def open_with(s, env):
 
 
 @case
+def a_broken_png_is_refused_not_added(s, env):
+    """snip open, snip edit and edit --clipboard add an image to history: one that only starts
+    like a PNG (its header, then too little to read) is refused, and history gains no capture
+    nothing can show."""
+    from PIL import Image
+    whole = s.tmp / "whole.png"
+    Image.new("RGB", (300, 200), "white").save(whole)
+    broken = s.tmp / "broken.png"
+    broken.write_bytes(whole.read_bytes()[:40])                  # its header and a few bytes more
+    n = len(s.json("list", "-n", "1000")["result"])
+    for cmd in (["open", str(broken)], ["edit", str(broken)]):
+        r = s.json(*cmd)
+        assert not r["ok"], (cmd, r)
+    subprocess.run(["wl-copy", "--type", "image/png"], stdin=open(broken, "rb"), check=True)
+    time.sleep(0.3)
+    r = s.json("edit", "--clipboard")
+    assert not r["ok"], r
+    assert len(s.json("list", "-n", "1000")["result"]) == n, "nothing added"
+    assert editor_window() is None, "no editor"
+
+
+@case
 def save_as(s, env):
     """QAO-09 / ANN-15 Save As: the format follows the extension, the file becomes the
     capture's saved file and is copied. (The portal dialog itself is checked by hand: it
