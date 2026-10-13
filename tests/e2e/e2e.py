@@ -2883,6 +2883,48 @@ def studio_clicks_and_keys(s, env):
 
 
 @case
+def studio_take_records_the_camera_apart(s, env):
+    """D61: with a camera, a studio take's bubble shows while the take is set up (to frame
+    yourself) and is gone once it records; the camera records to its own file instead, kept
+    beside the take in history, its first frame's time in the take's log, and how the panel
+    showed it in the log's header. (The tests' card stands in for a camera.)"""
+    s.cli("close-all"); time.sleep(0.3)
+    p = record_panel(s)
+    s.drag(300, 200, 1100, 650)
+    assert wait_for(lambda: record_hud(s)["area"] == [300, 200, 800, 450], 3), record_hud(s)
+    record_click(s, "record-camera-button")
+    assert wait_for(lambda: record_hud(s)["camerasOpen"], 2), "its menu opens"
+    time.sleep(0.3)
+    record_click(s, "record-camera:1")
+    assert wait_for(lambda: record_hud(s)["camera"] is not None, 3), "the bubble, to frame yourself"
+    record_click(s, "record-studio")
+    assert wait_for(lambda: record_hud(s)["studio"], 2)
+    record_click(s, "record-video")
+    try:
+        assert wait_for(lambda: record_hud(s)["phase"] == "recording", 5), record_hud(s)
+        assert record_hud(s)["camera"] is None, ("gone while it records", record_hud(s)["camera"])
+        time.sleep(1.5)
+        s.json("record", "stop")
+        r, code = finish(p, timeout=20)
+        assert code == 0, r
+        src = next(x for x in s.json("list", "-n", "5")["result"] if x["id"] == r["result"]["id"])["source"]
+        camera, log = Path(src).parent / "camera.mp4", Path(src).parent / "input.jsonl"
+        assert camera.exists(), "its camera, beside it"
+        lines = log.read_text().splitlines()
+        head, events = json.loads(lines[0]), [json.loads(l) for l in lines[1:]]
+        assert head["camera"] == {"shape": "circle", "size": "medium", "mirror": True}, head["camera"]
+        cam = [e["t"] for e in events if "cam" in e]
+        assert len(cam) == 1 and abs(cam[0] - head["gsr_ts"][0]) < 500_000, ("when its first frame was", cam, head["gsr_ts"])
+        ms = lambda f: float(sh("ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(f)).stdout) * 1000
+        assert abs(ms(camera) - ms(src)) < 600, ("as long as the take", ms(camera), ms(src))
+    finally:
+        s.write_config("")
+        time.sleep(0.8)
+        s.cli("debug", "ui", "close-editors")
+        s.cli("close-all")
+
+
+@case
 def auto_zoom(s, env):
     """D54, the design's §6.4: a take keeps where its clicks were, so its editor opens with
     zooms on them (follow zooms, marked auto) until it's edited. Re-run Auto Zoom (the zoom

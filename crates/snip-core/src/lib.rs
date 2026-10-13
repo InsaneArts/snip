@@ -2,6 +2,7 @@
 //! tested in isolation. See docs/02-architecture.md §11.
 
 pub mod balance;
+pub mod camera;
 pub mod config;
 pub mod desktop;
 pub mod editor_files;

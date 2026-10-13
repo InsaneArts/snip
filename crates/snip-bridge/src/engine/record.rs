@@ -17,7 +17,7 @@ use snip_core::geometry::{self, Rect};
 use snip_core::meter::{Meter, Reading};
 use snip_core::record::{self, Audio, Spec, Target};
 use snip_core::store::CaptureMeta;
-use snip_core::studio::log::{Cursor, Event as Input, Header};
+use snip_core::studio::log::{CameraLook, Cursor, Event as Input, Header};
 use snip_core::take::{self, Event, Recorder, Stopped, Take};
 use snip_core::trace::{self, js};
 use snip_core::media;
@@ -84,6 +84,9 @@ struct Run {
     cursor: Option<i64>,
     /// where the pointer went and the clicks, for the editor (D54)
     log: Option<TakeLog>,
+    /// a studio take's camera, recorded apart (D61): started in a thread, as
+    /// the panel's bubble may hold it a moment longer
+    camera: Option<std::thread::JoinHandle<Option<snip_core::camera::Recording>>>,
     /// this take put the desktop cover up (CAP-12): it takes it down
     covered: bool,
     /// this take turned Do Not Disturb on (REC-11): it turns it off, whatever
@@ -334,15 +337,27 @@ impl Inner {
                 .iter()
                 .any(|c| !c.fullscreen && (c.x, c.y, c.w, c.h) == (rec.logical.x, rec.logical.y, rec.logical.w, rec.logical.h))
                 .then(|| snip_hypr::option_int("decoration:rounding").unwrap_or(0).max(0) as u32),
+            camera: (studio && !cfg.camera.is_empty()).then(|| CameraLook {
+                shape: json!(cfg.camera_shape).as_str().unwrap_or("circle").into(),
+                size: json!(cfg.camera_size).as_str().unwrap_or("medium").into(),
+                mirror: cfg.camera_mirror,
+            }),
             ..Header::default()
         };
+        // D61: a studio take's camera records apart (the panel's bubble is gone
+        // from the screen as it starts); the tests' card stands in for one
+        let camera = (studio && !cfg.camera.is_empty()).then(|| {
+            let (name, take_file) = (cfg.camera.clone(), file.clone());
+            let fake = std::env::var("SNIP_CAMERA").is_ok_and(|v| v == "fake") && name == "Test camera";
+            std::thread::spawn(move || snip_core::camera::Recording::start(&name, &take_file, fake))
+        });
         // the pointer twice a frame, as Hyprland has it, at most 120 times a
         // second (spike S4: that costs Hyprland 0.4 % of a core; 240, 0.7 %)
         let log = TakeLog::start(file.with_extension("input.jsonl"), header, take.clone(), (2.0 * spec.fps as f64).min(120.0));
         // CAP-12: with Hide desktop clutter on, the bars show the wallpaper and
         // pins step aside while it records (unless they're hidden already)
         let covered = self.cfg().capture.hide_desktop && !self.desktop_is_hidden();
-        rec.run = Some(Run { take: take.clone(), sid: sid.clone(), hooks, hud, studio, cursor, log: Some(log), covered, dnd: cfg.dnd });
+        rec.run = Some(Run { take: take.clone(), sid: sid.clone(), hooks, hud, studio, cursor, log: Some(log), camera, covered, dnd: cfg.dnd });
         drop(r);
         if covered {
             self.desktop("hide");
@@ -601,6 +616,15 @@ impl Inner {
     /// the take turned on around it: none of that may end up in the video.
     fn record_end_run(&self, mut run: Run, keep: bool) -> Option<PathBuf> {
         let stopped = run.take.stop(keep);
+        // the camera, recorded apart (D61): its file beside the take, its first frame in the log
+        let kept = matches!(stopped, Stopped::Kept(_));
+        if let Some(camera) = run.camera.take().and_then(|started| started.join().ok().flatten()) {
+            match (camera.stop(kept), run.log.as_ref()) {
+                (Some((_, first)), Some(log)) => log.push(Input::Camera { t: first }),
+                (None, _) if kept => self.toast("The camera couldn't be recorded"),
+                _ => {}
+            }
+        }
         // the log, all of it, beside the take (`<take>.input.jsonl`); none for a take not kept
         let log = run.log.take().and_then(TakeLog::finish);
         if let (Some(log), false) = (log, matches!(stopped, Stopped::Kept(_))) {
@@ -675,11 +699,19 @@ impl Inner {
         let meta = CaptureMeta { kind: "recording".into(), scale: rec.scale, output: rec.output.clone(), app: rec.app, title: rec.title };
         let log = file.with_extension("input.jsonl");
         let ingested = self.ingest_media(&file, true, meta);
-        // its input log goes with it (D54)
+        // its input log goes with it (D54), and a studio take's camera (D61)
         match ingested.as_ref().map(|r| self.store.keep_input_log(&r.id, &log)) {
             Ok(Err(e)) if log.exists() => trace::warn("input_log", &format!("\"msg\":{}", js(&e.to_string()))),
             Err(_) => {
                 let _ = std::fs::remove_file(&log);
+            }
+            _ => {}
+        }
+        let camera = file.with_extension("camera.mp4");
+        match ingested.as_ref().map(|r| self.store.keep_camera(&r.id, &camera)) {
+            Ok(Err(e)) if camera.exists() => trace::warn("camera", &format!("\"msg\":{}", js(&e.to_string()))),
+            Err(_) => {
+                let _ = std::fs::remove_file(&camera);
             }
             _ => {}
         }

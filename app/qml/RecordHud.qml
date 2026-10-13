@@ -521,10 +521,14 @@ Window {
     readonly property var controlsAt: controlsPlace(controls.width, controls.height)
 
     // ---------------------------------------------------------------- the camera (REC-08)
+    // D61: a studio take records the camera apart, so the bubble is only for
+    // framing yourself while the take is set up: gone (and the camera let go)
+    // before the take's first frame, as the panel is
+    readonly property bool cameraApart: studio && !gif && ["starting", "launching", "recording", "paused"].includes(phase)
     CameraBubble {
         id: bubble
         objectName: "record-camera"
-        visible: hud.cameraEntry !== null && hud.phase !== "closed" && hud.phase !== "finishing"
+        visible: hud.cameraEntry !== null && hud.phase !== "closed" && hud.phase !== "finishing" && !hud.cameraApart
         running: visible
         device: hud.cameraEntry ? hud.cameraEntry.device : null
         pixelScale: hud.scale

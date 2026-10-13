@@ -46,6 +46,19 @@ pub struct Header {
     /// a window's take (its area was a window's, as the panel's Space picks
     /// it): the window's corner radius, logical px
     pub window: Option<u32>,
+    /// a studio take's camera, recorded apart (D61): as the panel showed it
+    pub camera: Option<CameraLook>,
+}
+
+/// The camera as the recording panel showed it: where the editor starts.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CameraLook {
+    /// circle | square | rectangle | vertical
+    pub shape: String,
+    /// small | medium | large | huge
+    pub size: String,
+    pub mirror: bool,
 }
 
 impl Default for Header {
@@ -69,6 +82,7 @@ impl Default for Header {
             clicks: false,
             keystrokes: false,
             window: None,
+            camera: None,
         }
     }
 }
@@ -107,6 +121,8 @@ pub enum Event {
     Pause { t: i64, paused: bool },
     /// the pointer went into the picture (a software cursor) or out
     Baked { t: i64, baked: bool },
+    /// the camera's first frame, recorded apart (D61)
+    Camera { t: i64 },
 }
 
 impl Event {
@@ -119,7 +135,8 @@ impl Event {
             | Event::Key { t, .. }
             | Event::Typing { t }
             | Event::Pause { t, .. }
-            | Event::Baked { t, .. } => t,
+            | Event::Baked { t, .. }
+            | Event::Camera { t } => t,
         }
     }
 
@@ -144,6 +161,7 @@ impl Event {
             Event::Typing { t } => format!(r#"{{"t":{t},"ty":1}}"#),
             Event::Pause { t, paused } => format!(r#"{{"t":{t},"pause":{}}}"#, n(*paused)),
             Event::Baked { t, baked } => format!(r#"{{"t":{t},"baked":{}}}"#, n(*baked)),
+            Event::Camera { t } => format!(r#"{{"t":{t},"cam":1}}"#),
         }
     }
 
@@ -165,6 +183,8 @@ impl Event {
             Event::Typing { t }
         } else if let Some(paused) = on("pause") {
             Event::Pause { t, paused }
+        } else if v.get("cam").is_some() {
+            Event::Camera { t }
         } else {
             Event::Baked { t, baked: on("baked")? }
         })
@@ -254,6 +274,18 @@ impl Clock {
         Some(Clock { start, frame, pauses })
     }
 
+    /// The moment (CLOCK_MONOTONIC µs) at `ms` of the video: `video_ms`
+    /// backwards, its pauses skipped.
+    pub fn moment(&self, ms: f64) -> f64 {
+        let mut m = self.start + self.frame + ms * 1000.0;
+        for &(p, r) in &self.pauses {
+            if p as f64 <= m {
+                m += r.saturating_sub(p) as f64;
+            }
+        }
+        m
+    }
+
     /// Where moment `t` is in the video, ms: frame j shows the screen as it
     /// was a frame after the start and j frames. Negative before the first
     /// frame; None while paused.
@@ -310,6 +342,7 @@ mod tests {
             Event::Pause { t: 10_000_700, paused: true },
             Event::Pause { t: 10_000_800, paused: false },
             Event::Baked { t: 10_000_900, baked: true },
+            Event::Camera { t: 10_001_000 },
         ];
         let mut w = Writer::new(Vec::new(), &header()).unwrap();
         for e in &events {
@@ -376,6 +409,16 @@ mod tests {
         let c = Clock::of(&Log { header: nvenc, events: vec![] }).unwrap();
         let cpu = Clock::of(&Log { header: Header { gsr_ts: Some([(START + 7.0 * FRAME) as i64, 0]), ..x264 }, events: vec![] }).unwrap();
         assert!(close(cpu.video_ms(at(1.0)), 1000.0) && close(c.video_ms(at(1.0)), 1000.0), "{:?}", cpu.video_ms(at(1.0)));
+    }
+
+    #[test]
+    fn a_moment_is_found_again_from_its_place_in_the_video() {
+        // paused from 2 s to 5 s: 3 s later, the same place in the video
+        let events = vec![Event::Pause { t: at(2.0), paused: true }, Event::Pause { t: at(5.0), paused: false }];
+        let c = Clock::of(&Log { header: header(), events }).unwrap();
+        assert!((c.moment(1000.0) - at(1.0) as f64).abs() < 1.0, "before the pause");
+        assert!((c.moment(2500.0) - at(5.5) as f64).abs() < 1.0, "after it, the pause skipped: {}", c.moment(2500.0) - at(5.5) as f64);
+        assert!((c.moment(-500.0) - at(-0.5) as f64).abs() < 1.0, "before the first frame");
     }
 
     #[test]
