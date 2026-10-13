@@ -110,7 +110,7 @@ pub struct Backdrop {
 /// (in 4:4:4, so the hole is exact to the pixel), the cover (input 1) on
 /// top. The size is made even, as 4:2:0 needs.
 fn backdrop_graph(b: &Backdrop) -> String {
-    let (w, h) = (b.size.0 & !1, b.size.1 & !1);
+    let (w, h) = ((b.size.0 & !1).max(2), (b.size.1 & !1).max(2));
     let (vw, vh) = (b.video.2.clamp(2, w), b.video.3.clamp(2, h));
     let (x, y) = (b.video.0.min(w - vw), b.video.1.min(h - vh));
     format!(";[vc]scale={vw}:{vh}:flags=lanczos,format=yuv444p,pad={w}:{h}:{x}:{y}[vp];[vp][1:v]overlay=0:0:format=yuv444[vb]")
@@ -485,6 +485,9 @@ mod tests {
         assert!(graph.ends_with("[vb]fps=15,scale='min(800,iw)':-1:flags=lanczos[x];[x][2:v]paletteuse=dither=sierra2_4a:diff_mode=rectangle[v]"), "{graph}");
         let p = palette_args(Path::new("in.mp4"), Path::new("/x/p.png"), &e);
         assert!(p.windows(2).any(|w| w == ["-i", "/x/cover.png"]) && graph_of(&p).contains("[vp][1:v]overlay"), "{p:?}");
+        // a background of a pixel (a video of one) is padded to the least a video can be
+        e.backdrop = Some(Backdrop { cover: "/x/cover.png".into(), size: (1, 1), video: (0, 0, 1, 1) });
+        assert!(graph_of(&export_args(Path::new("in.mp4"), Path::new("out.mp4"), &e)).contains("pad=2:2:0:0"));
     }
 
     /// A background around a real clip (D50): the result is the background's
