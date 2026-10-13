@@ -338,6 +338,10 @@ impl Store {
         atomic_write(&dir.join(ORIGINAL), &p.source)?;
         atomic_write(&dir.join(EDIT), p.document.as_bytes())?;
         for (name, data) in p.assets {
+            // a shared project's files go beside the capture's own, never over them
+            if Path::new(&name).file_name() != Some(name.as_ref()) || ["source.png", ORIGINAL, EDIT, INPUT, CAMERA, POSTER].contains(&name.as_str()) {
+                continue;
+            }
             atomic_write(&dir.join(name), &data)?;
         }
         Ok(rec)
@@ -632,6 +636,25 @@ mod tests {
         let a = store.ingest(vec![1; 8], 1, 1, CaptureMeta::default(), 1).unwrap();
         let _b = store.ingest(vec![2; 8], 1, 1, CaptureMeta::default(), 2).unwrap();
         assert_eq!(&**store.bytes(&a.id).unwrap(), &[1u8; 8]);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_projects_files_go_beside_the_captures_own_never_over_them() {
+        let root = tmp();
+        let store = Store::open(&root.join("history"), root.join("counter")).unwrap();
+        let preview = crate::encode::encode_png(&[9; 4 * 4 * 3], 4, 4, false);
+        let doc = r#"{"items":[{"kind":"image","src":"img-1.png"}]}"#;
+        let junk = |n: &str| (n.to_string(), b"junk".to_vec());
+        let assets = vec![("img-1.png".into(), b"one".to_vec()), junk("source.png"), junk("edit.json"), junk("..")];
+        let p = crate::project::Project { source: preview.clone(), document: doc.into(), preview: preview.clone(), assets };
+        let path = root.join("shared.snip");
+        std::fs::write(&path, crate::project::to_bytes(&p, b"t").unwrap()).unwrap();
+        let rec = store.import_project(&path, "T", 0).unwrap();
+        let dir = rec.source.parent().unwrap();
+        assert_eq!(std::fs::read(&rec.source).unwrap(), preview);
+        assert_eq!(std::fs::read_to_string(dir.join(EDIT)).unwrap(), doc);
+        assert_eq!(std::fs::read(dir.join("img-1.png")).unwrap(), b"one");
         std::fs::remove_dir_all(root).unwrap();
     }
 
