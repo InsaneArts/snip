@@ -324,7 +324,7 @@ impl Clock {
                 return None;
             }
             if r <= t {
-                gone += (r - p) as f64;
+                gone += r as f64 - p as f64;
             }
         }
         Some((t as f64 - self.start - self.frame - gone) / 1000.0)
@@ -421,6 +421,14 @@ mod tests {
         assert!(close(c.video_ms(at(1.0)), 1000.0), "a second in: {:?}", c.video_ms(at(1.0)));
         assert!(close(c.video_ms(at(-0.5)), -500.0), "before the first frame, where the pointer starts");
         assert!(Clock::of(&Log { header: Header { gsr_ts: None, ..header() }, events: vec![] }).is_none(), "no first frame: no clock");
+    }
+
+    #[test]
+    fn a_pause_as_long_as_time_is_no_overflow() {
+        // a log's times are what its file says: a pause from the first moment there is to the last
+        let events = vec![Event::Pause { t: i64::MIN, paused: true }, Event::Pause { t: i64::MAX - 1, paused: false }];
+        let c = Clock::of(&Log { header: header(), events }).unwrap();
+        assert!(c.video_ms(i64::MAX).is_some_and(f64::is_finite));
     }
 
     #[test]
