@@ -50,6 +50,9 @@ pub enum Event {
     Error(String),
     /// Tests (`IdleWatch`): the session went idle, or came back
     Idle(bool),
+    /// `CursorShapes`: the pointer's hotspot changed (its shape did), at `t_ns`
+    /// (CLOCK_MONOTONIC)
+    CursorHotspot { x: i32, y: i32, t_ns: u64 },
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -82,6 +85,9 @@ pub enum Request {
     /// Tests: report when the session would go idle after `ms` without input
     /// (inhibitors respected); 0 stops.
     IdleWatch(u32),
+    /// Report the pointer's hotspot as it changes on output `name` (a cursor
+    /// capture session: spike S6), a studio take's shapes; None stops.
+    CursorShapes(Option<String>),
 }
 
 pub type Sink = Box<dyn Fn(Event) + Send>;

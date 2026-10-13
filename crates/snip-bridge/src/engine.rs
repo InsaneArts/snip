@@ -370,6 +370,8 @@ impl Inner {
             Event::ClipboardLost => {}
             Event::Error(e) => trace::error("wayland", &format!("\"msg\":{}", js(&e))),
             Event::Idle(idle) => trace::trace("idle", &format!("\"idle\":{idle}")),
+            // a studio take's pointer shapes (spike S6), into its log
+            Event::CursorHotspot { x, y, t_ns } => self.record_hotspot(x, y, t_ns),
         }
     }
 

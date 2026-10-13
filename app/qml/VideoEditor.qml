@@ -1578,6 +1578,7 @@ Window {
                                                      progress: progress, error: error, estimate: Math.round(estimate), thumbs: thumbs.length,
                                                      tracks: info.tracks || 0, gif: gif, exportOpen: exportOpen, zoom: zoom,
                                                      section: section, bg: bgLive, outer: outer, studio: studio, zoomSelected: zoomSelected, ripple: rippleLook, keys: keysLook, camera: info.camera ? cameraLook : null,
+                                                     pointerShape: studioFrame.cursorImage ? studioFrame.cursorImage.name : "",
                                                      result: (p => [p.x, p.y, result.width, result.height])(result.mapToItem(contentItem, 0, 0))
                                                    }).slice(1, -1))
             break

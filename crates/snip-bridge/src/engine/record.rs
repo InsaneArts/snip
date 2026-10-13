@@ -357,6 +357,7 @@ impl Inner {
         // CAP-12: with Hide desktop clutter on, the bars show the wallpaper and
         // pins step aside while it records (unless they're hidden already)
         let covered = self.cfg().capture.hide_desktop && !self.desktop_is_hidden();
+        let take_output = rec.output.clone();
         rec.run = Some(Run { take: take.clone(), sid: sid.clone(), hooks, hud, studio, cursor, log: Some(log), camera, covered, dnd: cfg.dnd });
         drop(r);
         if covered {
@@ -369,6 +370,10 @@ impl Inner {
         self.wl(snip_wayland::Request::KeepAwake(true));
         if let Some((keys, clicks)) = hooks {
             self.record_hooks(&sid, keys, clicks, studio, cursor);
+        }
+        // a studio take's pointer shapes: its hotspot as it changes (spike S6)
+        if studio {
+            self.wl(snip_wayland::Request::CursorShapes(Some(take_output)));
         }
         self.record_status(json!({ "elapsed": 0 }));
         self.record_listen();
@@ -569,6 +574,14 @@ impl Inner {
     /// <x>:<y>` in global logical px, `...:u:...` at the release, or
     /// `snip:<sid>:k:<code>:<0|1>`): into the take's log, and to the HUD
     /// what it shows.
+    /// A studio take's pointer changed shape (its hotspot: spike S6): into its log.
+    pub fn record_hotspot(&self, x: i32, y: i32, t_ns: u64) {
+        let r = self.recording.lock().unwrap();
+        if let Some(log) = r.as_ref().and_then(|rec| rec.run.as_ref()).filter(|run| run.studio).and_then(|run| run.log.as_ref()) {
+            log.push(Input::Shape { t: (t_ns / 1000) as i64, hot: [x, y] });
+        }
+    }
+
     pub fn record_input(&self, data: &str) {
         let t = now_us();
         let Some(rest) = data.strip_prefix("snip:") else { return };
@@ -631,6 +644,9 @@ impl Inner {
             let _ = std::fs::remove_file(log);
         }
         self.wl(snip_wayland::Request::KeepAwake(false));
+        if run.studio {
+            self.wl(snip_wayland::Request::CursorShapes(None));
+        }
         if run.covered {
             self.desktop("show");
         }

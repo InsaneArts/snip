@@ -163,10 +163,12 @@ pub mod qobject {
         #[qinvokable]
         fn studio_auto_zoom(self: &Engine, edit: QString, log: QString, duration_ms: f64, video_w: f64, video_h: f64) -> QString;
 
-        /// The pointer's look (D59): `theme`'s arrow as a PNG in Snip's cache.
-        /// Answers {"path", "w", "h", "hot": [x, y], "nominal"}, or null.
+        /// The pointer's look (D59): `theme`'s shapes as PNGs in Snip's cache,
+        /// the arrow first, for a pointer `size` logical px. Answers [{"name",
+        /// "path", "w", "h", "hot": [x, y], "nominal", "match": [x, y]}]:
+        /// `match`, the hotspot a take logs for it (spike S6).
         #[qinvokable]
-        fn studio_cursor(self: &Engine, theme: QString) -> QString;
+        fn studio_cursor(self: &Engine, theme: QString, size: i32) -> QString;
 
         /// Add image (ANN-12): copy `src` beside the editor's image at `base`;
         /// answers the new file's name, or "" on failure.
@@ -792,7 +794,7 @@ impl qobject::Engine {
                 Some(t) => {
                     let s = t.at(ms);
                     let trail = if blur > 0.0 { t.trail(ms, blur) } else { vec![] };
-                    let j = serde_json::json!({ "x": s.at[0], "y": s.at[1], "opacity": s.opacity, "press": s.press, "trail": trail });
+                    let j = serde_json::json!({ "x": s.at[0], "y": s.at[1], "opacity": s.opacity, "press": s.press, "hot": s.hot, "trail": trail });
                     QString::from(j.to_string().as_str())
                 }
                 None => QString::from("null"),
@@ -848,19 +850,22 @@ impl qobject::Engine {
         QString::from(serde_json::to_string(&zooms).unwrap_or_else(|_| "[]".into()).as_str())
     }
 
-    fn studio_cursor(&self, theme: QString) -> QString {
+    fn studio_cursor(&self, theme: QString, size: i32) -> QString {
         use snip_core::studio::cursor;
         let theme = theme.to_string();
-        let Some(img) = cursor::arrow(&theme) else { return QString::from("null") };
-        let file = snip_core::paths::cache_dir().join("cursor").join(format!("{}-{}.png", theme.replace('/', "_"), img.nominal));
-        if !file.exists() {
-            let _ = std::fs::create_dir_all(file.parent().unwrap_or(std::path::Path::new(".")));
-            if snip_core::store::atomic_write(&file, &snip_core::encode::encode_png(&img.rgba, img.width, img.height, true)).is_err() {
-                return QString::from("null");
-            }
-        }
-        let j = serde_json::json!({ "path": file, "w": img.width, "h": img.height, "hot": img.hot, "nominal": img.nominal });
-        QString::from(j.to_string().as_str())
+        let shapes: Vec<serde_json::Value> = cursor::shapes(&theme, size.max(1) as u32)
+            .into_iter()
+            .filter_map(|s| {
+                let img = &s.image;
+                let file = snip_core::paths::cache_dir().join("cursor").join(format!("{}-{}-{}.png", theme.replace('/', "_"), s.name, img.nominal));
+                if !file.exists() {
+                    let _ = std::fs::create_dir_all(file.parent().unwrap_or(std::path::Path::new(".")));
+                    snip_core::store::atomic_write(&file, &snip_core::encode::encode_png(&img.rgba, img.width, img.height, true)).ok()?;
+                }
+                Some(serde_json::json!({ "name": s.name, "path": file, "w": img.width, "h": img.height, "hot": img.hot, "nominal": img.nominal, "match": s.hot_at_size }))
+            })
+            .collect();
+        QString::from(serde_json::Value::Array(shapes).to_string().as_str())
     }
 
     #[allow(clippy::too_many_arguments)]

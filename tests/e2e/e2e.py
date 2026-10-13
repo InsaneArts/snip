@@ -2979,6 +2979,48 @@ def studio_camera_in_the_editor(s, env):
 
 
 @case
+def studio_take_redraws_the_pointers_shape(s, env):
+    """Spike S6: a studio take logs the pointer's hotspot as it changes (a cursor capture
+    session tells no shape, but each shape's hotspot differs), and the editor redraws the
+    theme's shape it names: an I-beam over a terminal's text, the arrow over the desktop."""
+    s.cli("close-all"); time.sleep(0.3)
+    m = env.monitor()
+    term = next(c for c in hypr_json("clients") if c["class"] == "snip-e2e-target")
+    tx, ty = term["at"][0] - m["x"], term["at"][1] - m["y"]
+    assert tx >= 16 and ty >= 16, ("the desktop shows in the gap at the top left", tx, ty)
+    p = record_panel(s)
+    # the top left: the desktop in the gap there, and the terminal's text
+    s.drag(0, 0, 600, 400)
+    assert wait_for(lambda: record_hud(s)["area"] == [0, 0, 600, 400], 3), record_hud(s)
+    record_click(s, "record-studio")
+    record_click(s, "record-video")
+    try:
+        assert wait_for(lambda: record_hud(s)["phase"] == "recording", 5), record_hud(s)
+        for x, y in ((tx // 2, ty // 2), (tx + 60, ty + 20), (tx // 2, ty // 2)):
+            s.move(x, y); time.sleep(0.15); s.move(x + 2, y + 1); time.sleep(0.8)
+        s.json("record", "stop")
+        r, code = finish(p, timeout=20)
+        assert code == 0, r
+        assert wait_for(lambda: video_editor_window(), 6), "the editor opens on it (D58)"
+        src = next(x for x in s.json("list", "-n", "5")["result"] if x["id"] == r["result"]["id"])["source"]
+        lines = (Path(src).parent / "input.jsonl").read_text().splitlines()
+        head, events = json.loads(lines[0]), [json.loads(l) for l in lines[1:]]
+        ms = lambda t: (t - head["gsr_ts"][0] - 1e6 / head["fps"]) / 1000    # the test pattern's clock
+        hots = [(ms(e["t"]), e["hs"]) for e in events if "hs" in e]
+        assert [3, 1] in [h for _, h in hots] and [11, 12] in [h for _, h in hots], ("the arrow's hotspot and the I-beam's", hots)
+        text = next(t for t, h in hots if h == [11, 12])
+        s.debug("ui", "video", "seek", str(int(text + 300)))
+        assert wait_for(lambda: video_state(s)["pointerShape"] == "text", 3), ("an I-beam over the text", video_state(s)["pointerShape"])
+        s.debug("ui", "video", "seek", str(int(max(0, text - 300))))
+        assert wait_for(lambda: video_state(s)["pointerShape"] == "default", 3), ("the arrow before it", video_state(s)["pointerShape"])
+    finally:
+        s.write_config("")
+        time.sleep(0.8)
+        s.cli("debug", "ui", "close-editors")
+        s.cli("close-all")
+
+
+@case
 def auto_zoom(s, env):
     """D54, the design's §6.4: a take keeps where its clicks were, so its editor opens with
     zooms on them (follow zooms, marked auto) until it's edited. Re-run Auto Zoom (the zoom
