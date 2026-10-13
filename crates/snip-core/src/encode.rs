@@ -65,12 +65,17 @@ pub fn crop_and_encode(frame: &Frame, sel: Rect) -> Encoded {
     }
 }
 
+/// The most memory a decoded image may take (1 GiB: 16384 px square, RGBA).
+/// A PNG's header can claim far more than any allocation gets, and a failed
+/// one aborts.
+const LARGEST: usize = 1 << 30;
+
 /// Decode a PNG into tightly packed RGB or RGBA (8-bit).
 pub fn decode_png(bytes: &[u8]) -> Result<(Vec<u8>, u32, u32, bool), String> {
     let mut dec = png::Decoder::new(std::io::Cursor::new(bytes));
     dec.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
     let mut r = dec.read_info().map_err(|e| e.to_string())?;
-    let mut buf = vec![0; r.output_buffer_size().ok_or("png too large")?];
+    let mut buf = vec![0; r.output_buffer_size().filter(|&n| n <= LARGEST).ok_or("png too large")?];
     let info = r.next_frame(&mut buf).map_err(|e| e.to_string())?;
     buf.truncate(info.buffer_size());
     let (buf, alpha) = match info.color_type {
@@ -347,6 +352,20 @@ mod tests {
         let e = crop_and_encode(&f, Rect::new(0, 0, 32, 16));
         assert_eq!(&e.png[1..4], b"PNG");
         assert_eq!((e.width, e.height), (32, 16));
+    }
+
+    #[test]
+    fn a_png_claiming_more_pixels_than_memory_is_refused() {
+        // its header claims a million pixels square: 4 TB of RGBA, which no
+        // allocation gets (a failed one aborts snipd)
+        let mut png = Vec::new();
+        {
+            let mut enc = png::Encoder::new(&mut png, 1_000_000, 1_000_000);
+            enc.set_color(png::ColorType::Rgba);
+            let mut w = enc.write_header().unwrap();
+            w.write_chunk(png::chunk::IDAT, &[0x78, 0x9c]).unwrap();
+        }
+        assert!(decode_png(&png).is_err());
     }
 
     #[test]
