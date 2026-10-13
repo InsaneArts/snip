@@ -15,7 +15,7 @@ fn parse_hex(s: &str) -> Option<Rgb> {
     if h.len() < 6 {
         return None;
     }
-    let p = |i: usize| u8::from_str_radix(&h[i..i + 2], 16).ok().map(|v| v as f64 / 255.0);
+    let p = |i: usize| u8::from_str_radix(h.get(i..i + 2)?, 16).ok().map(|v| v as f64 / 255.0);
     Some(Rgb(p(0)?, p(2)?, p(4)?))
 }
 
@@ -293,5 +293,19 @@ mod tests {
         for t in [&d, &l] {
             assert!(t["report"]["text_contrast"].as_f64().unwrap() >= 4.5 && t["report"]["accent_adjusted"] == false, "{t}");
         }
+    }
+
+    #[test]
+    fn a_theme_with_a_broken_colour_is_still_drawn() {
+        // a theme's colours are what its files say: a character of two bytes
+        // where a digit goes, a colour cut short, words
+        let palette = |v: &str| -> HashMap<String, String> {
+            ["background", "foreground", "accent", "color1"].iter().map(|k| (k.to_string(), v.to_string())).collect()
+        };
+        let t = tokens_from("broken", &palette("#aé2345"), vec![], None);
+        assert_eq!(t["background"].as_str().map(|c| c.len()), Some(7), "the fallback: {t}");
+        crate::fuzz::run(&[b"#1e1e1e", b"rgba(30,30,30,1)", b"ffffff"], 5000, |b| {
+            tokens_from("fuzz", &palette(&String::from_utf8_lossy(b)), vec![], None);
+        });
     }
 }
