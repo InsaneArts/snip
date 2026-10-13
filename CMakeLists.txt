@@ -106,7 +106,7 @@ qt_add_shaders(snipd "studio_shaders"
   BASE app
   GLSL "300es,330"
   NOHLSL NOMSL
-  FILES app/shaders/yuv.vert app/shaders/yuv.frag)
+  FILES app/shaders/yuv.vert app/shaders/yuv.frag app/shaders/blur.frag)
 
 target_link_libraries(snipd PRIVATE
   snip_core_qml

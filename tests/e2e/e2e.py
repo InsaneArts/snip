@@ -2773,6 +2773,31 @@ def a_window_take_opens_in_a_background(s, env):
 
 
 @case
+def a_moving_zoom_is_blurred(s, env):
+    """The design's §6.6: while a zoom moves, the card is blurred along its way (Motion blur,
+    Medium as CleanShot's); once it holds still, the frame is as sharp as with the blur off."""
+    s.cli("close-all"); time.sleep(0.3)
+    clip = s.tmp / "vblur.mp4"
+    make_clip(clip, seconds=4, size="1280x720")
+    exports = {}
+    for blur in ("medium", "off"):
+        s.json("edit", str(clip))
+        assert wait_for(lambda: video_editor_window(), 6), "the video editor opens"
+        zoom = {"from": 1000, "to": 3500, "level": 3, "focus": [0.3, 0.3]}
+        s.debug("ui", "video", "studio", json.dumps({"zooms": [zoom], "zoom_style": "dynamic", "motion_blur": blur}))
+        n = len(s.traces("video_exported_ui"))
+        s.debug("ui", "video", "export", "new")
+        assert wait_for(lambda: len(s.traces("video_exported_ui")) > n, 60)
+        done = s.traces("video_exported_ui")[-1]
+        assert done["ok"], done
+        exports[blur] = next(x for x in s.json("list", "-n", "5")["result"] if x["id"] == done["id"])["source"]
+    diff = lambda at: statistics.mean(abs(a - b) for a, b in zip(gray(exports["medium"], at, (0, 0, 1280, 720)), gray(exports["off"], at, (0, 0, 1280, 720))))
+    assert diff(1150) > 4, ("blurred as it zooms in fast", diff(1150))
+    assert diff(2000) < 1, ("sharp once it holds", diff(2000))
+    s.cli("close-all")
+
+
+@case
 def video_editor_exports_a_frame(s, env):
     """The design's phase 5 (CleanShot's Export Current Frame as Image): the frame shown,
     drawn as the export draws it (here in a background), becomes a new screenshot at the

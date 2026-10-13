@@ -223,6 +223,7 @@ renderVideo(const QString& specPath)
                                                           { QStringLiteral("keep"), scene["keep"].toVariant() },
                                                           { QStringLiteral("camera"), scene["camera"].toVariant() },
                                                           { QStringLiteral("cameraLook"), scene["cameraLook"].toVariant() },
+                                                          { QStringLiteral("fps"), fps },
                                                           { QStringLiteral("pixelScale"), scale } });
   std::unique_ptr<QQuickItem> root(qobject_cast<QQuickItem*>(made));
   if (!root) {

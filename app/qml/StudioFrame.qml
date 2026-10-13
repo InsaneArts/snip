@@ -61,6 +61,23 @@ Item {
         return Qt.rect(outer.x + r[0], outer.y + r[1], r[2], r[3])
     }
     readonly property real zoom: card.width / Math.max(1, inner.w)
+    // the zoom's motion blur (the design's §6.6): the card a frame before (at
+    // the video's rate), and its points' way since, times the level; none
+    // across a cut, nor when nothing moved a px
+    property real fps: 30
+    readonly property rect cardBefore: {
+        const r = JSON.parse(Engine.studioCard(JSON.stringify(studio), log, ms - 1000 / fps, outer.w, outer.h, inner.x - outer.x, inner.y - outer.y, inner.w, inner.h))
+        return Qt.rect(outer.x + r[0], outer.y + r[1], r[2], r[3])
+    }
+    readonly property bool viewBlur: motionBlur > 0 && ms - 1000 / fps >= partFrom
+        && Math.max(Math.abs(card.x - cardBefore.x), Math.abs(card.y - cardBefore.y), Math.abs(card.x + card.width - cardBefore.x - cardBefore.width),
+                    Math.abs(card.y + card.height - cardBefore.y - cardBefore.height)) * pixelScale >= 1
+    readonly property vector4d blurNow: Qt.vector4d((card.x - outer.x) / outer.w, (card.y - outer.y) / outer.h, card.width / outer.w, card.height / outer.h)
+    readonly property vector4d blurBefore: {
+        const n = blurNow, k = motionBlur
+        const b = Qt.vector4d((cardBefore.x - outer.x) / outer.w, (cardBefore.y - outer.y) / outer.h, cardBefore.width / outer.w, cardBefore.height / outer.h)
+        return Qt.vector4d(n.x + (b.x - n.x) * k, n.y + (b.y - n.y) * k, n.z + (b.z - n.z) * k, n.w + (b.w - n.w) * k)
+    }
     // its corners, inset and shadow grow with it
     readonly property var cardBg: bg ? Object.assign({}, bg, { radius: bg.radius * zoom, inset: bg.inset * zoom }) : null
 
@@ -72,93 +89,113 @@ Item {
         x: -frame.outer.x
         y: -frame.outer.y
         BackgroundLayer { visible: frame.bg !== null; bg: frame.cardBg; rect: frame.outer; inner: ({ x: frame.card.x, y: frame.card.y, w: frame.card.width, h: frame.card.height }) }
-        VideoOutput {
-            id: video
-            objectName: "video-preview"
-            x: frame.card.x
-            y: frame.card.y
-            width: frame.card.width
-            height: frame.card.height
-            // its corners rounded, at the size it shows
-            readonly property size shown: Qt.size(Math.ceil(width * frame.pixelScale), Math.ceil(height * frame.pixelScale))
-            layer.enabled: !!frame.cardBg && frame.cardBg.radius > 0
-            layer.textureSize: shown
-            layer.effect: MultiEffect { maskEnabled: true; maskSource: videoMask; maskThresholdMin: 0.5; maskSpreadAtMin: 1.0 }
-        }
+        // what moves with the zoom (the card, its ripples, its pointer), in a
+        // layer the size of the canvas that's blurred along its way while it
+        // moves (the design's §6.6); the background stays still, and sharp
         Item {
-            id: videoMask
-            visible: false
-            width: video.width
-            height: video.height
-            layer.enabled: true
-            layer.textureSize: video.shown
-            Rectangle { anchors.fill: parent; radius: frame.cardBg ? frame.cardBg.radius : 0; color: "white" }
-        }
-        // the click ripples, in the card under the pointer (they grow with a zoom)
-        Item {
-            x: frame.card.x
-            y: frame.card.y
-            width: frame.card.width
-            height: frame.card.height
-            clip: true
-            visible: !!frame.rippleLook && frame.rippleLook.show && frame.inputNow !== null
-            Repeater {
-                model: frame.inputNow && frame.rippleLook && frame.rippleLook.show ? frame.inputNow.rings : []
-                Rectangle {
-                    required property var modelData
-                    readonly property real across: modelData.size * frame.zoom
-                    readonly property color tint: frame.rippleLook.color === "accent" ? (modelData.right ? Theme.warning : Theme.accent) : frame.rippleLook.color
-                    x: modelData.x * frame.zoom - across / 2
-                    y: modelData.y * frame.zoom - across / 2
-                    width: across
-                    height: across
-                    radius: across / 2
-                    opacity: modelData.alpha
-                    color: frame.rippleLook.filled ? Qt.rgba(tint.r, tint.g, tint.b, 0.3) : "transparent"
-                    border.width: frame.rippleLook.filled ? 0 : 3 * frame.unit * frame.zoom
-                    border.color: tint
-                }
+            x: frame.outer.x
+            y: frame.outer.y
+            width: frame.outer.w
+            height: frame.outer.h
+            layer.enabled: frame.viewBlur
+            layer.textureSize: Qt.size(Math.ceil(width * frame.pixelScale), Math.ceil(height * frame.pixelScale))
+            layer.effect: ShaderEffect {
+                readonly property vector4d now: frame.blurNow
+                readonly property vector4d before: frame.blurBefore
+                fragmentShader: "qrc:/snip/shaders/blur.frag.qsb"
             }
-        }
-        // the pointer, in the card (it grows with a zoom; never drawn outside it)
-        Item {
-            x: frame.card.x
-            y: frame.card.y
-            width: frame.card.width
-            height: frame.card.height
-            clip: true
-            visible: frame.pointerNow !== null && frame.pointerNow.opacity > 0 && frame.pointerLook.show !== false
-            // its motion blur: where it was a moment ago, fainter further back
-            Repeater {
-                model: frame.pointerNow ? frame.pointerNow.trail : []
-                Image {
-                    required property var modelData
-                    required property int index
-                    source: drawnPointer.source
-                    width: drawnPointer.width
-                    height: drawnPointer.height
-                    x: modelData[0] * frame.zoom - drawnPointer.img.hot[0] * drawnPointer.k
-                    y: modelData[1] * frame.zoom - drawnPointer.img.hot[1] * drawnPointer.k
-                    opacity: drawnPointer.opacity * 0.5 * (1 - (index + 1) / 9)
-                    smooth: true
-                    mipmap: true
+            Item {
+                x: -frame.outer.x
+                y: -frame.outer.y
+                VideoOutput {
+                    id: video
+                    objectName: "video-preview"
+                    x: frame.card.x
+                    y: frame.card.y
+                    width: frame.card.width
+                    height: frame.card.height
+                    // its corners rounded, at the size it shows
+                    readonly property size shown: Qt.size(Math.ceil(width * frame.pixelScale), Math.ceil(height * frame.pixelScale))
+                    layer.enabled: !!frame.cardBg && frame.cardBg.radius > 0
+                    layer.textureSize: shown
+                    layer.effect: MultiEffect { maskEnabled: true; maskSource: videoMask; maskThresholdMin: 0.5; maskSpreadAtMin: 1.0 }
                 }
-            }
-            Image {
-                id: drawnPointer
-                readonly property var img: frame.cursorImage || ({ w: 0, h: 0, hot: [0, 0], nominal: 1 })
-                readonly property var now: frame.pointerNow || ({ x: 0, y: 0, opacity: 0, press: 0 })
-                // the theme's size, in the recording's px, times the edit's size and the zoom; smaller while pressed
-                readonly property real k: (frame.pointer ? frame.pointer.size * frame.pointer.scale : 30) * (frame.pointerLook.size || 2) / img.nominal
-                                          * frame.zoom * (1 - 0.2 * now.press)
-                source: frame.cursorImage ? "file://" + frame.cursorImage.path : ""
-                width: img.w * k
-                height: img.h * k
-                x: now.x * frame.zoom - img.hot[0] * k
-                y: now.y * frame.zoom - img.hot[1] * k
-                opacity: now.opacity
-                smooth: true
-                mipmap: true
+                Item {
+                    id: videoMask
+                    visible: false
+                    width: video.width
+                    height: video.height
+                    layer.enabled: true
+                    layer.textureSize: video.shown
+                    Rectangle { anchors.fill: parent; radius: frame.cardBg ? frame.cardBg.radius : 0; color: "white" }
+                }
+                // the click ripples, in the card under the pointer (they grow with a zoom)
+                Item {
+                    x: frame.card.x
+                    y: frame.card.y
+                    width: frame.card.width
+                    height: frame.card.height
+                    clip: true
+                    visible: !!frame.rippleLook && frame.rippleLook.show && frame.inputNow !== null
+                    Repeater {
+                        model: frame.inputNow && frame.rippleLook && frame.rippleLook.show ? frame.inputNow.rings : []
+                        Rectangle {
+                            required property var modelData
+                            readonly property real across: modelData.size * frame.zoom
+                            readonly property color tint: frame.rippleLook.color === "accent" ? (modelData.right ? Theme.warning : Theme.accent) : frame.rippleLook.color
+                            x: modelData.x * frame.zoom - across / 2
+                            y: modelData.y * frame.zoom - across / 2
+                            width: across
+                            height: across
+                            radius: across / 2
+                            opacity: modelData.alpha
+                            color: frame.rippleLook.filled ? Qt.rgba(tint.r, tint.g, tint.b, 0.3) : "transparent"
+                            border.width: frame.rippleLook.filled ? 0 : 3 * frame.unit * frame.zoom
+                            border.color: tint
+                        }
+                    }
+                }
+                // the pointer, in the card (it grows with a zoom; never drawn outside it)
+                Item {
+                    x: frame.card.x
+                    y: frame.card.y
+                    width: frame.card.width
+                    height: frame.card.height
+                    clip: true
+                    visible: frame.pointerNow !== null && frame.pointerNow.opacity > 0 && frame.pointerLook.show !== false
+                    // its motion blur: where it was a moment ago, fainter further back
+                    Repeater {
+                        model: frame.pointerNow ? frame.pointerNow.trail : []
+                        Image {
+                            required property var modelData
+                            required property int index
+                            source: drawnPointer.source
+                            width: drawnPointer.width
+                            height: drawnPointer.height
+                            x: modelData[0] * frame.zoom - drawnPointer.img.hot[0] * drawnPointer.k
+                            y: modelData[1] * frame.zoom - drawnPointer.img.hot[1] * drawnPointer.k
+                            opacity: drawnPointer.opacity * 0.5 * (1 - (index + 1) / 9)
+                            smooth: true
+                            mipmap: true
+                        }
+                    }
+                    Image {
+                        id: drawnPointer
+                        readonly property var img: frame.cursorImage || ({ w: 0, h: 0, hot: [0, 0], nominal: 1 })
+                        readonly property var now: frame.pointerNow || ({ x: 0, y: 0, opacity: 0, press: 0 })
+                        // the theme's size, in the recording's px, times the edit's size and the zoom; smaller while pressed
+                        readonly property real k: (frame.pointer ? frame.pointer.size * frame.pointer.scale : 30) * (frame.pointerLook.size || 2) / img.nominal
+                                                  * frame.zoom * (1 - 0.2 * now.press)
+                        source: frame.cursorImage ? "file://" + frame.cursorImage.path : ""
+                        width: img.w * k
+                        height: img.h * k
+                        x: now.x * frame.zoom - img.hot[0] * k
+                        y: now.y * frame.zoom - img.hot[1] * k
+                        opacity: now.opacity
+                        smooth: true
+                        mipmap: true
+                    }
+                }
             }
         }
     }
