@@ -146,6 +146,9 @@ pub fn preprocess(data: &[u8], w: u32, h: u32, bpp: usize, scale: f64) -> Vec<u8
 
 /// TSV -> text: confident words only, lines in reading order, indentation
 /// rebuilt from the left edge in units of the median character width.
+/// The deepest indent rebuilt, in spaces.
+const MAX_INDENT: usize = 200;
+
 pub fn text_from_tsv(tsv: &str) -> String {
     parse_tsv(tsv).0
 }
@@ -218,7 +221,8 @@ fn words_to_text(tsv: &str) -> (String, usize) {
             out.push('\n');
         }
         last_block = Some(ws[0].block);
-        let ind = ((ws[0].left - minleft) as f64 / cw).round() as usize;
+        // tesseract's own numbers, held to sense: at most a line's width of indent
+        let ind = (((ws[0].left as i64 - minleft as i64) as f64 / cw).round() as usize).min(MAX_INDENT);
         out.push_str(&" ".repeat(ind));
         out.push_str(&ws.iter().map(|w| w.text).collect::<Vec<_>>().join(" "));
         out.push('\n');
@@ -345,6 +349,20 @@ mod tests {
     }
 
     #[test]
+    fn broken_ocr_output_is_read_without_panicking() {
+        let tsv = "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n\
+5\t1\t1\t1\t1\t1\t10\t10\t30\t12\t90\tfn\n\
+5\t1\t1\t1\t1\t2\t50\t10\t60\t12\t90\tmain()\n";
+        // a word far right of another: its indent is at most a line's, not gigabytes
+        let far = format!("{tsv}5\t1\t1\t1\t2\t1\t2147483647\t30\t60\t12\t88\treturn\n5\t1\t1\t1\t3\t1\t-2147483648\t50\t60\t12\t88\tx\n");
+        assert!(text_from_tsv(&far).len() < 1000, "{}", text_from_tsv(&far).len());
+        crate::fuzz::run(&[tsv.as_bytes(), far.as_bytes()], 5000, |b| {
+            let t = String::from_utf8_lossy(b);
+            let _ = (parse_tsv(&t), word_boxes(&t, 24.0, 2.0));
+        });
+    }
+
+        #[test]
     fn layouts_pick_installed_models() {
         let installed = vec!["eng".to_string(), "kat".to_string(), "rus".to_string()];
         assert_eq!(languages_for_layouts("us,ge", &installed), "eng+kat");
