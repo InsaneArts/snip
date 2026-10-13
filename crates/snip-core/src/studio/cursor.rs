@@ -84,6 +84,8 @@ fn images(b: &[u8]) -> Option<Vec<(u32, usize)>> {
     }
     let (header, count) = (u32_at(4)? as usize, u32_at(12)? as usize);
     // the table of contents: type, nominal size, where; images are 0xfffd0002
+    // (no more entries than the file has room for: its count is its own word)
+    let count = count.min(b.len().saturating_sub(header) / 12);
     Some(
         (0..count)
             .filter_map(|i| {
@@ -108,6 +110,10 @@ fn largest(b: &[u8]) -> Option<Image> {
     let u32_at = |at: usize| Some(u32::from_le_bytes(b.get(at..at + 4)?.try_into().ok()?));
     let (nominal, at) = images(b)?.into_iter().max_by_key(|&(size, _)| size)?;
     let (width, height, hx, hy) = (u32_at(at + 16)?, u32_at(at + 20)?, u32_at(at + 24)?, u32_at(at + 28)?);
+    // the file's word for its size: no cursor is over 1024 px a side
+    if width > 1024 || height > 1024 {
+        return None;
+    }
     let pixels = b.get(at + 36..at + 36 + (width * height * 4) as usize)?;
     // premultiplied ARGB, little-endian: straight RGBA
     let rgba = pixels
@@ -156,5 +162,13 @@ mod tests {
         assert_eq!(hot_at(&file, 24), Some([3, 1]), "the hotspot the take logged at 24");
         assert_eq!(hot_at(&file, 30), Some([3, 1]), "the nearest size the theme has");
         assert_eq!(hot_at(&file, 64), Some([6, 2]));
+    }
+
+    #[test]
+    fn a_broken_cursor_file_is_no_cursor() {
+        let file = xcursor(&[(24, [3, 1]), (48, [6, 2])]);
+        crate::fuzz::run(&[&file], 20_000, |b| {
+            let _ = (largest(b), hot_at(b, 24));
+        });
     }
 }
