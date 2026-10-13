@@ -63,6 +63,14 @@ Window {
     readonly property var keysLook: Object.assign({ show: !!(info.studioTake && info.studioTake.keystrokes), size: 1, look: "dark", position: "bottom-center" },
                                                   studio.keys || {})
     function setKeys(patch) { studio = Object.assign({}, studio, { keys: Object.assign({}, studio.keys || {}, patch) }) }
+    // a studio take's camera, recorded apart (D61): placed after the fact,
+    // first as the panel showed it (its sizes, Medium a quarter of the height)
+    readonly property var cameraLook: {
+        const look = info.camera ? info.camera.look : {}
+        return Object.assign({ show: true, size: ({ small: 0.72, medium: 1, large: 1.35, huge: 1.8 })[look.size] || 1, shape: look.shape || "circle",
+                               position: "bottom-right", mirror: look.mirror !== false, shrink: true }, studio.camera || {})
+    }
+    function setCameraLook(patch) { studio = Object.assign({}, studio, { camera: Object.assign({}, studio.camera || {}, patch) }) }
     property string section: "audio"          // the sidebar's (D50)
     property bool exportOpen: false           // the Export popover
     property real zoom: 1                     // the timeline's: 1 (all of it) to 8
@@ -97,7 +105,7 @@ Window {
             }
             bg = e.background || null
             studio = { zooms: e.zooms || [], zoom_style: e.zoom_style || "smooth", pointer: e.pointer || null, keys: e.keys || null,
-                       motion_blur: e.motion_blur || "medium" }
+                       motion_blur: e.motion_blur || "medium", camera: e.camera || null }
             if (e.export) { maxHeight = e.export.height || 0; quality = e.export.quality || 23; gif = !!e.export.gif }
         } else {
             // not edited yet (kept once anything changes): zooms where its clicks
@@ -115,7 +123,7 @@ Window {
             trim: [inMs, outMs], cuts: parts.filter(p => p.cut).map(p => [p.a, p.b]), splits: cuts.slice(1, -1),
             audio: { tracks: volumes, mono: mono }, background: bg,
             zooms: studio.zooms, zoom_style: studio.zoom_style, pointer: studio.pointer || null, keys: studio.keys || null,
-            motion_blur: studio.motion_blur || "medium",
+            motion_blur: studio.motion_blur || "medium", camera: studio.camera || null,
             export: { height: maxHeight > 0 ? maxHeight : null, quality: quality, gif: gif }
         })
     }
@@ -319,7 +327,7 @@ Window {
         progress = 0
         player.pause()
         // Studio Mode (D55): with zooms, or a pointer, clicks or keys to draw, snipd draws every frame with this scene
-        if (studio.zooms.length > 0 || info.pointer || (info.studioTake && (rippleLook.show || keysLook.show)))
+        if (studio.zooms.length > 0 || info.pointer || (info.studioTake && (rippleLook.show || keysLook.show)) || (info.camera && cameraLook.show))
             return send(replace, null, scene())
         if (!bgLive) return send(replace, null)
         // the background first, as the export draws it: a grab, then ffmpeg
@@ -330,7 +338,8 @@ Window {
     function scene() {
         return { bg: bgLive, outer: outer, inner: inner, studio: studio, log: info.log || "", theme: Engine.theme,
                  pointer: info.pointer || null, pointerLook: pointerLook, unit: unit,
-                 rippleLook: info.studioTake ? rippleLook : null, keysLook: info.studioTake ? keysLook : null, keep: keptRuns }
+                 rippleLook: info.studioTake ? rippleLook : null, keysLook: info.studioTake ? keysLook : null, keep: keptRuns,
+                 camera: info.camera || null, cameraLook: info.camera ? cameraLook : null }
     }
     // Export Current Frame as Image (CleanShot's): the frame shown, drawn as
     // the export draws it, at the recording's size: a new screenshot, its card
@@ -372,6 +381,34 @@ Window {
     }
 
     // ---------------------------------------------------------------- playback
+    // a studio take's camera (D61): its own player, kept where the video is
+    // (playing as it plays; after a seek, a cut or one of the take's pauses,
+    // at its place again)
+    MediaPlayer {
+        id: cameraPlayer
+        source: ve.info.camera ? "file://" + ve.info.camera.path : ""
+        videoOutput: studioFrame.cameraVideo
+        onMediaStatusChanged: if (mediaStatus === MediaPlayer.LoadedMedia) ve.syncCamera()
+    }
+    function syncCamera() {
+        const c = studioFrame.cameraMs
+        if (!info.camera || !(c >= 0)) return
+        const playing = player.playbackState === MediaPlayer.PlayingState
+        // paused, not stopped: stopped, its picture stays black
+        if (playing && cameraPlayer.playbackState !== MediaPlayer.PlayingState) cameraPlayer.play()
+        else if (!playing && cameraPlayer.playbackState !== MediaPlayer.PausedState) cameraPlayer.pause()
+        if (Math.abs(cameraPlayer.position - c) > (playing ? 120 : 15)) cameraPlayer.setPosition(Math.round(c))
+    }
+    Connections {
+        target: studioFrame
+        enabled: !!ve.info.camera
+        function onCameraMsChanged() { ve.syncCamera() }
+    }
+    Connections {
+        target: player
+        enabled: !!ve.info.camera
+        function onPlaybackStateChanged() { ve.syncCamera() }
+    }
     MediaPlayer {
         id: player
         source: ve.info.path ? "file://" + ve.info.path : ""
@@ -524,7 +561,7 @@ Window {
             spacing: 6
             Repeater {
                 // [section, icon, name]
-                model: [["audio", "volume", "Audio"], ["background", "image", "Background"], ["pointer", "pointer", "Pointer"], ["keys", "command", "Keystrokes"], ["animations", "sparkles", "Animations"]]
+                model: [["audio", "volume", "Audio"], ["background", "image", "Background"], ["pointer", "pointer", "Pointer"], ["keys", "command", "Keystrokes"], ["camera", "webcam", "Camera"], ["animations", "sparkles", "Animations"]]
                 SideButton {
                     required property var modelData
                     objectName: "video-section=" + modelData[0]
@@ -750,6 +787,89 @@ Window {
                 }
             }
         }
+        // Camera (D61): a studio take's, recorded apart, placed after the fact
+        Column {
+            visible: ve.section === "camera"
+            anchors { fill: parent; margins: 16 }
+            spacing: 14
+            Text { text: "Camera"; color: Theme.text; font.family: Theme.fontUi; font.pixelSize: 13; font.weight: Font.DemiBold }
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                text: "Places the camera recorded with the take: its size, shape and place on the video."
+                color: Theme.text
+                font.family: Theme.fontUi
+                font.pixelSize: 12
+            }
+            Text {
+                objectName: "studio-camera-why"
+                visible: !ve.info.camera
+                width: parent.width
+                wrapMode: Text.WordWrap
+                text: "Not for this recording: it has no camera recorded apart. Turn on Studio (the clapperboard on the recording panel) and choose a camera before you record, and it can be placed here."
+                color: Theme.textSecondary
+                font.family: Theme.fontUi
+                font.pixelSize: 12
+            }
+            Column {
+                visible: !!ve.info.camera
+                width: parent.width
+                spacing: 14
+                Check { objectName: "studio-camera-show"; text: "Show the camera"; on: ve.cameraLook.show; onToggled: ve.setCameraLook({ show: !ve.cameraLook.show }) }
+                Slider {
+                    objectName: "studio-camera-size"
+                    width: parent.width
+                    label: "Size"
+                    from: 50
+                    to: 200
+                    unit: "%"
+                    value: ve.cameraLook.size * 100
+                    onMoved: (v) => ve.setCameraLook({ size: Math.round(v) / 100 })
+                    onReleased: (v) => ve.setCameraLook({ size: Math.round(v) / 100 })
+                    onCancelled: ve.focusKeys()
+                }
+                Segmented {
+                    objectName: "studio-camera-shape"
+                    options: [["circle", "Circle"], ["square", "Square"], ["rectangle", "Wide"], ["vertical", "Tall"]]
+                    current: ve.cameraLook.shape
+                    onPicked: (v) => ve.setCameraLook({ shape: v })
+                }
+                Column {
+                    width: parent.width
+                    spacing: 8
+                    Text { text: "Position"; color: Theme.textSecondary; font.family: Theme.fontUi; font.pixelSize: 12 }
+                    Grid {
+                        columns: 3
+                        spacing: 4
+                        Repeater {
+                            model: ["top-left", "top-center", "top-right", "middle-left", "middle-center", "middle-right", "bottom-left", "bottom-center", "bottom-right"]
+                            Rectangle {
+                                required property string modelData
+                                readonly property bool on: ve.cameraLook.position === modelData
+                                objectName: "studio-camera-position=" + modelData
+                                width: 30
+                                height: 20
+                                radius: 4
+                                color: on ? Theme.accent : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, camPosHover.hovered ? 0.12 : 0.06)
+                                Rectangle {
+                                    // the camera, where it would be
+                                    width: 6
+                                    height: 6
+                                    radius: 3
+                                    x: parent.modelData.endsWith("left") ? 4 : parent.modelData.endsWith("right") ? parent.width - width - 4 : (parent.width - width) / 2
+                                    y: parent.modelData.startsWith("top") ? 4 : parent.modelData.startsWith("bottom") ? parent.height - height - 4 : (parent.height - height) / 2
+                                    color: parent.on ? Theme.onAccent : Theme.textSecondary
+                                }
+                                HoverHandler { id: camPosHover; cursorShape: Qt.PointingHandCursor }
+                                TapHandler { onTapped: ve.setCameraLook({ position: parent.modelData }) }
+                            }
+                        }
+                    }
+                }
+                Check { objectName: "studio-camera-mirror"; text: "Mirrored"; on: ve.cameraLook.mirror; onToggled: ve.setCameraLook({ mirror: !ve.cameraLook.mirror }) }
+                Check { objectName: "studio-camera-shrink"; text: "Smaller while zoomed in"; on: ve.cameraLook.shrink; onToggled: ve.setCameraLook({ shrink: !ve.cameraLook.shrink }) }
+            }
+        }
         // Animations (D55): how zooms move in and out, for all of them
         Column {
             visible: ve.section === "animations"
@@ -904,6 +1024,8 @@ Window {
                 keysLook: ve.info.studioTake ? ve.keysLook : null
                 unit: ve.unit
                 keep: ve.keptRuns
+                camera: ve.info.camera || null
+                cameraLook: ve.cameraLook
                 ms: frameTime.ms
                 pixelScale: result.k * Screen.devicePixelRatio
             }
@@ -1455,7 +1577,7 @@ Window {
                                                      playing: player.playbackState === MediaPlayer.PlayingState, position: headMs,
                                                      progress: progress, error: error, estimate: Math.round(estimate), thumbs: thumbs.length,
                                                      tracks: info.tracks || 0, gif: gif, exportOpen: exportOpen, zoom: zoom,
-                                                     section: section, bg: bgLive, outer: outer, studio: studio, zoomSelected: zoomSelected, ripple: rippleLook, keys: keysLook,
+                                                     section: section, bg: bgLive, outer: outer, studio: studio, zoomSelected: zoomSelected, ripple: rippleLook, keys: keysLook, camera: info.camera ? cameraLook : null,
                                                      result: (p => [p.x, p.y, result.width, result.height])(result.mapToItem(contentItem, 0, 0))
                                                    }).slice(1, -1))
             break

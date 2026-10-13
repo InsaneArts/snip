@@ -228,6 +228,27 @@ pub struct Log {
     pub events: Vec<Event>,
 }
 
+/// A take's camera, recorded apart (D61), on the take's clock.
+pub struct CameraClock {
+    clock: Clock,
+    /// its first frame (CLOCK_MONOTONIC µs)
+    first: i64,
+}
+
+impl CameraClock {
+    /// None without a camera (or a clock).
+    pub fn of(log: &Log) -> Option<CameraClock> {
+        let first = log.events.iter().find_map(|e| if let Event::Camera { t } = *e { Some(t) } else { None })?;
+        Some(CameraClock { clock: Clock::of(log)?, first })
+    }
+
+    /// Where the camera is at `ms` of the video: ms of its own file
+    /// (negative before its first frame). It went on through the pauses.
+    pub fn ms(&self, ms: f64) -> f64 {
+        (self.clock.moment(ms) - self.first as f64) / 1000.0
+    }
+}
+
 /// Frames from a take's start to gsr's first frame reaching its muxer
 /// (`-write-first-frame-ts`): measured (spike S3, 2026-10-12: a pointer
 /// moved at a known moment into a recorded area, gsr 6.1 on an RTX 4080),
@@ -419,6 +440,16 @@ mod tests {
         assert!((c.moment(1000.0) - at(1.0) as f64).abs() < 1.0, "before the pause");
         assert!((c.moment(2500.0) - at(5.5) as f64).abs() < 1.0, "after it, the pause skipped: {}", c.moment(2500.0) - at(5.5) as f64);
         assert!((c.moment(-500.0) - at(-0.5) as f64).abs() < 1.0, "before the first frame");
+    }
+
+    #[test]
+    fn the_camera_is_where_the_video_is_through_its_pauses() {
+        // the camera's first frame 0.2 s after the video's; a pause from 2 s to 5 s (the camera went on)
+        let events = vec![Event::Pause { t: at(2.0), paused: true }, Event::Pause { t: at(5.0), paused: false }, Event::Camera { t: at(0.2) }];
+        let c = CameraClock::of(&Log { header: header(), events }).unwrap();
+        assert!((c.ms(1000.0) - 800.0).abs() < 1.0, "{}", c.ms(1000.0));
+        assert!((c.ms(2500.0) - 5300.0).abs() < 1.0, "after the pause: {}", c.ms(2500.0));
+        assert!(CameraClock::of(&Log { header: header(), events: vec![] }).is_none(), "no camera");
     }
 
     #[test]
