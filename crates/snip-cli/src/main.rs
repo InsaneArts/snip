@@ -44,7 +44,11 @@ daemon
 ";
 
 fn main() -> ExitCode {
-    let mut args: Vec<String> = std::env::args().skip(1).collect();
+    // requests are JSON: a path that isn't UTF-8 can't be sent
+    let Ok(mut args) = std::env::args_os().skip(1).map(|a| a.into_string()).collect::<Result<Vec<String>, _>>() else {
+        eprintln!("snip: arguments must be UTF-8 text");
+        return ExitCode::from(2);
+    };
     let json = if let Some(i) = args.iter().position(|a| a == "--json") {
         args.remove(i);
         true
