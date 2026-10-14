@@ -140,11 +140,12 @@ QtObject {
         function onCancelRequested() { root.closeOverlay() }
         function onCountdown(output, x, y, w, h, seconds) { root.countdown.start(output, x, y, w, h, seconds) }
         function onCountdownCancel() { root.countdown.stop() }
-        // Captures leave Snip's cards out, and with Hide desktop clutter (CAP-12)
-        // its pins too: each draws itself transparent, and the capture runs
-        // once all those frames are on screen.
+        // Captures leave Snip's cards out, a toast still showing (D69's hint)
+        // and, with Hide desktop clutter (CAP-12), its pins too: each draws
+        // itself transparent, and the capture runs once all those frames are
+        // on screen.
         function onPrepareCapture(req) {
-            let wins = root.quickAccess.stepAside()
+            let wins = root.quickAccess.stepAside().concat(root.toast.stepAside())
             if (root.hideDesktop) for (const p of root.pins.filter(p => p.shown)) wins = wins.concat(p.stepAside())
             Platform.afterFrames(wins, () => Engine.captureReady(req))
         }
@@ -155,7 +156,7 @@ QtObject {
         }
         function onCardUpdate(id, card) { root.quickAccess.update(id, JSON.parse(card)) }
         function onCardsCommand(cmd) { root.quickAccess.command(cmd) }
-        function onToast(text, output) { root.toast.show(text, output || root.lastOutput || root.quickAccess.output || Qt.application.screens[0].name) }
+        function onToast(text, output, ms) { root.toast.show(text, output || root.lastOutput || root.quickAccess.output || Qt.application.screens[0].name, ms) }
         function onCardStatus(id, status, detail) {
             root.quickAccess.cardStatus(id, status, detail)
             for (const p of root.pins) if (p.capture.id === id) { p.status(status, detail); break }

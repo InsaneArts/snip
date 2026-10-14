@@ -2352,6 +2352,45 @@ def record_panel_shows_what_is_on(s, env):
 
 
 @case
+def hiding_desktop_clutter_says_how_to_get_back(s, env):
+    """D69: Hide Desktop Clutter covers the bar, Snip's menu with it, so as it hides a note
+    says how to show it again, for 5 s. A capture meanwhile leaves the note out; a
+    recording's own cover says nothing (it would be in the video)."""
+    from PIL import Image, ImageChops, ImageStat
+    s.cli("close-all"); time.sleep(0.3)
+    hint = lambda since: [t for t in s.traces("toast")[since:] if t["text"].startswith("Desktop clutter hidden")]
+    n = len(s.traces("toast"))
+    try:
+        s.cli("desktop", "hide")
+        assert wait_for(lambda: hint(n), 2), "the note"
+        assert "snip desktop show" in hint(n)[-1]["text"], hint(n)
+        time.sleep(0.6)                                            # on screen
+        during = Image.open(s.json("fullscreen", "--monitor", OUT)["result"]["source"]).convert("RGB")
+        time.sleep(5.5)                                            # gone
+        after = Image.open(s.json("fullscreen", "--monitor", OUT)["result"]["source"]).convert("RGB")
+        W, H = during.size
+        box = (W // 2 - 400, H - 200, W // 2 + 400, H)              # the note's place: bottom centre
+        diff = ImageStat.Stat(ImageChops.difference(during.crop(box), after.crop(box))).mean
+        assert max(diff) < 2, ("the note is in the capture", diff)
+    finally:
+        s.cli("desktop", "show")
+        s.cli("close-all")
+    s.write_config("[capture]\nhide_desktop = true")
+    time.sleep(0.6)
+    n = len(s.traces("toast"))
+    p = s.bg("record", "area", "--x", "100", "--y", "80", "--w", "400", "--h", "300", "--monitor", OUT)
+    try:
+        assert wait_for(lambda: (record_state(s) or {}).get("state") == "recording", 6), record_state(s)
+        time.sleep(0.6)
+        assert not hint(n), ("a recording's cover says nothing", hint(n))
+    finally:
+        s.json("record", "stop")
+        finish(p, timeout=20)
+        s.write_config("")
+        s.cli("close-all")
+
+
+@case
 def recording_keeps_out_cards_and_clutter(s, env):
     """Principle 8, CAP-12: Snip's cards are never in a recording (they step aside while it
     records), and with Hide Desktop Clutter on, a recording covers the bars with the

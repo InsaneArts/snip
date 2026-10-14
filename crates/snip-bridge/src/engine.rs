@@ -36,6 +36,9 @@ const SHUTTER: &[u8] = include_bytes!("../../../app/sounds/shutter.wav");
 const CLOSED_KEEP: usize = 50;
 /// How much desktop a "With the desktop" window capture keeps around the window (logical px)
 const WINDOW_DESKTOP_MARGIN: f64 = 48.0;
+/// How long a toast stays (ms); D69's hint, long enough to read.
+const TOAST_MS: u32 = 1900;
+const HINT_MS: u32 = 5000;
 
 #[derive(Default)]
 struct Snapshot {
@@ -163,6 +166,9 @@ pub struct Inner {
     cover: Mutex<Option<Cover>>,
     /// CAP-12, the live toggle: clutter is hidden; DND was on before it
     desktop_hidden: AtomicBool,
+    /// until when a toast is on screen (ns, CLOCK_MONOTONIC): a capture
+    /// meanwhile asks it to step aside
+    toast_until: AtomicU64,
     /// who holds DND on (hidden clutter, a recording), and whether it was on before them
     dnd_holds: Mutex<(u32, Option<bool>)>,
     /// A scrolling capture (SCR-01), from the chosen area until Done
@@ -265,6 +271,7 @@ impl Inner {
             countdown: Mutex::new(None),
             cover: Mutex::new(None),
             desktop_hidden: AtomicBool::new(false),
+            toast_until: AtomicU64::new(0),
             dnd_holds: Mutex::new((0, None)),
             scroll: Mutex::new(None),
             recording: Mutex::new(None),
@@ -291,9 +298,14 @@ impl Inner {
 
     /// A short confirmation on the monitor the user is looking at.
     pub fn toast(&self, text: impl Into<String>) {
-        let t = text.into();
+        self.toast_for(text, TOAST_MS);
+    }
+
+    /// A toast that stays `ms`.
+    fn toast_for(&self, text: impl Into<String>, ms: u32) {
         let out = self.cursor_output().unwrap_or_default();
-        self.ui(Ui::Toast { text: t, output: out });
+        self.toast_until.store(trace::now_ns() + ms as u64 * 1_000_000, Ordering::Relaxed);
+        self.ui(Ui::Toast { text: text.into(), output: out, ms });
     }
 
     /// A result shown on the card itself (CleanShot's "Link copied" style).
@@ -601,8 +613,10 @@ impl Inner {
         trace::trace("desktop_covered", &format!("\"bands\":{n},\"ms\":{:.1}", trace::ms_since(t0)));
     }
 
-    /// CAP-12, the live toggle ("hide", "show", "toggle"): the wallpaper over
-    /// the bars on screen, notifications held (DND), pins and cards hidden.
+    /// CAP-12, the live toggle ("hide", "show", "toggle"), as the user asks
+    /// it: the wallpaper over the bars on screen, notifications held (DND),
+    /// pins and cards hidden. The cover hides Snip's menu in the bar too, so
+    /// as it hides it says how to get back (D69), unless a recording runs.
     pub fn desktop(&self, action: &str) -> Response {
         let hide = match action {
             "hide" => true,
@@ -610,11 +624,26 @@ impl Inner {
             "toggle" => !self.desktop_hidden.load(Ordering::Relaxed),
             _ => return Response::err("desktop: hide, show or toggle"),
         };
-        if self.desktop_hidden.swap(hide, Ordering::Relaxed) != hide {
+        if self.cover_bars(hide) && hide && !self.recording_runs() {
+            let key = self.shortcuts().as_array().and_then(|a| a.iter().find(|s| s["id"] == "desktop-toggle").and_then(|s| s["keys"][0].as_str().map(String::from)));
+            let how = match key {
+                Some(k) => format!("press {k}, or click where Snip's icon was"),
+                None => "click where Snip's icon was, or run snip desktop show".to_string(),
+            };
+            self.toast_for(format!("Desktop clutter hidden: {how}"), HINT_MS);
+        }
+        Response::ok(json!({ "hidden": hide }))
+    }
+
+    /// The live cover on or off, for the user or a recording: whether that
+    /// changed it.
+    pub(crate) fn cover_bars(&self, hide: bool) -> bool {
+        let changed = self.desktop_hidden.swap(hide, Ordering::Relaxed) != hide;
+        if changed {
             self.dnd(hide);
         }
         self.push_desktop();
-        Response::ok(json!({ "hidden": hide }))
+        changed
     }
 
     /// What the covers show: per output, the bands bars reserve (logical px
@@ -670,9 +699,11 @@ impl Inner {
     /// Screen captures never contain Snip's own cards (CleanShot hides its
     /// UI from captures). With cards on screen, QML draws the stack
     /// transparent first and calls `capture_ready` once that frame is on
-    /// screen. With Hide desktop clutter (CAP-12) the pins step aside too.
+    /// screen. With Hide desktop clutter (CAP-12) the pins step aside too,
+    /// and so does a toast still on screen (D69's hint stays 5 s).
     fn capture_clean(self: &Arc<Self>, req: u64, source: Source, cursor: bool) {
-        if self.cards.lock().unwrap().is_empty() && !self.cfg().capture.hide_desktop {
+        let toast_up = trace::now_ns() < self.toast_until.load(Ordering::Relaxed);
+        if self.cards.lock().unwrap().is_empty() && !self.cfg().capture.hide_desktop && !toast_up {
             self.wl(Wl::Capture { request: req, source, cursor });
             return;
         }
@@ -2615,5 +2646,27 @@ mod tests {
     fn png_size_reads_ihdr() {
         let png = encode::encode_png(&[0u8; 3 * 6], 3, 2, false);
         assert_eq!(png_size(&png), Some((3, 2)));
+    }
+
+    /// What the UI was told to toast: its text and how long it stays (ms).
+    fn toasts(told: &Told) -> Vec<(String, u32)> {
+        told.0.lock().unwrap().iter().filter_map(|u| if let Ui::Toast { text, ms, .. } = u { Some((text.clone(), *ms)) } else { None }).collect()
+    }
+
+    #[test]
+    fn hiding_desktop_clutter_says_how_to_show_it_again() {
+        // D69: the cover hides the bar, and Snip's menu with it
+        let _serial = SERIAL.lock().unwrap();
+        let (inner, told) = engine(false);
+        inner.desktop("hide");
+        let hint = toasts(&told);
+        assert!(matches!(hint.as_slice(), [(text, ms)] if text.contains("snip desktop show") && *ms >= 4000), "{hint:?}");
+        inner.desktop("show");
+        assert_eq!(toasts(&told).len(), 1, "showing it again says nothing");
+        // a recording's cover is no one's choice to undo: it says nothing
+        told.0.lock().unwrap().clear();
+        inner.cover_bars(true);
+        inner.cover_bars(false);
+        assert!(toasts(&told).is_empty(), "{:?}", toasts(&told));
     }
 }
