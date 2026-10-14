@@ -35,7 +35,7 @@ recording
   search TEXT [-n N]  find captures by the text in them (and window title/app)
   history          browse and search past captures (Enter restores one)
   settings [TAB]   open Settings (general, quick-access, screenshots, annotate, advanced, about)
-  welcome          show the first-run Welcome again (Snip's keys, start at login)
+  welcome          show the first-run Welcome again (Snip's keys, a first capture, start at login)
   restore [ID]     re-open the last closed Quick Access card (or that capture's)
   close-all        close every Quick Access card
 daemon

@@ -149,7 +149,10 @@ QtObject {
             Platform.afterFrames(wins, () => Engine.captureReady(req))
         }
         function onCaptureDone() { if (!root.overlayOpen) root.captureFinished() }
-        function onCardAdd(card) { root.quickAccess.add(JSON.parse(card)) }
+        function onCardAdd(card) {
+            root.quickAccess.add(JSON.parse(card))
+            if (root.welcomeWindow && root.welcomeWindow.visible) root.welcomeWindow.captured()   // its Try it step (D65)
+        }
         function onCardUpdate(id, card) { root.quickAccess.update(id, JSON.parse(card)) }
         function onCardsCommand(cmd) { root.quickAccess.command(cmd) }
         function onToast(text, output) { root.toast.show(text, output || root.lastOutput || root.quickAccess.output || Qt.application.screens[0].name) }
