@@ -361,7 +361,7 @@ impl Inner {
         rec.run = Some(Run { take: take.clone(), sid: sid.clone(), hooks, hud, studio, cursor, log: Some(log), camera, covered, dnd: cfg.dnd });
         drop(r);
         if covered {
-            self.desktop("hide");
+            self.cover_bars(true);
         }
         if cfg.dnd {
             self.dnd(true);
@@ -487,6 +487,11 @@ impl Inner {
         }
         self.record_open(output, geometry::logical_to_physical(Rect::new(x, y, w, h), scale), scale, Some(waiter), gif, true);
         Ok(())
+    }
+
+    /// A take is recording (or paused): whatever shows goes in the video.
+    pub(super) fn recording_runs(&self) -> bool {
+        matches!(self.recording.lock().unwrap().as_ref().map(|r| r.state), Some(State::Recording | State::Paused))
     }
 
     /// The Record hotkey (or `snip record`): stop the recording that runs,
@@ -650,7 +655,7 @@ impl Inner {
             self.wl(snip_wayland::Request::CursorShapes(None));
         }
         if run.covered {
-            self.desktop("show");
+            self.cover_bars(false);
         }
         if run.hooks.is_some() {
             super::hypr("recording_hooks", snip_hypr::keys::recording_hooks_off());

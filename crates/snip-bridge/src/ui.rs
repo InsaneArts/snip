@@ -24,7 +24,8 @@ pub enum Ui {
     CardUpdate { id: String, json: String },
     CardsCommand(String),
     CardStatus { id: String, status: String, detail: String },
-    Toast { text: String, output: String },
+    /// a short confirmation, staying `ms`
+    Toast { text: String, output: String, ms: u32 },
     BackgroundAuto(String),
     PinOpen(String),
     PinsCommand(String),
@@ -88,7 +89,7 @@ impl UiOut for Qt {
                 Ui::CardUpdate { id, json } => e.card_update(&q(&id), &q(&json)),
                 Ui::CardsCommand(cmd) => e.cards_command(&q(&cmd)),
                 Ui::CardStatus { id, status, detail } => e.card_status(&q(&id), &q(&status), &q(&detail)),
-                Ui::Toast { text, output } => e.toast(&q(&text), &q(&output)),
+                Ui::Toast { text, output, ms } => e.toast(&q(&text), &q(&output), ms as i32),
                 Ui::BackgroundAuto(json) => e.background_auto(&q(&json)),
                 Ui::PinOpen(json) => e.pin_open(&q(&json)),
                 Ui::PinsCommand(cmd) => e.pins_command(&q(&cmd)),

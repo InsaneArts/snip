@@ -425,9 +425,10 @@ pub mod qobject {
         #[qsignal]
         fn cards_command(self: Pin<&mut Engine>, cmd: &QString);
 
-        /// A short confirmation, on `output` (the monitor under the pointer)
+        /// A short confirmation, on `output` (the monitor under the pointer),
+        /// staying `ms`
         #[qsignal]
-        fn toast(self: Pin<&mut Engine>, text: &QString, output: &QString);
+        fn toast(self: Pin<&mut Engine>, text: &QString, output: &QString, ms: i32);
 
         /// A result to show on a card: text-copied | qr-copied | no-text | error
         #[qsignal]
