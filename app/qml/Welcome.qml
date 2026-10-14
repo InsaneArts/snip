@@ -28,7 +28,7 @@ Window {
         requestActivate()
     }
     function useKeys() {
-        error = Engine.useKeys()
+        error = Engine.useKeys(false)
         refresh()
     }
     function done() {

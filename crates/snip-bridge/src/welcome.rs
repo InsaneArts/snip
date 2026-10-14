@@ -18,29 +18,53 @@ fn hypr_dir() -> PathBuf {
     std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(home).join(".config")).join("hypr")
 }
 
+/// The Lua files of the Hyprland config, as text.
+fn lua_texts(dir: &Path) -> Vec<String> {
+    std::fs::read_dir(dir)
+        .map(|d| d.flatten().filter(|e| e.path().extension().is_some_and(|x| x == "lua")).filter_map(|e| std::fs::read_to_string(e.path()).ok()).collect())
+        .unwrap_or_default()
+}
+
 /// Does a Lua file in the Hyprland config load Snip's keys?
 pub fn keys_in_config(dir: &Path) -> bool {
-    std::fs::read_dir(dir)
-        .map(|d| d.flatten().filter(|e| e.path().extension().is_some_and(|x| x == "lua")).any(|e| std::fs::read_to_string(e.path()).is_ok_and(|t| t.contains("snip.lua"))))
-        .unwrap_or(false)
+    lua_texts(dir).iter().any(|t| t.contains("snip.lua"))
 }
 
-/// hyprland.lua, loading Snip's keys at the end (once).
-pub fn with_keys(text: &str, module: &Path) -> String {
-    if text.contains("snip.lua") {
-        return text.to_string();
-    }
-    let sep = if text.is_empty() || text.ends_with('\n') { "" } else { "\n" };
-    format!("{text}{sep}\n-- Snip's keys (added by Snip's welcome; delete these two lines to undo)\ndofile({:?})\n", module.to_string_lossy())
+/// Does a Lua file in the Hyprland config give Snip the Print Screen keys
+/// (`snip_print_keys = true`, outside a comment)?
+pub fn print_keys_in_config(dir: &Path) -> bool {
+    lua_texts(dir).iter().any(|t| t.lines().any(|l| l.split("--").next().unwrap_or("").replace(' ', "") == "snip_print_keys=true"))
 }
 
-/// Use these keys: hyprland.lua loads Snip's module from now on, and the keys
-/// work right away.
-pub fn use_keys() -> Result<(), String> {
-    let module = keys_module().ok_or("Snip's Hyprland module wasn't found")?;
-    let file = hypr_dir().join("hyprland.lua");
+/// Use these keys, in the Hyprland config at `dir`: hyprland.lua loads Snip's
+/// `module` and, with `print`, gives it Print and Super+Ctrl+Print too (D66).
+/// Only what the config doesn't do already goes in, at the end.
+pub fn use_keys_in(dir: &Path, module: &Path, print: bool) -> Result<(), String> {
+    let print = print && !print_keys_in_config(dir);
+    let lines = match (keys_in_config(dir), print) {
+        (false, _) => format!(
+            "-- Snip's keys (added by Snip's welcome; delete these lines to undo)\n{}dofile({:?})\n",
+            if print { "snip_print_keys = true\n" } else { "" },
+            module.to_string_lossy()
+        ),
+        // the module, loaded already, binds its keys again with Print's
+        (true, true) => "-- Print Screen for Snip (added by Snip's welcome; delete these lines to undo)\nsnip_print_keys = true\nsnip_bind_defaults()\n".to_string(),
+        (true, false) => return Ok(()),
+    };
+    let file = dir.join("hyprland.lua");
     let text = std::fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
-    std::fs::write(&file, with_keys(&text, &module)).map_err(|e| e.to_string())?;
+    let sep = if text.is_empty() || text.ends_with('\n') { "" } else { "\n" };
+    std::fs::write(&file, format!("{text}{sep}\n{lines}")).map_err(|e| e.to_string())
+}
+
+/// Use these keys: hyprland.lua loads Snip's module from now on (with Print
+/// Screen's keys if `print`), and the keys work right away.
+pub fn use_keys(print: bool) -> Result<(), String> {
+    let module = keys_module().ok_or("Snip's Hyprland module wasn't found")?;
+    use_keys_in(&hypr_dir(), &module, print)?;
+    if print {
+        crate::engine::hypr("print_keys", snip_hypr::run("snip_print_keys = true"));
+    }
     crate::engine::hypr("dofile", snip_hypr::dofile(&module));
     Ok(())
 }
@@ -71,6 +95,7 @@ pub fn marker() -> PathBuf {
 pub fn state() -> serde_json::Value {
     serde_json::json!({
         "keysInConfig": keys_in_config(&hypr_dir()),
+        "printKeys": print_keys_in_config(&hypr_dir()),
         "module": keys_module(),
         "autostart": autostart(),
     })
@@ -83,11 +108,62 @@ mod tests {
     #[test]
     fn the_keys_line_goes_in_once() {
         let m = Path::new("/usr/share/snip/hypr/snip.lua");
-        let once = with_keys("require(\"hypr.autostart\")", m);
+        let dir = config("once", &[("hyprland.lua", "require(\"hypr.autostart\")")]);
+        use_keys_in(&dir, m, false).unwrap();
+        let once = std::fs::read_to_string(dir.join("hyprland.lua")).unwrap();
         assert!(once.starts_with("require(\"hypr.autostart\")\n\n-- Snip's keys"), "{once}");
-        assert!(once.ends_with("dofile(\"/usr/share/snip/hypr/snip.lua\")\n"), "{once}");
-        assert_eq!(with_keys(&once, m), once, "never twice");
-        assert!(with_keys("dofile(\"/home/me/OpenShotX/hypr/snip.lua\")\n", m).matches("snip.lua").count() == 1, "a config that loads them already is left alone");
+        assert!(once.ends_with("\ndofile(\"/usr/share/snip/hypr/snip.lua\")\n") && !once.contains("snip_print_keys"), "{once}");
+        use_keys_in(&dir, m, false).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("hyprland.lua")).unwrap(), once, "never twice");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    fn config(name: &str, files: &[(&str, &str)]) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("snip-welcome-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for (f, text) in files {
+            std::fs::write(dir.join(f), text).unwrap();
+        }
+        dir
+    }
+
+    #[test]
+    fn print_screen_comes_with_the_keys_when_ticked() {
+        // D66: Snip's keys, with Print and Super+Ctrl+Print taken too
+        let m = Path::new("/usr/share/snip/hypr/snip.lua");
+        let dir = config("print", &[("hyprland.lua", "require(\"hypr.autostart\")\n")]);
+        assert!(!print_keys_in_config(&dir));
+        use_keys_in(&dir, m, true).unwrap();
+        let text = std::fs::read_to_string(dir.join("hyprland.lua")).unwrap();
+        assert!(text.starts_with("require(\"hypr.autostart\")\n"), "{text}");
+        assert!(text.ends_with("snip_print_keys = true\ndofile(\"/usr/share/snip/hypr/snip.lua\")\n"), "the option before the module reads it: {text}");
+        assert!(keys_in_config(&dir) && print_keys_in_config(&dir));
+        use_keys_in(&dir, m, true).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("hyprland.lua")).unwrap(), text, "never twice");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_config_with_snips_keys_gains_print_screen_alone() {
+        // the keys loaded from another file (as the owner's macos.lua does): only Print is added
+        let m = Path::new("/usr/share/snip/hypr/snip.lua");
+        let dir = config("loaded", &[("hyprland.lua", "require(\"hypr.macos\")\n"), ("macos.lua", "dofile(HOME .. \"/OpenShotX/hypr/snip.lua\")\n")]);
+        use_keys_in(&dir, m, false).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("hyprland.lua")).unwrap(), "require(\"hypr.macos\")\n", "nothing to add");
+        use_keys_in(&dir, m, true).unwrap();
+        let text = std::fs::read_to_string(dir.join("hyprland.lua")).unwrap();
+        assert!(text.ends_with("snip_print_keys = true\nsnip_bind_defaults()\n") && !text.contains("dofile"), "{text}");
+        assert!(print_keys_in_config(&dir));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn print_screen_isnt_taken_by_a_comment() {
+        // snip.lua's own header shows the option, commented out
+        let dir = config("comment", &[("snip.lua", "--   snip_print_keys = true     -- also take PRINT\n")]);
+        assert!(!print_keys_in_config(&dir));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
