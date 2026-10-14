@@ -369,13 +369,12 @@ Full detail and measurements: [research/processing-pipelines.md](research/proces
   - `/usr/share/snip/hypr/snip.lua`, a module the user `require`s. It contains the binds (`hl.dsp.global`). snipd applies its layer rules (`no_anim` for `^snip-`) and window rules (by window title: Hyprland 0.56 patterns match the whole title, and a rule matching class and title together never matches) itself, at start and on every config reload, when it also puts back whatever keys and hooks it had on (snip-hypr's `reinstall`).
   - `.desktop` files and MIME handlers
   - sounds
-- **Onboarding** (first run) offers to:
-  1. add `require("snip")` to `~/.config/hypr/hyprland.lua`
-  2. unbind Omarchy's PRINT family
-  3. enable the service
-  4. install the bar widget
-  
-  Every step is reversible with `snip uninstall-integration`.
+- **Onboarding** (first run, OMA-10, D65): the Welcome window (`app/qml/Welcome.qml`, `snip_bridge::welcome`), in three steps:
+  1. **Keys:** Use these keys adds `dofile(…/snip.lua)` to `~/.config/hypr/hyprland.lua`, after `snip_print_keys = true` when Print Screen is ticked (D66). A config that loads Snip's keys already (from any of its Lua files) gains only `snip_print_keys = true` and `snip_bind_defaults()`. The same Lua runs at once through `hyprctl eval`. Deleting the added lines undoes it.
+  2. **Try it:** a first capture, with the keys or a Capture Area button. Once its card shows (Main's `onCardAdd`), it says what the card does.
+  3. **Ready:** start at login (enables the systemd unit running Snip), the bar icon, `snip` in a terminal.
+
+  It opens by itself until Get Started (the `welcomed` marker in Snip's data dir), and with `snip welcome`.
 - **Rules are also injected at runtime** with `hyprctl eval` when the daemon starts, and re-injected on `configreloaded`, so the app works even before the user adds the require.
 - **Shortcuts (SET-08):**
   - **Defaults:** `snip.lua` binds the default keys in `snip_bind_defaults()`.
