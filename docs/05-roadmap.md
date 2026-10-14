@@ -289,6 +289,12 @@ Built in part (2026-10-14):
 - **THIRD_PARTY.md** is written and installed.
 - **Onboarding is a guided first run** (D65, OMA-10). The Welcome window walks through Keys, Try it and Ready. Try it waits for a first capture and then says what its card does. With Snip's keys it offers Print and Super+Ctrl+Print (D66); a config that has Snip's keys already can add those alone. e2e: `welcome_first_run`, `welcome_offers_print_screen_alone`.
 
+Also built, at the owner's asking (2026-10-15):
+
+- **A window shot sits on the desktop's wallpaper** (D67, CAP-05's "With wallpaper"), as an editable Background; Shift-click gives it on transparency.
+- **Hide Desktop Clutter says how to get back** (D69): a note for 5 s, left out of captures, never during a take.
+- **One-window video** (D68) waits on spike S7.
+
 Not yet: the multi-monitor matrix (the nested Hyprland can't make headless outputs on NVIDIA), the Intel and AMD laptop passes, the AUR package and docs.
 
 ## M6: After 1.0
