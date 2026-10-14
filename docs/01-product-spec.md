@@ -329,7 +329,7 @@ A normal floating window (Hyprland rule: float, centred, with optional pin / alw
 | ID | Feature | Pri |
 |---|---|---|
 | OMA-01 | Follows the theme: reads `~/.local/state/omarchy/current/theme/colors.toml` and the font; changes live on theme switch | P0 |
-| OMA-02 | Keybinding module `require("snip")` for `hyprland.lua`, offered during onboarding, which replaces Omarchy's PRINT bindings | P0 |
+| OMA-02 | Keybinding module (`dofile(…/snip.lua)`) for `hyprland.lua`, offered during onboarding, which can also take Omarchy's Print and Super+Ctrl+Print (D66) | P0 |
 | OMA-03 | Entries in the Omarchy capture menu (`SUPER+CTRL+C`) | P1 |
 | OMA-04 | Bar widget: recording timer and stop button; optional capture button | P1 |
 | OMA-05 | Notifications through omarchy-shell (with image and click action) as a fallback when the QAO is off. Built: when the After Capture rules (or & Copy / & Save) show no card, editor or pin, `omarchy-notification-send` says "Screenshot copied" (its size) or "Screenshot saved" (its file name), with the image; a click runs `snip restore ID`, which brings the card back. | P0 |
@@ -337,6 +337,7 @@ A normal floating window (Hyprland rule: float, centred, with optional pin / alw
 | OMA-07 | `.desktop` handlers: "Annotate with Snip", "Pin with Snip" for images | P1 |
 | OMA-08 | **Bar icon** (D35): a tray icon (StatusNotifierItem) with Snip's logo, drawn in the bar's colours. A click opens CleanShot's menu, in CleanShot's order (its MainMenu.nib): All-In-One, Capture Area, Capture Previous Area, Capture Fullscreen, Capture Window, Self-Timer, Scrolling Capture, Capture Text (each with its key); Open…, Open from Clipboard, Pin to the Screen…, Capture History…, Restore Recently Closed; Settings…, About Snip, Quit Snip. Record Screen, Hide Desktop Icons and Check for Updates join when Snip has them | P0 |
 | OMA-09 | **In the launcher**: "Snip" opens Settings, starting snipd if it isn't running. Its actions start captures and open History | P0 |
+| OMA-10 | **Guided first run** (D65): the Welcome window on Snip's first start walks through three steps. **Keys:** Snip's keys, and Print Screen's if ticked (OMA-02). **Try it:** a first capture with the keys or a Capture Area button; once its card shows, what the card does. **Ready:** start at login, the bar icon, History, `snip` in a terminal. Every step can be skipped; `snip welcome` shows it again | P0 |
 
 ## 6. Linux reinterpretations: where we differ from CleanShot on purpose
 
@@ -365,9 +366,9 @@ A normal floating window (Hyprland rule: float, centred, with optional pin / alw
 |---|---|---|
 | `SUPER+SHIFT+3` | **Capture Fullscreen** (monitor with focus) | Replaces Omarchy's *Move window to workspace 3* (`code:12`) |
 | `SUPER+SHIFT+4` | **Capture Area** (click = window; Space = window mode) | Replaces Omarchy's *Move window to workspace 4* (`code:13`) |
-| `PRINT` | Capture Area | Omarchy's habit; offered during onboarding (Q3) |
-| `ALT+PRINT` | Record screen (pressed again: stop) | Omarchy's habit |
-| `SUPER+CTRL+PRINT` | Capture Text | Omarchy's habit |
+| `PRINT` | Capture Area | Omarchy's habit; offered during onboarding (D66) |
+| `ALT+PRINT` | Unchanged (Omarchy's recording) | Not offered (D66) |
+| `SUPER+CTRL+PRINT` | Capture Text | Omarchy's habit; offered during onboarding (D66) |
 | `SUPER+PRINT` | Unchanged (hyprpicker colour picker) | |
 | `SUPER+SHIFT+5` | **All-In-One** (decided 2026-10-06; macOS Cmd+Shift+5) | Replaces Omarchy's *Move window to workspace 5* (`code:14`) |
 | unbound by default | scrolling, previous area, self-timer, pin last, history, restore last, toggle pins, hide or show overlays | |
