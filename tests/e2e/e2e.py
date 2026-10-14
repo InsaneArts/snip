@@ -3566,11 +3566,26 @@ def welcome_click(s, env, name):
     s.click()
 
 
+def print_key(description):
+    """Is Print bound to this Snip action (any modifiers)?"""
+    return any(k.lower() == "print" for k in binds_for(description))
+
+
+def unbind_snip_keys():
+    for code in (12, 13, 14, 15):                                      # snip.lua's keys go again
+        hypr_eval(f'pcall(hl.unbind, "SUPER + SHIFT + code:{code}")')
+    for keys in ("PRINT", "SUPER + CTRL + PRINT"):
+        hypr_eval(f'pcall(hl.unbind, "{keys}")')
+    hypr_eval("snip_print_keys = nil")
+
+
 @case
 def welcome_first_run(s, env):
-    """OMA-02: on Snip's first start the Welcome opens by itself, floating. Use these keys
-    adds one line to hyprland.lua (once) and the keys work at once; Get Started closes it
-    for good; `snip welcome` shows it again."""
+    """OMA-02, OMA-10 (D65, D66): on Snip's first start the Welcome opens by itself, floating,
+    at Keys. Use these keys adds Snip's lines to hyprland.lua (once), Print Screen's with them as
+    ticked, and the keys work at once. Try it's button starts Capture Area, and once the card
+    shows it says what the card does. Ready's Get Started closes it for good; `snip welcome`
+    shows it again, from Keys."""
     hypr = s.tmp / "cfg/hypr"
     hypr.mkdir(parents=True, exist_ok=True)
     (hypr / "hyprland.lua").write_text("-- my config\n")
@@ -3584,22 +3599,77 @@ def welcome_first_run(s, env):
         w = welcome_client()
         assert any(t.rstrip("*") == "snip-welcome" for t in w["tags"]) and w["floating"], (w["tags"], w["floating"])
         assert wait_for(lambda: welcome_state(s)["st"].get("keysInConfig") is False, 2), welcome_state(s)
+        st = welcome_state(s)
+        assert st["step"] == 0 and st["printToo"], ("Keys, Print Screen offered ticked", st)
         welcome_click(s, env, "use-keys")
-        assert wait_for(lambda: "snip.lua" in (hypr / "hyprland.lua").read_text(), 3), "the line is added"
+        assert wait_for(lambda: "snip.lua" in (hypr / "hyprland.lua").read_text(), 3), "the lines are added"
         text = (hypr / "hyprland.lua").read_text()
-        assert text.startswith("-- my config\n") and text.count("snip.lua") == 1, text
+        assert text.startswith("-- my config\n") and text.count("snip.lua") == 1 and "snip_print_keys = true" in text, text
         assert wait_for(lambda: binds_for("Snip: Capture area"), 3), "the keys work at once"
-        assert wait_for(lambda: welcome_state(s)["st"]["keysInConfig"] is True, 2), "and it says so"
+        assert wait_for(lambda: print_key("Snip: Capture area") and print_key("Snip: Capture text (OCR)"), 3), (
+            "Print Screen's too", binds_for("Snip: Capture area"), binds_for("Snip: Capture text (OCR)"))
+        assert wait_for(lambda: welcome_state(s)["st"]["printKeys"] is True, 2), "and it says so"
         time.sleep(0.3)                               # the page is laid out anew: input lands a frame later
+
+        welcome_click(s, env, "welcome-next")
+        assert wait_for(lambda: welcome_state(s)["step"] == 1, 2), "Try it"
+        assert welcome_state(s)["areaKey"], "it names Capture Area's keys"
+        time.sleep(0.3)
+        s.cli("close-all")
+        welcome_click(s, env, "try-capture")
+        assert wait_for(lambda: layer_mapped("snip-select"), 3), "its button starts Capture Area"
+        time.sleep(0.3)
+        s.drag(100, 100, 300, 250)
+        assert wait_for(lambda: len(s.status()["cards"]) == 1, 5), "the first capture's card"
+        assert wait_for(lambda: welcome_state(s)["tried"], 3), "Try it says what the card does"
+        time.sleep(0.3)
+
+        welcome_click(s, env, "welcome-next")
+        assert wait_for(lambda: welcome_state(s)["step"] == 2, 2), "Ready"
+        time.sleep(0.3)
+        welcome_click(s, env, "welcome-back")
+        assert wait_for(lambda: welcome_state(s)["step"] == 1 and welcome_state(s)["tried"], 2), "Back, the capture still there"
+        time.sleep(0.3)
+        welcome_click(s, env, "welcome-next")
+        assert wait_for(lambda: welcome_state(s)["step"] == 2, 2)
+        time.sleep(0.3)
         welcome_click(s, env, "welcome-done")
         assert wait_for(lambda: not welcome_client(), 3) and marker.exists(), "Get Started closes it for good"
         s.cli("welcome")
         assert wait_for(lambda: welcome_client(), 5), "snip welcome shows it again"
+        assert wait_for(lambda: welcome_state(s)["step"] == 0 and not welcome_state(s)["tried"], 2), "from Keys"
     finally:
         s.debug("ui", "welcome", "close")
         marker.touch()
-        for code in (12, 13, 14, 15):                                  # snip.lua's keys go again
-            hypr_eval(f'pcall(hl.unbind, "SUPER + SHIFT + code:{code}")')
+        unbind_snip_keys()
+        s.cli("close-all")
+
+
+@case
+def welcome_offers_print_screen_alone(s, env):
+    """D66: a config that loads Snip's keys already, from any of its files, is offered Print
+    Screen's on their own. Use Print Screen too adds two lines to hyprland.lua (no second
+    load of Snip's module), and Print captures an area at once."""
+    hypr = s.tmp / "cfg/hypr"
+    hypr.mkdir(parents=True, exist_ok=True)
+    (hypr / "hyprland.lua").write_text('require("hypr.mine")\n')
+    (hypr / "mine.lua").write_text('dofile(HOME .. "/snip/hypr/snip.lua")\n')
+    try:
+        s.cli("welcome")
+        assert wait_for(lambda: welcome_client(), 5)
+        st = welcome_state(s)
+        assert st["st"]["keysInConfig"] is True and st["st"]["printKeys"] is False, st
+        time.sleep(0.3)
+        welcome_click(s, env, "use-print")
+        assert wait_for(lambda: "snip_print_keys = true" in (hypr / "hyprland.lua").read_text(), 3), "the lines are added"
+        text = (hypr / "hyprland.lua").read_text()
+        assert text.startswith('require("hypr.mine")\n') and "dofile" not in text and text.endswith("snip_bind_defaults()\n"), text
+        assert wait_for(lambda: print_key("Snip: Capture area"), 3), ("Print captures an area at once", binds_for("Snip: Capture area"))
+        assert wait_for(lambda: welcome_state(s)["st"]["printKeys"] is True, 2), "and it says so"
+    finally:
+        s.debug("ui", "welcome", "close")
+        unbind_snip_keys()
+        (hypr / "mine.lua").unlink(missing_ok=True)
 
 
 @case
