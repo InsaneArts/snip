@@ -264,15 +264,16 @@ pub mod qobject {
         fn tray_anchor(self: &Engine) -> QString;
         #[qinvokable]
         fn run_action(self: &Engine, id: QString);
-        /// First-run setup (OMA-02): whether it's still to be seen; its state
-        /// ({keysInConfig, module, autostart}); Use these keys; start at
-        /// login; seen. The setters answer "" when done, else why not.
+        /// First-run setup (OMA-02, OMA-10): whether it's still to be seen;
+        /// its state ({keysInConfig, printKeys, module, autostart}); Use these
+        /// keys (with Print Screen's, D66); start at login; seen. The setters
+        /// answer "" when done, else why not.
         #[qinvokable]
         fn welcome_wanted(self: &Engine) -> bool;
         #[qinvokable]
         fn welcome_state(self: &Engine) -> QString;
         #[qinvokable]
-        fn use_keys(self: &Engine) -> QString;
+        fn use_keys(self: &Engine, print: bool) -> QString;
         #[qinvokable]
         fn set_autostart(self: &Engine, on: bool) -> QString;
         #[qinvokable]
@@ -1097,8 +1098,8 @@ impl qobject::Engine {
         QString::from(crate::welcome::state().to_string().as_str())
     }
 
-    fn use_keys(&self) -> QString {
-        QString::from(crate::welcome::use_keys().err().unwrap_or_default().as_str())
+    fn use_keys(&self, print: bool) -> QString {
+        QString::from(crate::welcome::use_keys(print).err().unwrap_or_default().as_str())
     }
 
     fn set_autostart(&self, on: bool) -> QString {
