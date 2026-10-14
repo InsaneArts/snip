@@ -817,6 +817,42 @@ def window_with_desktop(s, env):
 
 
 @case
+def a_window_shot_sits_on_the_wallpaper(s, env):
+    """D67: a window shot is CleanShot's "With wallpaper": the clean window on the desktop's
+    own wallpaper, as a Background edit (BG-04: changed or removed in the editor). Shift-click
+    gives the window alone, on transparency."""
+    from PIL import Image
+    wall = Path.home() / ".local/state/omarchy/current/background"
+    if not wall.exists():
+        raise Skip("no Omarchy wallpaper to put a window on")
+    s.cli("close-all"); time.sleep(0.3)
+    w, mon = env.win, env.monitor()
+    lx, ly = w["at"][0] - mon["x"], w["at"][1] - mon["y"]
+
+    p = s.bg("window"); time.sleep(0.5)
+    s.move(lx + 50, ly + 50); s.click()
+    r, code = finish(p)
+    assert code == 0 and r["result"]["kind"] == "window", r
+    rec = r["result"]
+    assert wait_for(lambda: [e for e in s.traces("edited") if e["id"] == rec["id"]], 5), "a background is drawn"
+    doc = json.loads((Path(rec["source"]).parent / "edit.json").read_text())
+    assert (doc["bg"]["kind"], doc["bg"]["value"]) == ("wallpaper", str(wall.resolve())), ("the desktop's wallpaper", doc["bg"])
+    img = Image.open(rec["source"]).convert("RGBA")
+    assert img.getpixel((2, 2))[3] == 255 and img.size[0] > rec["width"], ("the wallpaper around the window, to its corners", img.size, rec["width"])
+
+    p = s.bg("window"); time.sleep(0.5)                              # Shift: on transparency
+    s.move(lx + 50, ly + 50); s.key("Shift", "keydown"); s.click()
+    r, code = finish(p)
+    s.key("Shift", "keyup")
+    assert code == 0, r
+    img = Image.open(r["result"]["source"]).convert("RGBA")
+    time.sleep(1.0)
+    assert not [e for e in s.traces("edited") if e["id"] == r["result"]["id"]], "Shift: no background"
+    assert img.getpixel((2, 2))[3] == 0, "the window alone, on transparency"
+    s.cli("close-all")
+
+
+@case
 def capture_variants(s, env):
     """CAP-02, API-01: Capture Area & Copy / & Save / & Annotate (`snip area --action …`, and
     bindable actions) skip the After Capture rules: & Copy is the clipboard only, no card.

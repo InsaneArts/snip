@@ -395,14 +395,15 @@ pub struct Capture {
     pub magnifier: bool,
     /// SEL-03: the size readout in logical px instead of physical
     pub logical_size: bool,
-    /// CAP-05: window captures keep their transparent background; Shift in
-    /// window mode inverts this (with wallpaper comes with M2's Background tool).
+    /// CAP-05: a shadow around a window shot, on its wallpaper (D67) or, with
+    /// Shift, on transparency.
     pub window_shadow: bool,
     /// Draw Hyprland's corner rounding into window captures.
     pub window_rounding: bool,
     /// "With the desktop" (product owner, 2026-10-08): a window capture is
     /// the window as it is on screen with the desktop around it (wallpaper,
-    /// other windows, the bar), not the clean window. Shift inverts it.
+    /// other windows, the bar), not the clean window on the wallpaper. Shift
+    /// gives the clean window on transparency (D67).
     pub window_desktop: bool,
     /// CAP-12 Hide desktop clutter: screen captures show the wallpaper where
     /// bars are, and no pins (cards never show)

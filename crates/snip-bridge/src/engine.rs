@@ -67,6 +67,9 @@ struct Job {
     line_breaks: Option<bool>,
     /// D32: Shift held as the selection ended skips the auto-applied preset
     skip_preset: bool,
+    /// D67: a clean window shot, put on the desktop's wallpaper (unless a
+    /// preset is applied to new screenshots)
+    wallpaper: bool,
 }
 
 /// What a capture's frame becomes: a screenshot (kept in history), pinned,
@@ -234,6 +237,13 @@ fn png_file_size(p: &Path) -> Option<(u32, u32)> {
     let mut head = [0u8; 24];
     std::fs::File::open(p).ok()?.read_exact(&mut head).ok()?;
     png_size(&head)
+}
+
+/// D67: a clean window shot's background, the desktop's wallpaper around it.
+/// No shadow or corners of its own: the window's are in its image.
+fn window_wallpaper() -> Option<Value> {
+    let wall = std::fs::canonicalize(theme::current_dir().join("background")).ok()?;
+    Some(json!({ "kind": "wallpaper", "value": wall, "shadow": 0, "radius": 0 }))
 }
 
 fn png_size(b: &[u8]) -> Option<(u32, u32)> {
@@ -458,6 +468,7 @@ impl Inner {
                 _ => None,
             },
             skip_preset: false,
+            wallpaper: false,
         };
         let mode = if mode.starts_with("text-") { "text" } else { mode };
         // a capture hotkey during a countdown cancels it
@@ -567,7 +578,7 @@ impl Inner {
         let s = snip_hypr::monitors().into_iter().find(|m| m.name == output).map_or(1.0, |m| m.scale);
         let rect = geometry::logical_to_physical(rect, s);
         let cursor = cursor.unwrap_or_else(|| self.cfg().capture.show_cursor);
-        let job = Job { waiter, cursor, delay: 0, action, line_breaks: None, skip_preset: false };
+        let job = Job { waiter, cursor, delay: 0, action, line_breaks: None, skip_preset: false, wallpaper: false };
         *self.last_area.lock().unwrap() = Some((output.clone(), rect));
         save_last_area(&output, rect);
         self.play("shutter");
@@ -937,9 +948,9 @@ impl Inner {
         self.capture_clean(req, Source::Outputs(Some(vec![c.output])), cursor);
     }
 
-    /// Window mode click (CAP-05): the window's own buffer, never occluded.
-    /// Shift (`invert`) flips the desktop or shadow choice, and skips an
-    /// auto-applied preset too (D32).
+    /// Window mode click (CAP-05): the window's own buffer, never occluded, on
+    /// the desktop's wallpaper (D67). Shift (`invert`) gives it on
+    /// transparency instead, and skips an auto-applied preset too (D32).
     pub fn finish_window(self: &Arc<Self>, address: &str, output: String, rect: Rect, invert: bool) {
         let Some(mut s) = self.session.lock().unwrap().take() else { return };
         s.job.skip_preset = invert;
@@ -960,8 +971,9 @@ impl Inner {
                 None => reply(s.job.waiter, Response::err("window not found")),
             };
         }
-        // With the desktop: the window as it is on screen and what's around it
-        if self.cfg().capture.window_desktop != invert {
+        // With the desktop (a setting, D37): the window as it is on screen and
+        // what's around it; Shift gives the clean window (D67)
+        if self.cfg().capture.window_desktop && !invert {
             if let Some(f) = frames::get(&output) {
                 frames::clear();
                 self.play("shutter");
@@ -977,7 +989,8 @@ impl Inner {
         self.play("shutter");
         let fallback = frames::get(&output);
         frames::clear();
-        let shadow = self.cfg().capture.window_shadow != (invert && !self.cfg().capture.window_desktop);
+        let shadow = self.cfg().capture.window_shadow;
+        s.job.wallpaper = !invert;
         match client {
             Some(client) if self.features.lock().unwrap().toplevel_capture => {
                 let req = self.next();
@@ -1270,7 +1283,8 @@ impl Inner {
         if job.skip_preset || !matches!(rec.kind.as_str(), "area" | "fullscreen" | "window") {
             return false;
         }
-        let Some(bg) = self.auto_background() else { return false };
+        // a preset applied to new screenshots wins over a window's wallpaper (D67)
+        let Some(bg) = self.auto_background().or_else(|| if job.wallpaper { window_wallpaper() } else { None }) else { return false };
         let scale = snip_hypr::monitors().into_iter().find(|m| m.name == output).map(|m| m.scale).unwrap_or(1.0);
         self.pending_bg.lock().unwrap().insert(rec.id.clone(), (output.to_string(), job.action));
         let mut j = card_json(rec, output);
@@ -2478,7 +2492,7 @@ mod tests {
     }
 
     fn job(action: Option<AfterCapture>) -> Job {
-        Job { waiter: None, cursor: false, delay: 0, action, line_breaks: None, skip_preset: false }
+        Job { waiter: None, cursor: false, delay: 0, action, line_breaks: None, skip_preset: false, wallpaper: false }
     }
 
     /// An area screenshot as a selection makes one; its id.
@@ -2539,6 +2553,47 @@ mod tests {
         let skipped = capture(&inner, Job { skip_preset: true, ..job(None) });
         capture(&inner, job(None));
         assert_eq!((cards(&told), backgrounds(&told)), (vec![skipped], 1));
+    }
+
+    /// A window shot as a click makes one; its id.
+    fn window_shot(inner: &Arc<Inner>, job: Job) -> String {
+        let png = encode::encode_png(&[200u8; 4 * 8 * 6], 8, 6, true);
+        let meta = CaptureMeta { kind: "window".into(), scale: 1.0, output: "T".into(), app: None, title: None };
+        let (tx, rx) = mpsc::channel();
+        inner.ingest(png, 8, 6, meta, "T", Job { waiter: Some(tx), ..job });
+        rx.recv().unwrap().result["id"].as_str().unwrap().to_string()
+    }
+
+    /// The backgrounds the UI was told to draw under new screenshots.
+    fn backgrounds_of(told: &Told) -> Vec<Value> {
+        told.0.lock().unwrap().iter().filter_map(|u| if let Ui::BackgroundAuto(j) = u { serde_json::from_str::<Value>(j).ok().map(|v| v["bg"].clone()) } else { None }).collect()
+    }
+
+    #[test]
+    fn a_clean_window_shot_goes_on_the_desktop_wallpaper() {
+        // D67: CleanShot's "With wallpaper", the desktop's own; Shift-click
+        // gives the window on transparency, and an area stays as it is
+        let _one = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+        let (inner, told) = engine(false);
+        let state = theme::current_dir();
+        std::fs::create_dir_all(&state).unwrap();
+        let wall = state.join("wallpaper.png");
+        std::fs::write(&wall, encode::encode_png(&[9u8; 3 * 4], 2, 2, false)).unwrap();
+        let link = state.join("background");
+        let _ = std::fs::remove_file(&link);
+        std::os::unix::fs::symlink(&wall, &link).unwrap();
+        window_shot(&inner, Job { wallpaper: true, ..job(None) });
+        window_shot(&inner, Job { skip_preset: true, ..job(None) });
+        capture(&inner, job(None));
+        let bgs = backgrounds_of(&told);
+        assert_eq!(bgs.len(), 1, "{bgs:?}");
+        assert_eq!((bgs[0]["kind"].as_str(), bgs[0]["value"].as_str()), (Some("wallpaper"), wall.canonicalize().unwrap().to_str()));
+        assert_eq!((bgs[0]["shadow"].as_f64(), bgs[0]["radius"].as_f64()), (Some(0.0), Some(0.0)), "the window's own shadow and corners");
+        // a preset applied to new screenshots wins over the wallpaper
+        let (inner, told) = engine(true);
+        window_shot(&inner, Job { wallpaper: true, ..job(None) });
+        assert_eq!(backgrounds_of(&told)[0]["kind"], "color");
+        let _ = std::fs::remove_file(&link);
     }
 
     #[test]
