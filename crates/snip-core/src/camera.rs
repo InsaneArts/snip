@@ -66,7 +66,10 @@ impl Recording {
         }
         let made: Result<i64, String> = match (keep, fake) {
             (false, _) => Err("not kept".into()),
-            (true, true) => fake_recording(&out, ((crate::trace::now_ns() as i64 / 1000 - self.started) / 1000).max(0) as u64).map(|_| self.started),
+            (true, true) => {
+                let file = std::env::var_os("SNIP_CAMERA_FILE").map(PathBuf::from);
+                fake_recording(&out, ((crate::trace::now_ns() as i64 / 1000 - self.started) / 1000).max(0) as u64, file.as_deref()).map(|_| self.started)
+            }
             (true, false) => finish(&self.file, &out),
         };
         for f in [self.file.clone(), self.file.with_extension("log")] {
@@ -124,11 +127,18 @@ fn record_args(device: &Path, out: &Path, plain: bool) -> Vec<String> {
 }
 
 /// Tests' stand-in for a camera recording (SNIP_CAMERA=fake): SMPTE bars,
-/// `ms` long, into `out`, its time from 0.
-fn fake_recording(out: &Path, ms: u64) -> Result<(), String> {
-    let bars = format!("smptebars=size=640x480:rate=30:duration={:.3}", ms.max(100) as f64 / 1000.0);
-    let made = Command::new("ffmpeg")
-        .args(["-v", "error", "-y", "-f", "lavfi", "-i", &bars, "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p"])
+/// or the video `file` looped (SNIP_CAMERA_FILE: a demo's camera), `ms`
+/// long, into `out`, its time from 0.
+fn fake_recording(out: &Path, ms: u64, file: Option<&Path>) -> Result<(), String> {
+    let secs = format!("{:.3}", ms.max(100) as f64 / 1000.0);
+    let mut cmd = Command::new("ffmpeg");
+    cmd.args(["-v", "error", "-y"]);
+    match file {
+        Some(f) => cmd.args(["-stream_loop", "-1", "-i"]).arg(f).args(["-t", &secs, "-an"]),
+        None => cmd.args(["-f", "lavfi", "-i", &format!("smptebars=size=640x480:rate=30:duration={secs}")]),
+    };
+    let made = cmd
+        .args(["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p"])
         .arg(out)
         .stdin(Stdio::null())
         .output()
@@ -237,6 +247,32 @@ mod tests {
         assert_eq!(file, dir.join("take.camera.mp4"));
         assert!(first >= t0 && first - t0 < 100_000, "it started then: {}", first - t0);
         assert!(file.metadata().unwrap().len() > 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_test_camera_can_film_a_file() {
+        // SNIP_CAMERA_FILE: the test camera's footage is that file, looped to the take's length
+        let dir = scratch("file");
+        let clip = dir.join("feed.mp4");
+        let made = Command::new("ffmpeg")
+            .args(["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=320x240:rate=30:duration=1", "-c:v", "libx264", "-pix_fmt", "yuv420p"])
+            .arg(&clip)
+            .status()
+            .unwrap();
+        assert!(made.success());
+        let out = dir.join("take.camera.mp4");
+        fake_recording(&out, 2500, Some(&clip)).unwrap();
+        let probe = Command::new("ffprobe")
+            .args(["-v", "error", "-show_entries", "stream=width,duration", "-of", "csv=p=0"])
+            .arg(&out)
+            .output()
+            .unwrap();
+        let text = String::from_utf8_lossy(&probe.stdout);
+        let mut f = text.trim().split(',');
+        assert_eq!(f.next(), Some("320"), "the file's picture, not the bars' 640: {text}");
+        let secs: f64 = f.next().unwrap_or("0").parse().unwrap_or(0.0);
+        assert!((secs - 2.5).abs() < 0.2, "looped to the take's length: {text}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

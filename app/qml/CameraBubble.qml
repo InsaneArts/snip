@@ -15,6 +15,7 @@ Item {
     id: bubble
     property var device: null              // a cameraDevice
     property bool fake: false              // tests: a card stands in for a camera
+    property string file: ""               // a demo's camera: this video, looped
     property string shape: "circle"
     property bool mirror: true
     property real pixelScale: 1             // physical px per logical px
@@ -102,9 +103,23 @@ Item {
             mirrored: bubble.mirror
             endOfStreamPolicy: VideoOutput.KeepLastFrame
         }
+        // a demo's camera (SNIP_CAMERA_FILE): its video, looped, mirrored as a camera is
+        VideoOutput {
+            id: fileOutput
+            anchors.fill: parent
+            visible: bubble.fake && bubble.file !== ""
+            fillMode: VideoOutput.PreserveAspectCrop
+            mirrored: bubble.mirror
+        }
+        MediaPlayer {
+            source: bubble.fake && bubble.file !== "" && bubble.running ? "file://" + bubble.file : ""
+            loops: MediaPlayer.Infinite
+            videoOutput: fileOutput
+            onSourceChanged: if (source.toString() !== "") play()
+        }
         // the tests' card: two colours and a letter, mirrored as a camera is
         Rectangle {
-            visible: bubble.fake
+            visible: bubble.fake && bubble.file === ""
             anchors.fill: parent
             gradient: Gradient {
                 GradientStop { position: 0; color: "#2f7df6" }
