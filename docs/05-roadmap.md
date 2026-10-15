@@ -293,7 +293,7 @@ Also built, at the owner's asking (2026-10-15):
 
 - **A window shot sits on the desktop's wallpaper** (D67, CAP-05's "With wallpaper"), as an editable Background; Shift-click gives it on transparency.
 - **Hide Desktop Clutter says how to get back** (D69): a note for 5 s, left out of captures, never during a take.
-- **One-window video** (D68) waits on spike S7.
+- **One-window video** (D68): spike S7 says it's feasible. Hyprland hands one window's own frames at the monitor's 144 Hz (capture p95 9 ms), and NVENC encodes them at ~135 fps ([spike-s7-window-video.md](research/recording-2026-10/spike-s7-window-video.md)). Building it is the owner's call.
 
 Not yet: the multi-monitor matrix (the nested Hyprland can't make headless outputs on NVIDIA), the Intel and AMD laptop passes, the AUR package and docs.
 
