@@ -1593,6 +1593,7 @@ Window {
 
     component Swatch: Item {
         required property string modelData
+        objectName: "color:" + modelData
         width: 30; height: 30
         Rectangle {
             anchors.centerIn: parent
@@ -1737,6 +1738,7 @@ Window {
             delegate: Rectangle {
                 required property int index
                 required property real modelData
+                objectName: "size:" + index
                 width: 64; height: 30; radius: 15
                 color: ed.sizeIndex[ed.sizeKind] === index ? Theme.controlPressed : szMa.containsMouse ? Theme.controlHover : "transparent"
                 Rectangle {
@@ -1901,6 +1903,7 @@ Window {
             delegate: Rectangle {
                 required property var modelData
                 readonly property string current: ed.selectedObj && ed.selectedObj.kind === "counter" ? (ed.selectedObj.style || "num") : ed.counterStyle
+                objectName: "counter-style:" + modelData.id
                 width: 150; height: 30; radius: 8
                 color: current === modelData.id ? Theme.controlPressed : csMa.containsMouse ? Theme.controlHover : "transparent"
                 Text { x: 14; anchors.verticalCenter: parent.verticalCenter; text: parent.modelData.label; color: Theme.text
@@ -2078,6 +2081,7 @@ Window {
                 required property var modelData
                 readonly property bool current: (ed.selectedObj && ed.selectedObj.kind === "text" ? (ed.selectedObj.style || "standard")
                                                  : ed.editingText && ed.textObj ? (ed.textObj.style || "standard") : ed.textStyle) === modelData.id
+                objectName: "text-style:" + modelData.id
                 width: 168; height: 34; radius: 8
                 color: current ? Theme.controlPressed : txMa.containsMouse ? Theme.controlHover : "transparent"
                 EditorItem {
@@ -2098,6 +2102,7 @@ Window {
             delegate: Rectangle {
                 required property var modelData
                 readonly property bool current: (ed.selectedObj && ed.selectedObj.kind === "arrow" ? (ed.selectedObj.style || "standard") : ed.arrowStyle) === modelData.id
+                objectName: "arrow-style:" + modelData.id
                 width: 132; height: 32; radius: 8
                 color: current ? Theme.controlPressed : arMa.containsMouse ? Theme.controlHover : "transparent"
                 EditorItem {
