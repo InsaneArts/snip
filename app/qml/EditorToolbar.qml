@@ -16,6 +16,7 @@ Rectangle {
     }
     component Tool: ToolButton {
         required property string name
+        objectName: "tool-" + name
         selected: bar.ed.tool === name
         onClicked: bar.ed.setTool(name)
     }
