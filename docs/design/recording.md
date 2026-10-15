@@ -135,7 +135,7 @@ history card ─ Edit Video… ─▶ VideoEditor window ─▶ media::export (f
 - **Look:** Circle (default), Square, Rectangle, Vertical. Small, Medium, Large, Huge, scaled to the recorded area (Omarchy's sizes are 18, 25 and 33.75 % of its height). 40 px from the bottom-right corner to start; dragged anywhere after. Mirrored by default. A click fills the area with the camera; another click brings it back.
 - **Camera:** Qt opens V4L2 devices directly (no PipeWire path in Qt 6.11). The bubble picks an uncompressed format of at most about 640×480: Qt decodes MJPEG on the CPU, up to 23 % of a core at 1080p. It hides itself if the camera fails, is in use, or stops sending frames, since whatever it shows is recorded.
 - **Settings:** the camera (by its name), shape, size and mirror are kept in `[recording]`; where it was dragged is kept for that recording only.
-- **Tests:** there is no camera on the reference machine. `SNIP_CAMERA=fake` puts a test card in the list (e2e: the menu, sizes, shapes, the circle's mask on screen, the drag, the fill, recording). The device path (V4L2 formats, unplugging, "in use") needs a real camera.
+- **Tests:** there is no camera on the reference machine. `SNIP_CAMERA=fake` puts a test card in the list (e2e: the menu, sizes, shapes, the circle's mask on screen, the drag, the fill, recording). With `SNIP_CAMERA_FILE` set, that test camera films a video file, looped, for demos. The device path (V4L2 formats, unplugging, "in use") needs a real camera.
 
 ## Clicks and keystrokes (REC-09/10)
 

@@ -168,8 +168,10 @@ impl Inner {
             "mics": if now { vec![] } else { self.audio_inputs() }, "mic": cfg.mic, "system": cfg.system_audio, "dim": cfg.dim, "now": now,
             "camera": cfg.camera, "cameraShape": cfg.camera_shape, "cameraSize": cfg.camera_size, "cameraMirror": cfg.camera_mirror,
             "clicks": cfg.highlight_clicks, "keys": cfg.show_keystrokes, "studio": cfg.studio, "windows": windows,
-            // tests: a test card stands in for a camera (the suite's machine has none)
+            // tests: a test card stands in for a camera (the suite's machine has none);
+            // a demo's: a video file (SNIP_CAMERA_FILE)
             "fakeCamera": std::env::var("SNIP_CAMERA").is_ok_and(|v| v == "fake"),
+            "fakeCameraFile": std::env::var("SNIP_CAMERA_FILE").unwrap_or_default(),
         })
         .to_string();
         self.ui(Ui::RecordOpen(j));

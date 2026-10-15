@@ -51,6 +51,7 @@ Window {
     property string cameraSize: "medium"            // small | medium | large | huge
     property bool cameraMirror: true
     property bool fakeCamera: false                 // tests: a test card is a camera
+    property string fakeCameraFile: ""              // a demo's: this video is
     property bool camerasOpen: false
     property bool cameraFull: false                 // filling the area
     property point cameraAt: Qt.point(-1, -1)       // its corner from the area's (-1: not moved)
@@ -106,6 +107,7 @@ Window {
         cameraSize = s.cameraSize || "medium"
         cameraMirror = s.cameraMirror !== false
         fakeCamera = !!s.fakeCamera
+        fakeCameraFile = s.fakeCameraFile || ""
         camerasOpen = false
         cameraFull = false
         cameraAt = Qt.point(-1, -1)
@@ -533,6 +535,7 @@ Window {
         device: hud.cameraEntry ? hud.cameraEntry.device : null
         pixelScale: hud.scale
         fake: hud.cameraEntry !== null && hud.cameraEntry.device === null
+        file: hud.fakeCameraFile
         shape: hud.cameraFull ? "full" : hud.cameraShape
         mirror: hud.cameraMirror
         x: hud.cameraFull ? hud.area.x : hud.cameraX
