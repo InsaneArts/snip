@@ -1406,7 +1406,7 @@ Window {
                     if (Math.hypot(p.x - last[0], p.y - last[1]) * ed.k >= 2)       // a point every 2 view px
                         ed.draft = Object.assign(Ed.copy(ed.draft), { pts: ed.draft.pts.concat([[p.x, p.y]]) })
                 } else if (gesture === "draw") {
-                    const d = Ed.copy(ed.draft)
+                    let d = Ed.copy(ed.draft)
                     let x = p.x, y = p.y
                     if (d.kind === "arrow" || d.kind === "line") {
                         if (shift) {   // 45° steps

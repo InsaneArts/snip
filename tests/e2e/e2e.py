@@ -4449,6 +4449,33 @@ def editor_draws_with_pointer(s, env):
 
 
 @case
+def editor_draws_a_curved_arrow(s, env):
+    """ANN-04: with Curved chosen, a drag draws a new arrow, bent from the start (a drag
+    with Curved used to draw nothing)."""
+    from PIL import Image
+    png = s.tmp / "curved.png"
+    Image.new("RGB", (400, 260), "white").save(png)
+    s.json("edit", str(png))
+    assert wait_for(lambda: editor_window(), 5) and wait_for(lambda: editor_state(s)["ready"], 3)
+    time.sleep(0.3)
+    w, mon, st = editor_window(), env.monitor(), editor_state(s)
+
+    def at(ix, iy):                                   # image px -> output-local logical px
+        return (w["at"][0] - mon["x"] + st["originX"] + ix * st["k"], w["at"][1] - mon["y"] + st["originY"] + iy * st["k"])
+
+    s.debug("ui", "editor", "tool", "arrow")
+    s.debug("ui", "editor", "arrow-style", "curved")
+    s.drag(*at(60, 200), *at(300, 60), steps=6)
+    time.sleep(0.2)                                   # the release reaches the editor after the drag call returns
+    items = editor_state(s)["items"]
+    assert len(items) == 1 and items[0]["kind"] == "arrow" and items[0]["style"] == "curved", items
+    a = items[0]
+    assert abs(a["x1"] - 60) <= 3 and abs(a["y2"] - 60) <= 3, a
+    assert abs(a["cx"] - (a["x1"] + a["x2"]) / 2) + abs(a["cy"] - (a["y1"] + a["y2"]) / 2) > 40, ("it starts bent", a)
+    close_editor(s)
+
+
+@case
 def card_after_done(s, env):
     """After Done, the edited capture is in Quick Access even when its card had gone
     (closed, or timed out while annotating): there to drag, save or copy. One card only."""
