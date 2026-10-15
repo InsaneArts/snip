@@ -121,6 +121,7 @@ Rectangle {
             }
             ToolButton {
                 id: sizeButton
+                objectName: "size-button"
                 visible: !!Ed.sizes[bar.ed.sizeKind]
                 tip: "Size"
                 icon: bar.ed.sizeKind === "text" ? "" : bar.ed.sizeKind === "counter" ? "counter" : "stroke"
@@ -133,6 +134,7 @@ Rectangle {
             visible: bar.ed.sizeKind === "text" && bar.ed.tool !== "crop"
             ToolButton {
                 id: textStyleButton
+                objectName: "text-style-button"
                 tip: "Text style"
                 chevron: true
                 leftPad: 18
@@ -160,6 +162,7 @@ Rectangle {
             visible: bar.ed.sizeKind === "counter"
             ToolButton {
                 id: counterStyleButton
+                objectName: "counter-style-button"
                 tip: "Counter style"
                 chevron: true
                 label: Ed.counterStyles.find(c => c.id === (bar.ed.selectedObj && bar.ed.selectedObj.kind === "counter"
@@ -171,6 +174,7 @@ Rectangle {
             visible: bar.ed.sizeKind === "arrow" && bar.ed.tool !== "crop"
             ToolButton {
                 id: arrowStyleButton
+                objectName: "arrow-style-button"
                 tip: "Arrow style"
                 chevron: true
                 leftPad: 26

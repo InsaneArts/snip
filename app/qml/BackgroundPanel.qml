@@ -133,6 +133,7 @@ Rectangle {
                 }
             }
             Rectangle {
+                objectName: "bg-none"
                 width: parent.width; height: 30; radius: 8
                 color: noneMa.containsMouse ? Theme.controlHover : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
                 border.width: panel.bg ? 0 : 2; border.color: Theme.accent
@@ -181,6 +182,8 @@ Rectangle {
                         delegate: Tile {
                             id: wallTile
                             required property string modelData
+                            required property int index
+                            objectName: "bg-wallpaper:" + index
                             readonly property bool own: panel.ownWalls.indexOf(modelData) >= 0
                             current: !!panel.bg && panel.bg.kind === "wallpaper" && panel.bg.value === modelData
                             Image { anchors.fill: parent; source: "file://" + wallTile.modelData; fillMode: Image.PreserveAspectCrop
@@ -287,7 +290,7 @@ Rectangle {
             // CleanShot's pairs: Inset with Auto-balance, Shadow with Corners
             Row {
                 width: parent.width; spacing: 16
-                Slider { width: panel.video ? parent.width : (parent.width - 16) / 2; label: "Inset"; from: 0; to: 60; unit: " px"
+                Slider { objectName: "bg-inset"; width: panel.video ? parent.width : (parent.width - 16) / 2; label: "Inset"; from: 0; to: 60; unit: " px"
                          value: panel.bg ? panel.bg.inset / panel.ed.unit : 0
                          onMoved: (v) => panel.ed.previewBg({ inset: Math.round(v * panel.ed.unit) })
                          onReleased: (v) => panel.release({ inset: Math.round(v * panel.ed.unit) }); onCancelled: panel.ed.focusKeys() }
@@ -312,11 +315,11 @@ Rectangle {
             }
             Row {
                 width: parent.width; spacing: 16
-                Slider { width: (parent.width - 16) / 2; label: "Shadow"; from: 0; to: 100; unit: "%"
+                Slider { objectName: "bg-shadow"; width: (parent.width - 16) / 2; label: "Shadow"; from: 0; to: 100; unit: "%"
                          value: panel.bg ? panel.bg.shadow * 100 : 0
                          onMoved: (v) => panel.ed.previewBg({ shadow: v / 100 })
                          onReleased: (v) => panel.release({ shadow: v / 100 }); onCancelled: panel.ed.focusKeys() }
-                Slider { width: (parent.width - 16) / 2; label: "Corners"; from: 0; to: 60; unit: " px"
+                Slider { objectName: "bg-corners"; width: (parent.width - 16) / 2; label: "Corners"; from: 0; to: 60; unit: " px"
                          value: panel.bg ? panel.bg.radius / panel.ed.unit : 0
                          onMoved: (v) => panel.ed.previewBg({ radius: Math.round(v * panel.ed.unit) })
                          onReleased: (v) => panel.release({ radius: Math.round(v * panel.ed.unit) }); onCancelled: panel.ed.focusKeys() }
@@ -329,6 +332,7 @@ Rectangle {
                     model: Ed.bgRatios
                     delegate: ToolButton {
                         required property var modelData
+                        objectName: "bg-ratio:" + modelData.label
                         label: modelData.label
                         selected: (panel.bg ? panel.bg.ratio : 0) === modelData.r
                         onClicked: panel.ed.setBg({ ratio: modelData.r })
@@ -343,6 +347,7 @@ Rectangle {
                     model: ["tl", "t", "tr", "l", "c", "r", "bl", "b", "br"]
                     delegate: Rectangle {
                         required property string modelData
+                        objectName: "bg-align:" + modelData
                         width: 26; height: 20; radius: 5
                         readonly property bool current: (panel.bg ? panel.bg.align : "c") === modelData
                         color: current ? Theme.accent : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.08)
