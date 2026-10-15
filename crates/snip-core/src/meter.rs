@@ -163,14 +163,16 @@ fn shown(prev: f32, peak: f32) -> f32 {
 
 /// `pw-record`'s arguments for `mic`: PipeWire's own peaks, 30 a second,
 /// as raw f32 on stdout. A named microphone that's gone ends it, rather
-/// than the default one standing in under its name; "default_input" (gsr's
-/// name) follows the default source, as gsr does.
+/// than the default one standing in under its name, and it stays on that
+/// microphone when it is the default too (else WirePlumber makes it follow
+/// the default, and dont-fallback ends it); "default_input" (gsr's name)
+/// follows the default source, as gsr does.
 fn pw_record_args(mic: &str) -> Vec<String> {
     let mut args: Vec<String> = ["--raw", "--format", "f32", "--rate", "30", "--channels", "1", "-P"].map(String::from).into();
     if mic == "default_input" {
         args.push(r#"{ "resample.peaks": true, "channelmix.normalize": true }"#.into());
     } else {
-        args.push(r#"{ "resample.peaks": true, "channelmix.normalize": true, "node.dont-fallback": true }"#.into());
+        args.push(r#"{ "resample.peaks": true, "channelmix.normalize": true, "node.dont-fallback": true, "node.dont-reconnect": true }"#.into());
         args.extend(["--target".into(), mic.into()]);
     }
     args.push("-".into());
@@ -270,11 +272,15 @@ mod tests {
 
     #[test]
     fn a_named_mic_never_falls_back_to_another_and_the_default_follows_the_default() {
+        // dont-reconnect: WirePlumber turns a stream on the default source
+        // into one that follows the default, and with dont-fallback that
+        // ends it on its next rescan: the meter of a mic that is also the
+        // default stayed empty
         assert_eq!(
             pw_record_args("alsa_input.usb-Sony_INZONE_H5-00.mono-fallback"),
             [
                 "--raw", "--format", "f32", "--rate", "30", "--channels", "1",
-                "-P", r#"{ "resample.peaks": true, "channelmix.normalize": true, "node.dont-fallback": true }"#,
+                "-P", r#"{ "resample.peaks": true, "channelmix.normalize": true, "node.dont-fallback": true, "node.dont-reconnect": true }"#,
                 "--target", "alsa_input.usb-Sony_INZONE_H5-00.mono-fallback", "-",
             ]
         );
