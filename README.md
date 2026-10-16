@@ -4,7 +4,7 @@ Snip is a screenshot and screen recording tool for [Omarchy](https://omarchy.org
 
 See it at work on [snipshotx.com](https://snipshotx.com).
 
-![Snip's editor with counters, an arrow, a label, a highlight and a gradient background](docs/screenshot.webp)
+![Snip's editor on an annotated capture with a gradient behind it, and two capture cards on the left](docs/annotate.webp)
 
 ## Features
 
@@ -20,6 +20,8 @@ See it at work on [snipshotx.com](https://snipshotx.com).
 - **History**: every capture is kept with the text recognised in it. Search it in the History window or with `snip search`.
 - **Hide desktop clutter**: covers the bar with your wallpaper for a clean shot.
 - **Omarchy**: Snip follows your theme, has an icon in the bar and actions in the launcher.
+
+![Snip's video editor on a Studio recording, with a zoom selected on the timeline](docs/video-editor.webp)
 
 Captures are saved as PNG, JPG or WebP. Everything stays on your computer.
 
