@@ -1,78 +1,94 @@
 # Snip
 
-CleanShot X's screenshot workflow for [Omarchy](https://omarchy.org) and Hyprland. Snip has an instant frozen selection overlay and floating Quick Access cards. It reads text and QR codes and keeps a searchable capture history. It follows your Omarchy theme and Hyprland's corner rounding.
+Snip is a screenshot and screen recording tool for [Omarchy](https://omarchy.org) and Hyprland, modelled on CleanShot X.
 
-**Status:** M1 (capture core and Quick Access) is in daily use from source. M2 has started with the editor; backgrounds and pins follow; history UI and scrolling capture in M3; recording in M4 ([roadmap](docs/05-roadmap.md)).
+See it at work on [snipshotx.com](https://snipshotx.com).
 
-## What works today
+![Snip's editor with counters, an arrow, a label, a highlight and a gradient background](docs/screenshot.webp)
 
-- **Capture:**
-  - area, fullscreen, previous area;
-  - window: hold Space and click for the clean window, with Hyprland's corners and a shadow;
-  - Capture Text, which reads OCR and QR codes into the clipboard.
-- **Selection overlay:**
-  - pixel-exact at any scale, including rotated monitors;
-  - crosshair, magnifier with hex colour;
-  - Alt (square), Ctrl (from centre), Space while dragging (move); Shift as you let go skips an auto-applied Background preset (CleanShot's keys).
-- **Quick Access cards:**
-  - hover to frost, then Copy or Save;
-  - drag out, context menu, preview, auto-close;
-  - CleanShot's motion, measured from its demos.
-- **Capture lifecycle:** a capture goes to Snip's history only. Copy puts it on the clipboard. Save writes it to your folder and also copies it. Snip's own UI is never in a capture.
-- **Editor:** CleanShot's Annotate tools: arrows (four styles; drag the middle to bend), rectangles, ellipses, lines, text in seven styles with emoji, counters, pencil, a highlighter that snaps to text lines, spotlight, Pixelate/Text shape/Blur/Black out that really hide what is under them, crop and resize, added images and the Background tool; with undo, zoom, Copy, Save, Save As and Drag Me. Open it from a card (pencil or double-click), with `snip edit FILE`, or on whatever image is on the clipboard with `snip edit --clipboard`. Edits go back to the capture and stay editable.
-- **History search:** `snip search connection refused` finds captures by the text in them.
-- **Scrolling capture:** `snip scroll` (or bind `snip:scroll`). Choose the area, then press Enter and scroll the page yourself, or let Auto-Scroll do it; Enter again finishes. You get one tall capture, stitched by Snip's own stitcher.
-- **History window:** `snip history` (or bind `snip:history`) shows past captures across the top of the screen. Type to search their text, Enter restores one to Quick Access, double-click annotates it, drag it out.
-- **First start:** a Welcome window walks you through three steps. **Keys:** Snip's keys, with Print Screen's if you tick it; the lines go into hyprland.lua only if you click. **Try it:** your first capture, and what its card does. **Ready:** start at login, the bar icon, `snip` in a terminal. `snip welcome` shows it again.
-- **In the launcher:** search "Snip" to open Settings; its actions start each capture and History. Snip starts if it isn't running.
-- **In the bar:** Snip's icon sits in Omarchy's bar. A click opens its menu: every capture with its key, History, Settings…, Quit.
-- **Settings:** `snip settings` (or bind `snip:settings`) opens CleanShot's settings tabs. They write `~/.config/snip/config.toml` and keep your comments; editing the file by hand works too, live. Shortcuts records keys for every action and binds them in Hyprland.
-- **Formats:** PNG, JPG and WebP.
+## Features
+
+- **Capture**: an area, a window, the whole screen or the previous area. The screen freezes when you press the shortcut, and a magnifier shows the pixel under the pointer and its hex colour. Window captures keep Hyprland's rounded corners and get a shadow on your wallpaper.
+- **Quick Access**: every capture appears as a card in the corner. Copy, save, annotate or pin it from there, or drag it into another app.
+- **Editor**: arrows (drag the middle to bend one), text in seven styles, counters, rectangles, ellipses, lines, a pen, a highlighter that snaps to lines of text, spotlight, crop and resize. Pixelate, Blur and Black out hide what's under them in the saved image.
+- **Backgrounds**: a gradient, one of your wallpapers, a blur or a plain colour behind the capture, with padding, rounded corners, a shadow and an aspect ratio.
+- **Scrolling capture**: select an area and scroll, or let Auto-Scroll do it. Snip stitches the frames into one tall image.
+- **Capture Text**: copies the text in an area to the clipboard, or the link in a QR code. Recognition runs locally with Tesseract.
+- **Pins**: keep a capture above your windows. Scroll over it to change its opacity, Ctrl+scroll to resize it.
+- **Recording**: an area, a window or a monitor, as a video or a GIF. Add the microphone, the computer's sound, a camera, and your clicks and keystrokes.
+- **Studio**: records the pointer apart from the screen. When you stop, the video editor opens with zooms at your clicks and typing, the view following the pointer, and a redrawn pointer you can enlarge and smooth. The editor also trims, cuts and exports MP4 or GIF.
+- **History**: every capture is kept with the text recognised in it. Search it in the History window or with `snip search`.
+- **Hide desktop clutter**: covers the bar with your wallpaper for a clean shot.
+- **Omarchy**: Snip follows your theme, has an icon in the bar and actions in the launcher.
+
+Captures are saved as PNG, JPG or WebP. Everything stays on your computer.
 
 ## Install
 
-On Omarchy (Arch), from this checkout:
+Snip runs on Omarchy, or Arch Linux with Hyprland.
 
 ```sh
-scripts/install.sh          # build a pacman package, install it, start Snip now and at every login
-scripts/install.sh remove   # uninstall
+curl -fsSL https://snipshotx.com/install.sh | bash
 ```
 
-pacman asks for your password and installs what Snip needs. Snip then appears in the launcher and in the bar. Its keys come with Snip's Hyprland module (`/usr/share/snip/hypr/snip.lua`).
-
-## Run it from source
-
-Dependencies (Arch/Omarchy):
+This builds a pacman package from source, installs it, and starts Snip now and at every login. Run it again to update. To uninstall:
 
 ```sh
-sudo pacman -S --needed rust cmake ninja corrosion qt6-base qt6-declarative qt6-wayland qt6-shadertools layer-shell-qt kcoreaddons sqlite tesseract tesseract-data-eng
+curl -fsSL https://snipshotx.com/install.sh | bash -s remove
 ```
 
-Then:
+From a checkout, `scripts/install.sh` does the same, and `scripts/install.sh remove` uninstalls.
 
-```sh
-scripts/dev.sh          # build, run snipd as a user unit, bind SUPER+SHIFT+3/4/5
-scripts/dev.sh stop     # stop it and restore Hyprland's own bindings
-```
+Capture Text needs `tesseract-data-eng`, and the microphone level needs `pipewire-audio`. Omarchy has both.
+
+## Usage
+
+On first start, a Welcome window offers to add Snip's keys to your Hyprland config, and Print Screen too if you want it.
 
 | Keys | Action |
 |---|---|
-| SUPER+SHIFT+3 | Capture fullscreen |
-| SUPER+SHIFT+4 | Capture area (hold Space for a window) |
-| SUPER+SHIFT+5 | All-In-One (area for now) |
-| SUPER+SHIFT+6 | Edit the image on the clipboard |
+| Super + Shift + 3 | Capture the whole screen |
+| Super + Shift + 4 | Capture an area (press Space for a window) |
+| Super + Shift + 5 | All-In-One |
+| Super + Shift + 6 | Edit the image on the clipboard |
 
-The `snip` CLI talks to the running daemon: `snip area`, `snip text`, `snip edit FILE`, `snip copy`, `snip save`, `snip list`, `snip search TEXT`, `snip --help`.
+Every action is also a command, so you can bind it to any key or use it in scripts:
 
-## Releases
+```sh
+snip area            # capture an area
+snip window          # capture a window
+snip text            # copy the text in an area
+snip scroll          # scrolling capture
+snip record          # record an area; run it again to stop
+snip history         # browse past captures
+snip search TEXT     # find captures by their text
+snip edit FILE       # open an image in the editor
+snip settings        # open Settings
+```
 
-Every merge to `main` is a release on GitHub (D33): the next patch version, notes made from the merged pull requests, and the source. `scripts/release.sh minor` (or the Release workflow run by hand) bumps the minor version instead. `snip --version` says which one you run.
+`snip --help` lists every command.
 
-## Docs
+## Configuration
 
-- [docs/00-README.md](docs/00-README.md): start here (decision log, document map)
-- [docs/01-product-spec.md](docs/01-product-spec.md): every feature with its ID
-- [docs/02-architecture.md](docs/02-architecture.md): process model, Wayland, Qt, storage
+The Settings window writes `~/.config/snip/config.toml` and keeps your comments. Edits made by hand apply immediately. Settings › Shortcuts records keys for any action.
+
+## Development
+
+```sh
+sudo pacman -S --needed rust cmake ninja corrosion qt6-base qt6-declarative qt6-wayland qt6-multimedia qt6-multimedia-ffmpeg qt6-shadertools layer-shell-qt kcoreaddons sqlite ffmpeg tesseract tesseract-data-eng
+
+scripts/dev.sh          # build, then run snipd from build/ as the user unit snip-dev
+scripts/dev.sh stop     # stop it and give Hyprland its own bindings back
+cargo test -p snip-core -p snip-ipc -p snip-hypr -p snip_bridge
+```
+
+[docs/00-README.md](docs/00-README.md) has the decision log and the map of the spec, architecture and roadmap. Every merge to `main` is published as a release.
+
+## Credits
+
+Snip follows the workflow of [CleanShot X](https://cleanshot.com) for macOS. It is an independent project and isn't affiliated with CleanShot X or its makers.
+
+Created by [InsaneArts](https://insanearts.io).
 
 ## License
 
