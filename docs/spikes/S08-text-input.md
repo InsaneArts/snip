@@ -18,7 +18,7 @@ Date: 2026-10-06. Code: `--textinput [toplevel|layer]` in the spike, driver `qao
 **Why row 3 is a test-method problem, not a Snip finding:** the result was identical with `QT_IM_MODULE=fcitx`, `wayland` and unset. So it isn't Qt's IM module; Hyprland's synthetic `send_shortcut` key doesn't carry the switched layout group to the client. The real path (physical keyboard → Hyprland → fcitx5 input-method grab → app) can't be reproduced without a uinput device.
 
 ## Manual check requested (10 seconds)
-1. In `spikes/s01-foundation`, run: `./build/snip-spike --textinput`
+1. In [`spikes/s01-foundation`](https://github.com/InsaneArts/snip/tree/1b9ab47a31056383be0a7b2a2d4506ceb580fa36/spikes/s01-foundation) (removed later), run: `./build/snip-spike --textinput`
 2. A small window titled `snip-text` appears.
 3. Switch to the Georgian layout as usual and type a few letters, then try `--textinput layer`.
 4. Expected: Georgian letters appear in both. If Latin appears, Snip must pass the layout group through (or depend on fcitx5's layout handling) before M2.

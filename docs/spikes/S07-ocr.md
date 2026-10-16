@@ -1,6 +1,6 @@
 # Spike S07: OCR bake-off (covers S12)
 
-Date: 2026-10-06. Code: `spikes/s01-foundation/qao-test/ocr.html`, `qao-test/s12_ocr.py`.
+Date: 2026-10-06. Code: [`spikes/s01-foundation/qao-test/ocr.html`](https://github.com/InsaneArts/snip/blob/1b9ab47a31056383be0a7b2a2d4506ceb580fa36/spikes/s01-foundation/qao-test/ocr.html), `qao-test/s12_ocr.py`.
 
 ## Method
 - Seven text samples with **known ground truth** are rendered in Chromium and **grabbed through Snip's capture path** at physical resolution. The page renders at 1.68 device px per CSS px on this machine.

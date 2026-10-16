@@ -1,6 +1,6 @@
 # Spike S03: Omarchy theme tokens (S17) and hide-desktop cover (S15)
 
-Date: 2026-10-06. Code: `spikes/s01-foundation/` (`rust/src/theme.rs`, `--gallery`, `--cover`, `s15_cover.py`).
+Date: 2026-10-06. Code: [`spikes/s01-foundation/`](https://github.com/InsaneArts/snip/tree/1b9ab47a31056383be0a7b2a2d4506ceb580fa36/spikes/s01-foundation) (removed later; the link is the last commit with it) (`rust/src/theme.rs`, `--gallery`, `--cover`, `s15_cover.py`).
 
 ## S17: theme tokens across every installed theme. ✅ PASS
 
