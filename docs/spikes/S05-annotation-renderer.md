@@ -1,6 +1,6 @@
 # Spike S05: annotation renderer, preview vs export and frame rate (covers S8)
 
-Date: 2026-10-06. Code: `spikes/s01-foundation/qml/Editor.qml`, driver `qao-test/s8_editor.py`.
+Date: 2026-10-06. Code: [`spikes/s01-foundation/qml/Editor.qml`](https://github.com/InsaneArts/snip/blob/1b9ab47a31056383be0a7b2a2d4506ceb580fa36/spikes/s01-foundation/qml/Editor.qml), driver `qao-test/s8_editor.py`.
 
 ## Setup
 - A Qt Quick canvas with CleanShot's core object types:

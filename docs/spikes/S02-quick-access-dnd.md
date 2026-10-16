@@ -1,6 +1,6 @@
 # Spike S02: Quick Access card, drag-and-drop and paste (covers S3, S10, S14)
 
-Date: 2026-10-06. Code: `spikes/s01-foundation/` (shared spike app), plus `qao-test/`. Machine: Hyprland 0.56.2, DP-2 at 1.25.
+Date: 2026-10-06. Code: [`spikes/s01-foundation/`](https://github.com/InsaneArts/snip/tree/1b9ab47a31056383be0a7b2a2d4506ceb580fa36/spikes/s01-foundation) (removed later; the link is the last commit with it) (shared spike app), plus `qao-test/`. Machine: Hyprland 0.56.2, DP-2 at 1.25.
 
 ## What was built
 - **QAO card prototype:**

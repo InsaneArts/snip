@@ -1,6 +1,6 @@
 # Spike S04: pinned screenshots and lock (click-through) mode (covers S6)
 
-Date: 2026-10-06. Code: `spikes/s01-foundation/` (`cpp/pinhelper.h`, pin windows in `qml/Main.qml`), driver `qao-test/s6_pin.py`.
+Date: 2026-10-06. Code: [`spikes/s01-foundation/`](https://github.com/InsaneArts/snip/tree/1b9ab47a31056383be0a7b2a2d4506ceb580fa36/spikes/s01-foundation) (removed later; the link is the last commit with it) (`cpp/pinhelper.h`, pin windows in `qml/Main.qml`), driver `qao-test/s6_pin.py`.
 
 All interactive tests ran on a dedicated temporary workspace over a Chromium test page that logs `pointerdown` and `click` events.
 

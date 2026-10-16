@@ -1,6 +1,6 @@
 # Spike S06: scrolling capture on Omasnap's stitcher (covers S11, S16)
 
-Date: 2026-10-06. Code: `spikes/s01-foundation/qao-test/scroll.html`, `qao-test/s11_scroll.py`, spike `grab`/`scroll` control commands. Omasnap at upstream commit `6771b19` (MIT).
+Date: 2026-10-06. Code: [`spikes/s01-foundation/qao-test/scroll.html`](https://github.com/InsaneArts/snip/blob/1b9ab47a31056383be0a7b2a2d4506ceb580fa36/spikes/s01-foundation/qao-test/scroll.html), `qao-test/s11_scroll.py`, spike `grab`/`scroll` control commands. Omasnap at upstream commit `6771b19` (MIT).
 
 ## Method
 1. A synthetic long page, **400 rows**, each carrying its index as a **12-bit black/white barcode plus a parity bit**, with a **sticky header** (70 CSS px) and a **fixed footer** (48 CSS px). Opened in Chromium on a dedicated workspace.
